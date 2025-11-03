@@ -1937,13 +1937,15 @@ function createFindEeeFeature() {
 function filterWordsByAbcde(words, yesLetters) {
     return words.filter(word => {
         const wordUpper = word.toUpperCase();
+        // Convert yesLetters to uppercase for consistent comparison
+        const yesLettersUpper = yesLetters.map(letter => letter.toUpperCase());
         // Must include all YES letters
-        for (const letter of yesLetters) {
-            if (!wordUpper.includes(letter.toUpperCase())) return false;
+        for (const letter of yesLettersUpper) {
+            if (!wordUpper.includes(letter)) return false;
         }
         // Must NOT include any of the other letters (A-E not in yesLetters)
         for (const letter of ['A','B','C','D','E']) {
-            if (!yesLetters.includes(letter) && wordUpper.includes(letter)) return false;
+            if (!yesLettersUpper.includes(letter) && wordUpper.includes(letter)) return false;
         }
         return true;
     });
@@ -1953,13 +1955,15 @@ function filterWordsByAbcde(words, yesLetters) {
 function filterWordsByAbc(words, yesLetters) {
     return words.filter(word => {
         const wordUpper = word.toUpperCase();
+        // Convert yesLetters to uppercase for consistent comparison
+        const yesLettersUpper = yesLetters.map(letter => letter.toUpperCase());
         // Must include all YES letters
-        for (const letter of yesLetters) {
-            if (!wordUpper.includes(letter.toUpperCase())) return false;
+        for (const letter of yesLettersUpper) {
+            if (!wordUpper.includes(letter)) return false;
         }
         // Must NOT include any of the other letters (A-C not in yesLetters)
         for (const letter of ['A','B','C']) {
-            if (!yesLetters.includes(letter) && wordUpper.includes(letter)) return false;
+            if (!yesLettersUpper.includes(letter) && wordUpper.includes(letter)) return false;
         }
         return true;
     });
