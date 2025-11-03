@@ -1,10 +1,10 @@
 const CACHE_NAME = 'word-filter-v2';
 const ASSETS_TO_CACHE = [
-  '/grail-binary/',
-  '/grail-binary/index.html',
-  '/grail-binary/styles.css',
-  '/grail-binary/script.js',
-  '/grail-binary/manifest.json',
+  '/coretest/',
+  '/coretest/index.html',
+  '/coretest/styles.css',
+  '/coretest/script.js',
+  '/coretest/manifest.json',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css'
 ];
 

@@ -2,7 +2,7 @@
   "name": "The Core",
   "short_name": "The Core",
   "description": "Word filtering and workflow management application",
-  "start_url": "/grail-binary/",
+  "start_url": "/coretest/",
   "display": "standalone",
   "background_color": "#f0f0f0",
   "theme_color": "#f0f0f0",
