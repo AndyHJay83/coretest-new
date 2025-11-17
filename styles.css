@@ -45,17 +45,25 @@ body {
     font-weight: 600;
 }
 
-/* Hide header in PWA standalone mode */
-@media (display-mode: standalone) {
+/* Hide header on mobile devices and in PWA mode */
+@media (max-width: 768px) {
     .header {
         display: none !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        min-height: 0 !important;
     }
 }
 
-/* Also hide header on mobile devices (where PWA is typically used) */
-@media (max-width: 600px) {
+/* Also hide in standalone PWA mode */
+@media (display-mode: standalone) {
     .header {
         display: none !important;
+        height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        min-height: 0 !important;
     }
 }
 
@@ -3080,62 +3088,49 @@ input:checked + .slider:before {
     width: 100%;
 }
 
-/* Ensure 50/50 split works in PWA standalone mode - override mobile stacking */
+/* Force 50/50 split on mobile/PWA - override any stacking */
+@media (max-width: 768px) {
+    .position-cons-main-layout {
+        flex-direction: row !important;
+        gap: 8px !important;
+        display: flex !important;
+    }
+    
+    .position-cons-left {
+        flex: 0 0 50% !important;
+        width: 50% !important;
+        max-width: 50% !important;
+        padding-right: 4px !important;
+        box-sizing: border-box !important;
+    }
+    
+    .position-cons-right {
+        flex: 0 0 50% !important;
+        width: 50% !important;
+        max-width: 50% !important;
+        padding-left: 4px !important;
+        box-sizing: border-box !important;
+    }
+}
+
+/* Ensure it works in standalone PWA mode too */
 @media (display-mode: standalone) {
     .position-cons-main-layout {
         flex-direction: row !important;
-        gap: 10px;
-    }
-    
-    .position-cons-left {
-        flex: 0 0 50% !important;
-        padding-right: 5px;
-        width: 50% !important;
-    }
-    
-    .position-cons-right {
-        flex: 0 0 50% !important;
-        padding-left: 5px;
-        width: 50% !important;
-    }
-}
-
-/* Stack vertically only for regular mobile browser (not PWA) */
-@media (max-width: 600px) {
-    .position-cons-main-layout {
-        flex-direction: column;
-        gap: 15px;
-    }
-    
-    .position-cons-left,
-    .position-cons-right {
-        flex: 1 1 auto;
-        width: 100%;
-        padding: 0;
-    }
-    
-    .position-cons-right .secondary-btn,
-    .position-cons-right .primary-btn {
-        width: 100%;
-    }
-}
-
-/* Override mobile stacking when in PWA mode */
-@media (max-width: 600px) and (display-mode: standalone) {
-    .position-cons-main-layout {
-        flex-direction: row !important;
-        gap: 10px;
+        gap: 8px !important;
     }
     
     .position-cons-left {
         flex: 0 0 50% !important;
         width: 50% !important;
-        padding-right: 5px;
+        max-width: 50% !important;
+        padding-right: 4px !important;
     }
     
     .position-cons-right {
         flex: 0 0 50% !important;
         width: 50% !important;
-        padding-left: 5px;
+        max-width: 50% !important;
+        padding-left: 4px !important;
     }
 } 
