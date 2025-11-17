@@ -1963,7 +1963,6 @@ function createPositionConsFeature() {
                     <div class="position-cons-input-group">
                         <label for="positionConsLetters">Letters</label>
                         <input type="text" id="positionConsLetters" placeholder="Enter letters...">
-                        <div class="position-cons-helper">Letters are uppercased automatically; non A–Z characters are removed.</div>
                     </div>
                     <div class="position-cons-input-group">
                         <label for="positionConsCount">Letter count</label>
