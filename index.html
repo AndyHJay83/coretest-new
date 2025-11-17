@@ -471,24 +471,22 @@
                     <div class="feature-title">POSITION-CONS</div>
                     <div class="position-cons-form">
                         <div class="position-cons-main-layout">
-                            <div class="position-cons-inputs">
-                                <div class="position-cons-small-inputs">
-                                    <div class="position-cons-small-input">
-                                        <label for="positionConsPosition">Position (1-6)</label>
-                                        <input type="number" id="positionConsPosition" min="1" max="6" placeholder="1-6">
-                                    </div>
-                                    <div class="position-cons-small-input">
-                                        <label for="positionConsCount">Letter count</label>
-                                        <input type="number" id="positionConsCount" min="0" placeholder="0+">
-                                    </div>
+                            <div class="position-cons-left">
+                                <div class="position-cons-input-group">
+                                    <label for="positionConsPosition">Position (1-6)</label>
+                                    <input type="number" id="positionConsPosition" min="1" max="6" placeholder="1-6">
                                 </div>
-                                <div class="position-cons-letters-section">
+                                <div class="position-cons-input-group">
                                     <label for="positionConsLetters">Letters</label>
                                     <input type="text" id="positionConsLetters" placeholder="Enter letters...">
                                     <div class="position-cons-helper">Letters are uppercased automatically; non A–Z characters are removed.</div>
                                 </div>
+                                <div class="position-cons-input-group">
+                                    <label for="positionConsCount">Letter count</label>
+                                    <input type="number" id="positionConsCount" min="0" placeholder="0+">
+                                </div>
                             </div>
-                            <div class="position-cons-buttons">
+                            <div class="position-cons-right">
                                 <button id="positionConsUseCurrent" class="secondary-btn">Use Last Letters</button>
                                 <button id="positionConsGenerate" class="secondary-btn">Random Letters</button>
                                 <button id="positionConsSubmit" class="primary-btn">FILTER</button>
