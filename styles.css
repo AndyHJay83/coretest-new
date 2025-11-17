@@ -3080,6 +3080,27 @@ input:checked + .slider:before {
     width: 100%;
 }
 
+/* Ensure 50/50 split works in PWA standalone mode - override mobile stacking */
+@media (display-mode: standalone) {
+    .position-cons-main-layout {
+        flex-direction: row !important;
+        gap: 10px;
+    }
+    
+    .position-cons-left {
+        flex: 0 0 50% !important;
+        padding-right: 5px;
+        width: 50% !important;
+    }
+    
+    .position-cons-right {
+        flex: 0 0 50% !important;
+        padding-left: 5px;
+        width: 50% !important;
+    }
+}
+
+/* Stack vertically only for regular mobile browser (not PWA) */
 @media (max-width: 600px) {
     .position-cons-main-layout {
         flex-direction: column;
@@ -3096,5 +3117,25 @@ input:checked + .slider:before {
     .position-cons-right .secondary-btn,
     .position-cons-right .primary-btn {
         width: 100%;
+    }
+}
+
+/* Override mobile stacking when in PWA mode */
+@media (max-width: 600px) and (display-mode: standalone) {
+    .position-cons-main-layout {
+        flex-direction: row !important;
+        gap: 10px;
+    }
+    
+    .position-cons-left {
+        flex: 0 0 50% !important;
+        width: 50% !important;
+        padding-right: 5px;
+    }
+    
+    .position-cons-right {
+        flex: 0 0 50% !important;
+        width: 50% !important;
+        padding-left: 5px;
     }
 } 
