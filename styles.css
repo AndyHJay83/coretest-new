@@ -45,6 +45,20 @@ body {
     font-weight: 600;
 }
 
+/* Hide header in PWA standalone mode */
+@media (display-mode: standalone) {
+    .header {
+        display: none !important;
+    }
+}
+
+/* Also hide header on mobile devices (where PWA is typically used) */
+@media (max-width: 600px) {
+    .header {
+        display: none !important;
+    }
+}
+
 .toggles-container {
     display: flex;
     justify-content: space-between;
@@ -598,15 +612,6 @@ input:checked + .slider:before {
 
 /* Media Queries */
 @media (max-width: 600px) {
-    .header {
-        padding: 5px 10px;
-        min-height: 35px;
-    }
-    
-    .header h1 {
-        font-size: 16px;
-    }
-
     .toggles-container {
         display: none; /* Hide all toggles on mobile */
     }
