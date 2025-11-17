@@ -3313,6 +3313,42 @@ function setupFeatureListeners(feature, callback) {
                         e.target.value = sanitized;
                     }
                 });
+                
+                // Ensure input is easily focusable on touch
+                lettersInput.addEventListener('touchstart', (e) => {
+                    e.stopPropagation();
+                    lettersInput.focus();
+                }, { passive: true });
+                
+                lettersInput.addEventListener('touchend', (e) => {
+                    e.stopPropagation();
+                    lettersInput.focus();
+                }, { passive: true });
+            }
+            
+            // Make position and count inputs easily focusable
+            if (positionInput) {
+                positionInput.addEventListener('touchstart', (e) => {
+                    e.stopPropagation();
+                    positionInput.focus();
+                }, { passive: true });
+                
+                positionInput.addEventListener('touchend', (e) => {
+                    e.stopPropagation();
+                    positionInput.focus();
+                }, { passive: true });
+            }
+            
+            if (countInput) {
+                countInput.addEventListener('touchstart', (e) => {
+                    e.stopPropagation();
+                    countInput.focus();
+                }, { passive: true });
+                
+                countInput.addEventListener('touchend', (e) => {
+                    e.stopPropagation();
+                    countInput.focus();
+                }, { passive: true });
             }
             
             // Use Last Letters button

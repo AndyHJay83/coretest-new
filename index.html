@@ -688,9 +688,14 @@
 
         // Prevent bounce effect on iOS
         document.body.addEventListener('touchmove', function(e) {
-            if (e.target.closest('.results-container') === null) {
-                e.preventDefault();
+            // Allow touchmove on inputs and their containers
+            if (e.target.closest('.results-container') !== null || 
+                e.target.closest('input') !== null ||
+                e.target.closest('.position-cons-input-group') !== null ||
+                e.target.closest('.position-cons-form') !== null) {
+                return;
             }
+            e.preventDefault();
         }, { passive: false });
 
         // Add touch event listeners to all buttons
