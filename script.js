@@ -1970,7 +1970,6 @@ function createPositionConsFeature() {
                     </div>
                 </div>
                 <div class="position-cons-right">
-                    <button id="positionConsUseCurrent" class="secondary-btn">Use Last Letters</button>
                     <button id="positionConsGenerate" class="secondary-btn">Random Letters</button>
                     <button id="positionConsSubmit" class="primary-btn">FILTER</button>
                 </div>
