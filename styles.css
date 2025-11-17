@@ -2919,4 +2919,133 @@ input:checked + .slider:before {
         flex: 1 1 0 !important;
         min-height: 0 !important;
     }
+}
+
+/* POSITION-CONS Feature Styles */
+.position-cons-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+}
+
+.position-cons-row {
+    display: flex;
+    gap: 15px;
+    width: 100%;
+}
+
+.position-cons-row .position-input {
+    flex: 1;
+}
+
+.position-cons-form .position-input {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.position-cons-form label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+}
+
+.position-cons-form input[type="number"],
+.position-cons-form input[type="text"] {
+    padding: 12px;
+    font-size: 16px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.position-cons-form input[type="number"]:focus,
+.position-cons-form input[type="text"]:focus {
+    outline: none;
+    border-color: #1B5E20;
+    box-shadow: 0 0 0 2px rgba(27, 94, 32, 0.2);
+}
+
+.position-cons-helper {
+    font-size: 12px;
+    color: #666;
+    font-style: italic;
+}
+
+.position-cons-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 5px;
+}
+
+.secondary-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+    background-color: #f0f0f0;
+    color: #333;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.secondary-btn:hover {
+    background-color: #e0e0e0;
+    border-color: #bbb;
+}
+
+.secondary-btn:active {
+    transform: translateY(1px);
+}
+
+.primary-btn {
+    padding: 12px 24px;
+    font-size: 16px;
+    background-color: #1B5E20;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+    text-transform: uppercase;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.primary-btn:hover {
+    background-color: #2E7D32;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.primary-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.position-cons-message {
+    min-height: 20px;
+    font-size: 14px;
+    text-align: center;
+    padding: 8px;
+    border-radius: 4px;
+}
+
+@media (max-width: 600px) {
+    .position-cons-row {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .position-cons-actions {
+        flex-direction: column;
+    }
+    
+    .secondary-btn,
+    .primary-btn {
+        width: 100%;
+    }
 } 

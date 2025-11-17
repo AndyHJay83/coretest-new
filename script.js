@@ -24,6 +24,16 @@ let leastFrequentLetter = null;
 let usedLettersInWorkflow = [];  // Track letters used in current workflow
 let letterFrequencyMap = new Map();  // Store frequency of all letters
 
+// POSITION-CONS Constants
+const ALPHABET_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+const VOWEL_SET = new Set(['A', 'E', 'I', 'O', 'U']);
+const CONSONANT_LETTERS = ALPHABET_LETTERS.filter(letter => !VOWEL_SET.has(letter));
+
+// POSITION-CONS State Management
+const positionConsSequenceState = {};
+let lastPositionConsLetters = '';
+let lastPositionConsGeneratedLetters = '';
+
 // Workflow Management
 let workflows = JSON.parse(localStorage.getItem('workflows')) || [];
 let currentWorkflow = null;
@@ -1291,6 +1301,7 @@ async function executeWorkflow(steps) {
             abcde: createAbcdeFeature(),
             abc: createAbcFeature(),
             findEee: createFindEeeFeature(),
+            positionConsFeature: createPositionConsFeature(),
         };
         
         // Add all feature elements to the document body
@@ -1419,6 +1430,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 'findEee':
                     featureElement = createFindEeeFeature();
+                    break;
+                case 'positionCons':
+                    featureElement = createPositionConsFeature();
                     break;
                 default:
                     featureElement = null;
@@ -1928,6 +1942,39 @@ function createFindEeeFeature() {
         </div>
         <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
             <button id="findEeeSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+function createPositionConsFeature() {
+    const div = document.createElement('div');
+    div.id = 'positionConsFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <div class="feature-title">POSITION-CONS</div>
+        <div class="position-cons-form">
+            <div class="position-cons-row">
+                <div class="position-input">
+                    <label for="positionConsPosition">Position (1-6)</label>
+                    <input type="number" id="positionConsPosition" min="1" max="6" placeholder="Enter position...">
+                </div>
+                <div class="position-input">
+                    <label for="positionConsCount">Letter count</label>
+                    <input type="number" id="positionConsCount" min="0" placeholder="Enter count...">
+                </div>
+            </div>
+            <div class="position-input">
+                <label for="positionConsLetters">Letters</label>
+                <input type="text" id="positionConsLetters" placeholder="Enter letters...">
+                <div class="position-cons-helper">Letters are uppercased automatically; non A–Z characters are removed.</div>
+                <div class="position-cons-actions">
+                    <button id="positionConsUseCurrent" class="secondary-btn">Use Last Letters</button>
+                    <button id="positionConsGenerate" class="secondary-btn">Random Letters</button>
+                </div>
+            </div>
+            <button id="positionConsSubmit" class="primary-btn">FILTER</button>
+            <div id="positionConsMessage" class="position-cons-message"></div>
         </div>
     `;
     return div;
@@ -3248,6 +3295,185 @@ function setupFeatureListeners(feature, callback) {
             }
             break;
         }
+        
+        case 'positionCons': {
+            const positionInput = document.getElementById('positionConsPosition');
+            const countInput = document.getElementById('positionConsCount');
+            const lettersInput = document.getElementById('positionConsLetters');
+            const submitBtn = document.getElementById('positionConsSubmit');
+            const useCurrentBtn = document.getElementById('positionConsUseCurrent');
+            const generateBtn = document.getElementById('positionConsGenerate');
+            const messageDiv = document.getElementById('positionConsMessage');
+            
+            // Real-time letter sanitization
+            if (lettersInput) {
+                lettersInput.addEventListener('input', (e) => {
+                    const sanitized = sanitizeLetterString(e.target.value);
+                    if (sanitized !== e.target.value) {
+                        e.target.value = sanitized;
+                    }
+                });
+            }
+            
+            // Use Last Letters button
+            if (useCurrentBtn) {
+                useCurrentBtn.onclick = () => {
+                    if (lastPositionConsLetters) {
+                        if (lettersInput) {
+                            lettersInput.value = lastPositionConsLetters;
+                        }
+                        if (messageDiv) {
+                            messageDiv.textContent = 'Loaded last used letters';
+                            messageDiv.style.color = '#4CAF50';
+                            setTimeout(() => {
+                                messageDiv.textContent = '';
+                            }, 2000);
+                        }
+                    } else {
+                        if (messageDiv) {
+                            messageDiv.textContent = 'No last letters available';
+                            messageDiv.style.color = '#f44336';
+                            setTimeout(() => {
+                                messageDiv.textContent = '';
+                            }, 2000);
+                        }
+                    }
+                };
+                useCurrentBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    useCurrentBtn.onclick();
+                }, { passive: false });
+            }
+            
+            // Random Letters button
+            if (generateBtn) {
+                generateBtn.onclick = () => {
+                    const position = parseInt(positionInput?.value) || 1;
+                    if (position < 1 || position > 6) {
+                        if (messageDiv) {
+                            messageDiv.textContent = 'Please enter a valid position (1-6) first';
+                            messageDiv.style.color = '#f44336';
+                            setTimeout(() => {
+                                messageDiv.textContent = '';
+                            }, 2000);
+                        }
+                        return;
+                    }
+                    const generated = generateStructuredLetterString(position);
+                    if (lettersInput) {
+                        lettersInput.value = generated;
+                    }
+                    lastPositionConsGeneratedLetters = generated;
+                    if (messageDiv) {
+                        messageDiv.textContent = 'Generated letters for position ' + position;
+                        messageDiv.style.color = '#4CAF50';
+                        setTimeout(() => {
+                            messageDiv.textContent = '';
+                        }, 2000);
+                    }
+                };
+                generateBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    generateBtn.onclick();
+                }, { passive: false });
+            }
+            
+            // FILTER button
+            if (submitBtn) {
+                submitBtn.onclick = () => {
+                    const position = parseInt(positionInput?.value);
+                    const letterCount = parseInt(countInput?.value);
+                    const letters = lettersInput?.value || '';
+                    
+                    // Validation
+                    if (!position || position < 1 || position > 6) {
+                        if (messageDiv) {
+                            messageDiv.textContent = 'Please enter a valid position (1-6)';
+                            messageDiv.style.color = '#f44336';
+                            setTimeout(() => {
+                                messageDiv.textContent = '';
+                            }, 2000);
+                        }
+                        return;
+                    }
+                    
+                    if (letterCount === null || letterCount < 0 || isNaN(letterCount)) {
+                        if (messageDiv) {
+                            messageDiv.textContent = 'Please enter a valid letter count (0 or more)';
+                            messageDiv.style.color = '#f44336';
+                            setTimeout(() => {
+                                messageDiv.textContent = '';
+                            }, 2000);
+                        }
+                        return;
+                    }
+                    
+                    const sanitizedLetters = sanitizeLetterString(letters);
+                    if (!sanitizedLetters) {
+                        if (messageDiv) {
+                            messageDiv.textContent = 'Please enter at least one letter';
+                            messageDiv.style.color = '#f44336';
+                            setTimeout(() => {
+                                messageDiv.textContent = '';
+                            }, 2000);
+                        }
+                        return;
+                    }
+                    
+                    // Store for "Use Last Letters" button
+                    lastPositionConsLetters = sanitizedLetters;
+                    
+                    // Filter words
+                    const filteredWords = filterWordsByPositionCons(currentFilteredWords, {
+                        position,
+                        letters: sanitizedLetters,
+                        letterCount
+                    });
+                    
+                    callback(filteredWords);
+                    
+                    // Show result message
+                    if (messageDiv) {
+                        messageDiv.textContent = `Filtered to ${filteredWords.length} words`;
+                        messageDiv.style.color = '#4CAF50';
+                    }
+                    
+                    // Complete feature
+                    const featureDiv = document.getElementById('positionConsFeature');
+                    featureDiv.classList.add('completed');
+                    featureDiv.dispatchEvent(new Event('completed'));
+                };
+                
+                submitBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    submitBtn.onclick();
+                }, { passive: false });
+                
+                // Enter key support
+                if (lettersInput) {
+                    lettersInput.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            submitBtn.onclick();
+                        }
+                    });
+                }
+                if (positionInput) {
+                    positionInput.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            submitBtn.onclick();
+                        }
+                    });
+                }
+                if (countInput) {
+                    countInput.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            submitBtn.onclick();
+                        }
+                    });
+                }
+            }
+            break;
+        }
     }
 }
 
@@ -4338,8 +4564,10 @@ function handleDrop(e) {
 
 function isFeatureAlreadySelected(featureType) {
     const selectedFeatures = document.getElementById('selectedFeaturesList');
-    // Allow multiple instances of MOST FREQUENT and LEAST FREQUENT features
-    if (featureType === 'mostFrequent' || featureType === 'leastFrequent') {
+    // Allow multiple instances of MOST FREQUENT, LEAST FREQUENT, and POSITION-CONS
+    if (featureType === 'mostFrequent' || 
+        featureType === 'leastFrequent' || 
+        featureType === 'positionCons') {
         return false;
     }
     // For all other features, maintain the single instance rule
@@ -5104,8 +5332,10 @@ function initializeFeatureSelection() {
 
 function isFeatureAlreadySelected(featureType) {
     const selectedFeatures = document.getElementById('selectedFeaturesList');
-    // Allow multiple instances of MOST FREQUENT and LEAST FREQUENT features
-    if (featureType === 'mostFrequent' || featureType === 'leastFrequent') {
+    // Allow multiple instances of MOST FREQUENT, LEAST FREQUENT, and POSITION-CONS
+    if (featureType === 'mostFrequent' || 
+        featureType === 'leastFrequent' || 
+        featureType === 'positionCons') {
         return false;
     }
     // For all other features, maintain the single instance rule
@@ -5208,4 +5438,144 @@ function filterWordsByNotIn(letters) {
         return !Array.from(letterSet).some(letter => word.toLowerCase().includes(letter));
     });
     displayResults(currentFilteredWords);
+}
+
+// ========== POSITION-CONS Helper Functions ==========
+
+// Letter String Sanitization
+function sanitizeLetterString(value = '') {
+    return (value || '')
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '');
+}
+
+// Source Word Selection
+function getSourceWordsForPosition(position = 1) {
+    const source = (currentFilteredWords && currentFilteredWords.length 
+                   ? currentFilteredWords 
+                   : wordList) || [];
+    return source.filter(word => typeof word === 'string' && word.length >= position);
+}
+
+// Position Letter Statistics
+function buildPositionLetterStats(words, position) {
+    const freq = new Map();
+    const index = Math.max(0, position - 1);
+    words.forEach(word => {
+        const letter = (word[index] || '').toUpperCase();
+        if (!letter || letter < 'A' || letter > 'Z') return;
+        freq.set(letter, (freq.get(letter) || 0) + 1);
+    });
+    return freq;
+}
+
+// Letter Group Generation
+function getPositionLetterGroups(position) {
+    const sourceWords = getSourceWordsForPosition(position);
+    const freq = buildPositionLetterStats(sourceWords, position);
+    const orderedLetters = [...freq.entries()]
+        .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+        .map(([letter]) => letter);
+    const consonants = orderedLetters.filter(letter => !VOWEL_SET.has(letter));
+    const vowels = orderedLetters.filter(letter => VOWEL_SET.has(letter));
+    const allGroups = [];
+    if (orderedLetters.length) {
+        for (let i = 0; i < orderedLetters.length; i += 6) {
+            const chunk = orderedLetters.slice(i, i + 6);
+            while (chunk.length < 6 && consonants.length) {
+                const filler = consonants.find(letter => !chunk.includes(letter)) ||
+                              CONSONANT_LETTERS.find(letter => !chunk.includes(letter));
+                if (!filler) break;
+                chunk.push(filler);
+            }
+            allGroups.push(chunk.slice(0, 6));
+        }
+    } else {
+        allGroups.push(CONSONANT_LETTERS.slice(0, 6));
+    }
+    return {
+        signature: orderedLetters.join(''),
+        allGroups,
+        consonants,
+        vowels,
+    };
+}
+
+// Structured String Generation
+function generateStructuredLetterString(position = 1) {
+    const { signature, allGroups, consonants, vowels } = getPositionLetterGroups(position);
+    // Initialize or reset state if wordlist changed
+    if (!positionConsSequenceState[position] || 
+        positionConsSequenceState[position].signature !== signature) {
+        positionConsSequenceState[position] = {
+            signature,
+            index: -1,
+            useVowels: false,
+        };
+    }
+    const state = positionConsSequenceState[position];
+    const groups = allGroups.length ? allGroups : [CONSONANT_LETTERS.slice(0, 6)];
+    
+    // Cycle through groups
+    state.index = (state.index + 1) % groups.length;
+    
+    // Alternate vowel inclusion
+    state.useVowels = !state.useVowels;
+    const baseChunk = groups[state.index];
+    
+    if (state.useVowels && vowels.length) {
+        // Vowel turn: show group as-is (includes vowels)
+        return baseChunk.join('');
+    } else {
+        // Consonant turn: filter out vowels, pad with consonants
+        const consonantOnly = baseChunk.filter(letter => !VOWEL_SET.has(letter));
+        const used = new Set(consonantOnly);
+        while (consonantOnly.length < 6) {
+            const filler = consonants.find(letter => !used.has(letter)) ||
+                          CONSONANT_LETTERS.find(letter => !used.has(letter));
+            if (!filler) break;
+            consonantOnly.push(filler);
+            used.add(filler);
+        }
+        return consonantOnly.slice(0, 6).join('');
+    }
+}
+
+// Filtering Logic
+function filterWordsByPositionCons(words, options) {
+    if (!Array.isArray(words) || !options) return [];
+    const { position, letters, letterCount } = options;
+    if (!letters || typeof position !== 'number' || position < 1) return [];
+    const normalizedLetterCount = typeof letterCount === 'number' ? letterCount : 0;
+    const sanitizedLetters = sanitizeLetterString(letters);
+    if (!sanitizedLetters) return [];
+    const letterArray = sanitizedLetters.split('');
+    const letterSet = new Set(letterArray);
+    const targetIndex = position - 1;
+    const seen = new Set();
+    const results = [];
+    for (const word of words) {
+        const upperWord = word.toUpperCase();
+        if (upperWord.length <= targetIndex) continue;
+        // Must have target letter at specified position
+        const targetLetter = upperWord[targetIndex];
+        if (!letterSet.has(targetLetter)) continue;
+        // Count other letters from the string that appear elsewhere
+        const otherLetterSet = new Set(letterArray.filter(letter => letter !== targetLetter));
+        let matchCount = 0;
+        otherLetterSet.forEach(letter => {
+            if (upperWord.includes(letter)) {
+                matchCount += 1;
+            }
+        });
+        // Must match exact count
+        if (matchCount !== normalizedLetterCount) continue;
+        // Deduplicate
+        const key = upperWord;
+        if (!seen.has(key)) {
+            seen.add(key);
+            results.push(word);
+        }
+    }
+    return results.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
