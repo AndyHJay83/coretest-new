@@ -1965,7 +1965,7 @@ function createPositionConsFeature() {
                         <input type="text" id="positionConsLetters" placeholder="Enter letters...">
                     </div>
                     <div class="position-cons-input-group">
-                        <label for="positionConsCount">Letter count</label>
+                        <label for="positionConsCount">Letter count (total)</label>
                         <input type="number" id="positionConsCount" min="0" placeholder="0+">
                     </div>
                 </div>
@@ -3384,24 +3384,16 @@ function setupFeatureListeners(feature, callback) {
             // Random Letters button
             if (generateBtn) {
                 generateBtn.onclick = () => {
-                    const position = parseInt(positionInput?.value) || 1;
-                    if (position < 1 || position > 6) {
-                        if (messageDiv) {
-                            messageDiv.textContent = 'Please enter a valid position (1-6) first';
-                            messageDiv.style.color = '#f44336';
-                            setTimeout(() => {
-                                messageDiv.textContent = '';
-                            }, 2000);
-                        }
-                        return;
-                    }
-                    const generated = generateStructuredLetterString(position);
+                    const requestedPosition = parseInt(positionInput?.value);
+                    const positionIsValid = !isNaN(requestedPosition) && requestedPosition >= 1 && requestedPosition <= 6;
+                    const effectivePosition = positionIsValid ? requestedPosition : Math.floor(Math.random() * 6) + 1;
+                    const generated = generateStructuredLetterString(effectivePosition);
                     if (lettersInput) {
                         lettersInput.value = generated;
                     }
                     lastPositionConsGeneratedLetters = generated;
                     if (messageDiv) {
-                        messageDiv.textContent = 'Generated letters for position ' + position;
+                        messageDiv.textContent = `Generated letters for position ${effectivePosition}`;
                         messageDiv.style.color = '#4CAF50';
                         setTimeout(() => {
                             messageDiv.textContent = '';
@@ -3417,12 +3409,16 @@ function setupFeatureListeners(feature, callback) {
             // FILTER button
             if (submitBtn) {
                 submitBtn.onclick = () => {
-                    const position = parseInt(positionInput?.value);
+                    const positionRaw = positionInput?.value?.trim() || '';
+                    const hasPositionValue = positionRaw.length > 0;
+                    const parsedPosition = parseInt(positionRaw);
+                    const positionIsValid = !isNaN(parsedPosition) && parsedPosition >= 1 && parsedPosition <= 6;
+                    const resolvedPosition = hasPositionValue ? (positionIsValid ? parsedPosition : null) : null;
                     const letterCount = parseInt(countInput?.value);
                     const letters = lettersInput?.value || '';
                     
                     // Validation
-                    if (!position || position < 1 || position > 6) {
+                    if (hasPositionValue && !positionIsValid) {
                         if (messageDiv) {
                             messageDiv.textContent = 'Please enter a valid position (1-6)';
                             messageDiv.style.color = '#f44336';
@@ -3461,7 +3457,7 @@ function setupFeatureListeners(feature, callback) {
                     
                     // Filter words
                     const filteredWords = filterWordsByPositionCons(currentFilteredWords, {
-                        position,
+                        position: resolvedPosition,
                         letters: sanitizedLetters,
                         letterCount
                     });
@@ -3470,7 +3466,8 @@ function setupFeatureListeners(feature, callback) {
                     
                     // Show result message
                     if (messageDiv) {
-                        messageDiv.textContent = `Filtered to ${filteredWords.length} words`;
+                        const scopeText = resolvedPosition ? `position ${resolvedPosition}` : 'all positions';
+                        messageDiv.textContent = `Filtered to ${filteredWords.length} words (${scopeText})`;
                         messageDiv.style.color = '#4CAF50';
                     }
                     
@@ -5581,37 +5578,71 @@ function generateStructuredLetterString(position = 1) {
 function filterWordsByPositionCons(words, options) {
     if (!Array.isArray(words) || !options) return [];
     const { position, letters, letterCount } = options;
-    if (!letters || typeof position !== 'number' || position < 1) return [];
-    const normalizedLetterCount = typeof letterCount === 'number' ? letterCount : 0;
     const sanitizedLetters = sanitizeLetterString(letters);
     if (!sanitizedLetters) return [];
-    const letterArray = sanitizedLetters.split('');
-    const letterSet = new Set(letterArray);
-    const targetIndex = position - 1;
-    const seen = new Set();
-    const results = [];
-    for (const word of words) {
-        const upperWord = word.toUpperCase();
-        if (upperWord.length <= targetIndex) continue;
-        // Must have target letter at specified position
-        const targetLetter = upperWord[targetIndex];
-        if (!letterSet.has(targetLetter)) continue;
-        // Count other letters from the string that appear elsewhere
-        const otherLetterSet = new Set(letterArray.filter(letter => letter !== targetLetter));
-        let matchCount = 0;
-        otherLetterSet.forEach(letter => {
+    
+    const uniqueLetters = [...new Set(sanitizedLetters.split(''))];
+    const letterSet = new Set(uniqueLetters);
+    const normalizedLetterCount = typeof letterCount === 'number' && letterCount >= 0
+        ? letterCount
+        : uniqueLetters.length;
+    const hasSpecificPosition = typeof position === 'number' && position >= 1 && position <= 6;
+    const targetIndex = hasSpecificPosition ? Math.max(0, position - 1) : null;
+    
+    const countMatches = (upperWord) => {
+        let total = 0;
+        letterSet.forEach(letter => {
             if (upperWord.includes(letter)) {
-                matchCount += 1;
+                total += 1;
             }
         });
-        // Must match exact count
-        if (matchCount !== normalizedLetterCount) continue;
-        // Deduplicate
+        return total;
+    };
+    
+    const seen = new Set();
+    const results = [];
+    
+    for (const word of words) {
+        const upperWord = word.toUpperCase();
+        if (!upperWord) continue;
+        
+        if (hasSpecificPosition) {
+            if (upperWord.length <= targetIndex) continue;
+            const targetLetter = upperWord[targetIndex];
+            if (!letterSet.has(targetLetter)) continue;
+            
+            const totalMatches = countMatches(upperWord);
+            if (totalMatches !== normalizedLetterCount) continue;
+            
+            const key = upperWord;
+            if (!seen.has(key)) {
+                seen.add(key);
+                results.push(word);
+            }
+            continue;
+        }
+        
+        const totalMatches = countMatches(upperWord);
+        if (totalMatches !== normalizedLetterCount) continue;
+        
+        let hasLetterMatch = normalizedLetterCount === 0;
+        if (!hasLetterMatch) {
+            for (let i = 0; i < upperWord.length; i++) {
+                if (letterSet.has(upperWord[i])) {
+                    hasLetterMatch = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!hasLetterMatch) continue;
+        
         const key = upperWord;
         if (!seen.has(key)) {
             seen.add(key);
             results.push(word);
         }
     }
+    
     return results.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }

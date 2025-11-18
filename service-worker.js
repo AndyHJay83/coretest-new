@@ -1,4 +1,4 @@
-const CACHE_NAME = 'word-filter-v6';
+const CACHE_NAME = 'word-filter-v7';
 const ASSETS_TO_CACHE = [
   '/coretest/',
   '/coretest/index.html',
