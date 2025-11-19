@@ -1520,7 +1520,23 @@ function initializeExportButton() {
             alert('No words to export!');
             return;
         }
-        exportWordlist(latestExportWords);
+
+        const defaultName = `filtered_wordlist_${new Date().toISOString().slice(0, 10)}.txt`;
+        let userFileName = prompt('Enter a name for your export (.txt):', defaultName);
+
+        if (userFileName === null) {
+            return; // User cancelled
+        }
+
+        userFileName = userFileName.trim();
+        if (!userFileName) {
+            userFileName = defaultName;
+        }
+        if (!userFileName.toLowerCase().endsWith('.txt')) {
+            userFileName += '.txt';
+        }
+
+        exportWordlist(latestExportWords, userFileName);
     };
     
     exportButton.addEventListener('click', triggerExport);
@@ -1546,7 +1562,7 @@ function updateExportButtonState(words = latestExportWords) {
 }
 
 // Function to export wordlist as .txt file
-function exportWordlist(words) {
+function exportWordlist(words, fileName) {
     if (!words || words.length === 0) {
         alert('No words to export!');
         return;
@@ -1562,7 +1578,7 @@ function exportWordlist(words) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `filtered_wordlist_${new Date().toISOString().slice(0, 10)}.txt`;
+    a.download = sanitizeFilename(fileName) || `filtered_wordlist_${new Date().toISOString().slice(0, 10)}.txt`;
     
     // Trigger the download
     document.body.appendChild(a);
@@ -1571,6 +1587,11 @@ function exportWordlist(words) {
     // Clean up
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+function sanitizeFilename(name) {
+    if (!name) return '';
+    return name.replace(/[<>:"/\\|?*]+/g, '_').slice(0, 200);
 }
 
 // Helper functions to create feature elements
