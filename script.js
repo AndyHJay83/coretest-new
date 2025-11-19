@@ -5,6 +5,8 @@ let isColour3Mode = true;
 let isVowelMode = true;
 let isShapeMode = true;
 let currentFilteredWords = [];
+let latestExportWords = [];
+let exportButton = null;
 let currentPosition = 0;
 let currentPosition2 = -1;
 let currentVowelIndex = 0;
@@ -151,6 +153,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize NOT IN feature
     initializeNotInFeature();
 
+    // Ensure export button is available immediately
+    initializeExportButton();
+
     // Add wordlist change listener - reset loaded flag when wordlist changes
     const wordlistSelect = document.getElementById('wordlistSelect');
     wordlistSelect.addEventListener('change', () => {
@@ -158,6 +163,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         wordListLoaded = false;
         wordList = [];
         currentFilteredWords = [];
+        updateExportButtonState(currentFilteredWords);
     });
 
     const availableFeatures = document.getElementById('availableFeatures');
@@ -1229,11 +1235,6 @@ async function executeWorkflow(steps) {
                 if (resetButton) {
                     resetButton.remove();
                 }
-                // Remove export button if it exists
-                const exportButton = document.getElementById('exportButton');
-                if (exportButton) {
-                    exportButton.remove();
-                }
                 // Remove home button
                 homeButton.remove();
             };
@@ -1496,43 +1497,52 @@ async function executeWorkflow(steps) {
         
         // Show final results
         displayResults(currentFilteredWords);
-        
-        // Add export button after workflow completion
-        addExportButton(currentFilteredWords);
     } catch (error) {
         console.error('Error executing workflow:', error);
         throw error;
     }
 }
 
-// Function to add export button
-function addExportButton(words) {
-    // Remove any existing export button
-    const existingExportButton = document.getElementById('exportButton');
-    if (existingExportButton) {
-        existingExportButton.remove();
+// Export button helpers
+function initializeExportButton() {
+    if (exportButton) {
+        return;
     }
     
-    // Create export button
-    const exportButton = document.createElement('button');
+    exportButton = document.createElement('button');
     exportButton.id = 'exportButton';
-    exportButton.className = 'export-button';
-    exportButton.innerHTML = '📄 Export';
+    exportButton.className = 'home-button export-button';
+    exportButton.innerHTML = '💾';
     exportButton.title = 'Export filtered wordlist as .txt file';
     
-    // Add click event
-    exportButton.addEventListener('click', () => {
-        exportWordlist(words);
-    });
+    const triggerExport = () => {
+        if (!latestExportWords || latestExportWords.length === 0) {
+            alert('No words to export!');
+            return;
+        }
+        exportWordlist(latestExportWords);
+    };
     
-    // Add touch event for mobile
+    exportButton.addEventListener('click', triggerExport);
     exportButton.addEventListener('touchstart', (e) => {
         e.preventDefault();
-        exportWordlist(words);
+        triggerExport();
     }, { passive: false });
     
-    // Add to the page
     document.body.appendChild(exportButton);
+    updateExportButtonState([]);
+}
+
+function updateExportButtonState(words = latestExportWords) {
+    latestExportWords = Array.isArray(words) ? [...words] : [];
+    
+    if (!exportButton) {
+        return;
+    }
+    
+    const hasWords = latestExportWords.length > 0;
+    exportButton.disabled = !hasWords;
+    exportButton.classList.toggle('export-button--disabled', !hasWords);
 }
 
 // Function to export wordlist as .txt file
@@ -3531,6 +3541,7 @@ function displayResults(words) {
     
     // Update word count first
     updateWordCount(words.length);
+    updateExportButtonState(words);
     
     // For large lists, use virtual scrolling approach
     if (words.length > 1000) {
@@ -4180,27 +4191,6 @@ function toggleFeature(featureId) {
     
     // Update the display
         showNextFeature();
-}
-
-// Function to export wordlist
-function exportWordlist() {
-    // Create a text file with the current filtered words
-    const text = currentFilteredWords.join('\n');
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    
-    // Create a temporary link element
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `wordlist_${currentFilteredWords.length}_words.txt`;
-    
-    // Append to body, click, and remove
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    // Clean up the URL object
-    window.URL.revokeObjectURL(url);
 }
 
 function filterWordsByPosition1(words, consonants) {
