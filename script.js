@@ -229,9 +229,17 @@ function initializeDropdowns() {
         <div class="options-list"></div>
     `;
     workflowSelect.insertAdjacentElement('afterend', workflowCustomSelect);
+    // Find and set z-index on parent dropdown container
+    const workflowDropdownContainer = workflowSelect.closest('.dropdown');
+    if (workflowDropdownContainer) {
+        workflowDropdownContainer.style.zIndex = '99999';
+        workflowDropdownContainer.style.position = 'relative';
+    }
     const workflowSelectedText = workflowCustomSelect.querySelector('.selected-text');
     const workflowOptionsList = workflowCustomSelect.querySelector('.options-list');
+    // Set very high z-index to ensure workflow dropdown is always on top
     workflowCustomSelect.style.zIndex = '99999';
+    workflowCustomSelect.style.position = 'relative';
     workflowOptionsList.style.zIndex = '99999';
     // Populate options
     workflowOptionsList.innerHTML = '';
@@ -265,6 +273,14 @@ function initializeDropdowns() {
         if (workflowOptionsList.classList.contains('show')) {
             closeWorkflowDropdown();
         } else {
+            // Ensure workflow dropdown container and parent are on top
+            const workflowDropdownContainer = workflowSelect.closest('.dropdown');
+            if (workflowDropdownContainer) {
+                workflowDropdownContainer.style.zIndex = '99999';
+                workflowDropdownContainer.style.position = 'relative';
+            }
+            workflowCustomSelect.style.zIndex = '99999';
+            workflowCustomSelect.style.position = 'relative';
             workflowOptionsList.classList.add('show');
             workflowOptionsList.style.cssText = `
                 display: block !important;
@@ -5606,7 +5622,7 @@ const workflowDropdownCSS = document.createElement('style');
 workflowDropdownCSS.textContent = `
 #workflowCustomSelect {
     z-index: 99999 !important;
-    position: relative;
+    position: relative !important;
 }
 #workflowCustomSelect .options-list,
 #workflowCustomSelect .options-list.show {
@@ -5616,6 +5632,14 @@ workflowDropdownCSS.textContent = `
 body.workflow-dropdown-open #workflowCustomSelect,
 body.workflow-dropdown-open #workflowCustomSelect .options-list {
     z-index: 99999 !important;
+}
+/* Ensure wordlist dropdown stays below workflow dropdown */
+#wordlistCustomSelect {
+    z-index: 100 !important;
+    position: relative;
+}
+#wordlistCustomSelect .options-list {
+    z-index: 101 !important;
 }
 `;
 document.head.appendChild(workflowDropdownCSS);
