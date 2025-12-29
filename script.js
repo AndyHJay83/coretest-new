@@ -2044,19 +2044,15 @@ function createPinFeature() {
     div.innerHTML = `
         <div class="feature-title">PIN</div>
         <div class="position-cons-form">
-            <div class="pin-word-inputs">
+            <div class="pin-inputs-grid">
                 <input type="text" id="pinWord1" class="pin-word-input" placeholder="Word 1">
-                <input type="text" id="pinWord2" class="pin-word-input" placeholder="Word 2">
-                <input type="text" id="pinWord3" class="pin-word-input" placeholder="Word 3">
                 <input type="text" id="pinWord4" class="pin-word-input" placeholder="Word 4">
+                <input type="text" id="pinWord2" class="pin-word-input" placeholder="Word 2">
                 <input type="text" id="pinWord5" class="pin-word-input" placeholder="Word 5">
+                <input type="text" id="pinWord3" class="pin-word-input" placeholder="Word 3">
                 <input type="text" id="pinWord6" class="pin-word-input" placeholder="Word 6">
-            </div>
-            <div class="pin-code-container">
                 <input type="text" id="pinCode" class="pin-code-input" placeholder="CODE" maxlength="6">
-            </div>
-            <div class="pin-submit-container">
-                <button id="pinSubmit" class="primary-btn">SUBMIT</button>
+                <button id="pinSubmit" class="primary-btn pin-submit-btn">SUBMIT</button>
             </div>
             <div id="pinMessage" class="position-cons-message"></div>
         </div>

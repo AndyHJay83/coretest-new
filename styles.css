@@ -3123,12 +3123,13 @@ input:checked + .slider:before {
 }
 
 /* PIN Feature Styles */
-.pin-word-inputs {
+.pin-inputs-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 4px;
+    grid-template-rows: repeat(4, auto);
+    gap: 2px;
     width: 100%;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 
 .pin-word-input {
@@ -3157,11 +3158,6 @@ input:checked + .slider:before {
     box-shadow: 0 0 0 2px rgba(27, 94, 32, 0.2);
 }
 
-.pin-code-container {
-    width: 100%;
-    margin-bottom: 15px;
-}
-
 .pin-code-input {
     width: 100%;
     padding: 18px;
@@ -3188,11 +3184,30 @@ input:checked + .slider:before {
     box-shadow: 0 0 0 2px rgba(27, 94, 32, 0.2);
 }
 
-.pin-submit-container {
+.pin-submit-btn {
     width: 100%;
-    display: flex;
-    justify-content: center;
-    margin-bottom: 10px;
+    padding: 18px;
+    font-size: 18px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+    text-transform: uppercase;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    background-color: #1B5E20;
+    color: white;
+}
+
+.pin-submit-btn:hover {
+    background-color: #2E7D32;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.pin-submit-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .position-cons-helper {
@@ -3205,8 +3220,8 @@ input:checked + .slider:before {
 }
 
 @media (max-width: 600px) {
-    .pin-word-inputs {
-        gap: 3px;
+    .pin-inputs-grid {
+        gap: 1.5px;
     }
     
     .pin-word-input {
@@ -3216,6 +3231,12 @@ input:checked + .slider:before {
     }
     
     .pin-code-input {
+        padding: 16px;
+        font-size: 16px;
+        min-height: 48px;
+    }
+    
+    .pin-submit-btn {
         padding: 16px;
         font-size: 16px;
         min-height: 48px;
