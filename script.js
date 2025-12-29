@@ -1303,6 +1303,8 @@ async function executeWorkflow(steps) {
             abc: createAbcFeature(),
             findEee: createFindEeeFeature(),
             positionConsFeature: createPositionConsFeature(),
+            firstCurvedFeature: createFirstCurvedFeature(),
+            pinFeature: createPinFeature(),
         };
         
         // Add all feature elements to the document body
@@ -1434,6 +1436,12 @@ async function executeWorkflow(steps) {
                     break;
                 case 'positionCons':
                     featureElement = createPositionConsFeature();
+                    break;
+                case 'firstCurved':
+                    featureElement = createFirstCurvedFeature();
+                    break;
+                case 'pin':
+                    featureElement = createPinFeature();
                     break;
                 default:
                     featureElement = null;
@@ -2011,6 +2019,69 @@ function createPositionConsFeature() {
     return div;
 }
 
+function createFirstCurvedFeature() {
+    const div = document.createElement('div');
+    div.id = 'firstCurvedFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <div class="feature-title">FIRST CURVED</div>
+        <div class="position-cons-form">
+            <div class="position-input">
+                <label for="firstCurvedPosition">Position of first curved letter</label>
+                <input type="number" id="firstCurvedPosition" min="1" placeholder="Enter position...">
+            </div>
+            <button id="firstCurvedSubmit" class="primary-btn">SUBMIT</button>
+            <div id="firstCurvedMessage" class="position-cons-message"></div>
+        </div>
+    `;
+    return div;
+}
+
+function createPinFeature() {
+    const div = document.createElement('div');
+    div.id = 'pinFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <div class="feature-title">PIN</div>
+        <div class="position-cons-form">
+            <div class="pin-word-inputs">
+                <div class="position-cons-input-group">
+                    <label for="pinWord1">Word 1</label>
+                    <input type="text" id="pinWord1" placeholder="Enter word...">
+                </div>
+                <div class="position-cons-input-group">
+                    <label for="pinWord2">Word 2</label>
+                    <input type="text" id="pinWord2" placeholder="Enter word...">
+                </div>
+                <div class="position-cons-input-group">
+                    <label for="pinWord3">Word 3</label>
+                    <input type="text" id="pinWord3" placeholder="Enter word...">
+                </div>
+                <div class="position-cons-input-group">
+                    <label for="pinWord4">Word 4</label>
+                    <input type="text" id="pinWord4" placeholder="Enter word...">
+                </div>
+                <div class="position-cons-input-group">
+                    <label for="pinWord5">Word 5</label>
+                    <input type="text" id="pinWord5" placeholder="Enter word...">
+                </div>
+                <div class="position-cons-input-group">
+                    <label for="pinWord6">Word 6</label>
+                    <input type="text" id="pinWord6" placeholder="Enter word...">
+                </div>
+            </div>
+            <div class="position-cons-input-group">
+                <label for="pinCode">Code</label>
+                <input type="text" id="pinCode" placeholder="Enter code (digits only, max 6)" maxlength="6">
+                <div class="position-cons-helper">Each digit represents how many letters from the corresponding word appear in the target word.</div>
+            </div>
+            <button id="pinSubmit" class="primary-btn">SUBMIT</button>
+            <div id="pinMessage" class="position-cons-message"></div>
+        </div>
+    `;
+    return div;
+}
+
 // Filtering logic for ABCDE feature
 function filterWordsByAbcde(words, yesLetters) {
     return words.filter(word => {
@@ -2045,6 +2116,90 @@ function filterWordsByAbc(words, yesLetters) {
         }
         return true;
     });
+}
+
+// Filtering logic for FIRST CURVED feature
+function filterWordsByFirstCurved(words, position) {
+    if (!Array.isArray(words) || typeof position !== 'number' || position < 1) return [];
+    
+    const curvedLetters = letterShapes.curved;
+    const targetIndex = position - 1;
+    
+    return words.filter(word => {
+        const upperWord = word.toUpperCase();
+        
+        // Exclude words shorter than the target position
+        if (upperWord.length <= targetIndex) return false;
+        
+        // Check that the target position IS curved
+        if (!curvedLetters.has(upperWord[targetIndex])) return false;
+        
+        // Check that all positions BEFORE the target are NOT curved
+        for (let i = 0; i < targetIndex; i++) {
+            if (curvedLetters.has(upperWord[i])) return false;
+        }
+        
+        return true;
+    });
+}
+
+// Filtering logic for PIN feature
+function filterWordsByPin(words, wordBoxes, code) {
+    if (!Array.isArray(words) || !Array.isArray(wordBoxes) || !code) return [];
+    
+    // Extract only digits from code, max 6
+    const digitsOnly = code.toString().replace(/[^0-9]/g, '').slice(0, 6);
+    if (!digitsOnly) return [];
+    
+    // Get non-empty word boxes and their corresponding code digits
+    const wordCodePairs = [];
+    for (let i = 0; i < wordBoxes.length && i < digitsOnly.length; i++) {
+        const word = (wordBoxes[i] || '').trim().toUpperCase();
+        if (word) {
+            const codeDigit = parseInt(digitsOnly[i], 10);
+            if (!isNaN(codeDigit)) {
+                wordCodePairs.push({ word, codeDigit });
+            }
+        }
+    }
+    
+    if (wordCodePairs.length === 0) return [];
+    
+    // Filter words that match all code requirements
+    return words.filter(targetWord => {
+        const upperTarget = targetWord.toUpperCase();
+        
+        // Check each word-code pair
+        for (const { word, codeDigit } of wordCodePairs) {
+            // Count total occurrences: for each letter in the word box,
+            // count how many times it appears in the target word
+            let occurrenceCount = 0;
+            
+            // Create a map to track how many times each letter from word box
+            // has been "used" from the target word
+            const targetLetterCounts = new Map();
+            for (const letter of upperTarget) {
+                targetLetterCounts.set(letter, (targetLetterCounts.get(letter) || 0) + 1);
+            }
+            
+            // For each letter in the word box, count occurrences in target
+            for (const letter of word) {
+                const available = targetLetterCounts.get(letter) || 0;
+                if (available > 0) {
+                    occurrenceCount++;
+                    // Decrement to avoid double-counting the same letter instance
+                    targetLetterCounts.set(letter, available - 1);
+                }
+            }
+            
+            // Must match exactly
+            if (occurrenceCount !== codeDigit) {
+                return false;
+            }
+        }
+        
+        return true;
+    }).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
 // Filtering logic for FIND-EEE feature
@@ -3535,6 +3690,216 @@ function setupFeatureListeners(feature, callback) {
                         }
                     });
                 }
+            }
+            break;
+        }
+        
+        case 'firstCurved': {
+            const positionInput = document.getElementById('firstCurvedPosition');
+            const submitButton = document.getElementById('firstCurvedSubmit');
+            const messageElement = document.getElementById('firstCurvedMessage');
+
+            const setMessage = (text = '', isError = false) => {
+                if (messageElement) {
+                    messageElement.textContent = text;
+                    messageElement.style.color = isError ? '#f44336' : '#4CAF50';
+                }
+            };
+
+            const handleSubmit = () => {
+                setMessage('');
+                const positionValue = parseInt(positionInput?.value, 10);
+                if (Number.isNaN(positionValue) || positionValue < 1) {
+                    setMessage('Position must be a positive number.', true);
+                    return;
+                }
+
+                const filteredWords = filterWordsByFirstCurved(currentFilteredWords, positionValue);
+
+                if (filteredWords.length === 0) {
+                    setMessage('No matches found.', true);
+                } else {
+                    setMessage(`${filteredWords.length} matches found.`);
+                }
+
+                callback(filteredWords);
+                
+                // Complete feature
+                const featureDiv = document.getElementById('firstCurvedFeature');
+                if (featureDiv) {
+                    featureDiv.classList.add('completed');
+                    featureDiv.dispatchEvent(new Event('completed'));
+                }
+            };
+
+            if (submitButton) {
+                submitButton.addEventListener('click', handleSubmit);
+                submitButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    handleSubmit();
+                }, { passive: false });
+            }
+            
+            // Enter key support
+            if (positionInput) {
+                positionInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        handleSubmit();
+                    }
+                });
+                
+                // Make input easily focusable on touch
+                positionInput.addEventListener('touchstart', (e) => {
+                    e.stopPropagation();
+                    positionInput.focus();
+                }, { passive: true });
+                
+                positionInput.addEventListener('touchend', (e) => {
+                    e.stopPropagation();
+                    positionInput.focus();
+                }, { passive: true });
+            }
+            break;
+        }
+        
+        case 'pin': {
+            const wordInputs = [
+                document.getElementById('pinWord1'),
+                document.getElementById('pinWord2'),
+                document.getElementById('pinWord3'),
+                document.getElementById('pinWord4'),
+                document.getElementById('pinWord5'),
+                document.getElementById('pinWord6')
+            ];
+            const codeInput = document.getElementById('pinCode');
+            const submitButton = document.getElementById('pinSubmit');
+            const messageElement = document.getElementById('pinMessage');
+
+            const setMessage = (text = '', isError = false) => {
+                if (messageElement) {
+                    messageElement.textContent = text;
+                    messageElement.style.color = isError ? '#f44336' : '#4CAF50';
+                }
+            };
+
+            const handleSubmit = () => {
+                setMessage('');
+                
+                // Get non-empty word boxes
+                const wordBoxes = wordInputs
+                    .map(input => (input?.value || '').trim())
+                    .filter(word => word.length > 0);
+                
+                if (wordBoxes.length === 0) {
+                    setMessage('Enter at least one word.', true);
+                    return;
+                }
+                
+                // Get and validate code
+                const codeValue = (codeInput?.value || '').trim();
+                if (!codeValue) {
+                    setMessage('Enter a code.', true);
+                    return;
+                }
+                
+                // Extract digits only, max 6
+                const digitsOnly = codeValue.replace(/[^0-9]/g, '').slice(0, 6);
+                if (!digitsOnly) {
+                    setMessage('Code must contain at least one digit.', true);
+                    return;
+                }
+                
+                // Validate code length matches number of non-empty boxes
+                if (digitsOnly.length < wordBoxes.length) {
+                    setMessage(`Code must have at least ${wordBoxes.length} digits for ${wordBoxes.length} word(s).`, true);
+                    return;
+                }
+                
+                // Filter words
+                const filteredWords = filterWordsByPin(currentFilteredWords, wordInputs.map(input => input?.value || ''), digitsOnly);
+                
+                if (filteredWords.length === 0) {
+                    setMessage('No matches found.', true);
+                } else {
+                    setMessage(`${filteredWords.length} matches found.`);
+                }
+                
+                callback(filteredWords);
+                
+                // Complete feature
+                const featureDiv = document.getElementById('pinFeature');
+                if (featureDiv) {
+                    featureDiv.classList.add('completed');
+                    featureDiv.dispatchEvent(new Event('completed'));
+                }
+            };
+
+            if (submitButton) {
+                submitButton.addEventListener('click', handleSubmit);
+                submitButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    handleSubmit();
+                }, { passive: false });
+            }
+            
+            // Auto-uppercase word inputs (not case-sensitive)
+            wordInputs.forEach(input => {
+                if (input) {
+                    input.addEventListener('input', () => {
+                        const value = input.value;
+                        const upperValue = value.toUpperCase();
+                        if (value !== upperValue) {
+                            input.value = upperValue;
+                        }
+                    });
+                    
+                    // Make inputs easily focusable on touch
+                    input.addEventListener('touchstart', (e) => {
+                        e.stopPropagation();
+                        input.focus();
+                    }, { passive: true });
+                    
+                    input.addEventListener('touchend', (e) => {
+                        e.stopPropagation();
+                        input.focus();
+                    }, { passive: true });
+                    
+                    // Enter key support
+                    input.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            handleSubmit();
+                        }
+                    });
+                }
+            });
+            
+            // Restrict code input to digits only
+            if (codeInput) {
+                codeInput.addEventListener('input', () => {
+                    const value = codeInput.value;
+                    const digitsOnly = value.replace(/[^0-9]/g, '').slice(0, 6);
+                    if (value !== digitsOnly) {
+                        codeInput.value = digitsOnly;
+                    }
+                });
+                
+                // Make input easily focusable on touch
+                codeInput.addEventListener('touchstart', (e) => {
+                    e.stopPropagation();
+                    codeInput.focus();
+                }, { passive: true });
+                
+                codeInput.addEventListener('touchend', (e) => {
+                    e.stopPropagation();
+                    codeInput.focus();
+                }, { passive: true });
+                
+                // Enter key support
+                codeInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        handleSubmit();
+                    }
+                });
             }
             break;
         }

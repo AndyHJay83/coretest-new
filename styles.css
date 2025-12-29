@@ -3122,6 +3122,34 @@ input:checked + .slider:before {
     }
 }
 
+/* PIN Feature Styles */
+.pin-word-inputs {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    width: 100%;
+}
+
+.pin-word-inputs .position-cons-input-group {
+    width: 100%;
+}
+
+.position-cons-helper {
+    font-size: 0.85em;
+    color: #666;
+    text-align: center;
+    margin-top: 6px;
+    font-style: italic;
+    line-height: 1.3;
+}
+
+@media (max-width: 600px) {
+    .pin-word-inputs {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+}
+
 /* Ensure it works in standalone PWA mode too */
 @media (display-mode: standalone) {
     .position-cons-main-layout {

@@ -172,6 +172,14 @@
                                 <button class="feature-button" data-feature="positionCons" draggable="true">POSITION-CONS</button>
                                 <button class="info-button" data-feature="positionCons"><i class="fas fa-info-circle"></i></button>
                             </div>
+                            <div class="feature-group">
+                                <button class="feature-button" data-feature="firstCurved" draggable="true">FIRST CURVED</button>
+                                <button class="info-button" data-feature="firstCurved"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                            <div class="feature-group">
+                                <button class="feature-button" data-feature="pin" draggable="true">PIN</button>
+                                <button class="info-button" data-feature="pin"><i class="fas fa-info-circle"></i></button>
+                            </div>
                         </div>
                     </div>
 
@@ -658,6 +666,20 @@
             <div class="feature-info-content">
                 <h3>POSITION-CONS</h3>
                 <p><strong>POSITION-CONS</strong><br>Filters words by a specific position (leave blank to check all positions) that must contain one of the letters from a provided string. Enter the total number of letters from that string (including the position letter) that appear in the target word.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="firstCurvedInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>FIRST CURVED</h3>
+                <p><strong>FIRST CURVED</strong><br>Filters words where the first curved letter appears at a specific position. All letters before that position must be straight letters, and the letter at the specified position must be curved.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="pinInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>PIN</h3>
+                <p><strong>PIN</strong><br>Enter up to 6 words and a corresponding code. Each digit in the code represents how many letters from the corresponding word appear in the target word. The feature filters words that match all code requirements.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
