@@ -3123,6 +3123,10 @@ input:checked + .slider:before {
 }
 
 /* PIN Feature Styles */
+#pinFeature .feature-title {
+    margin-bottom: 15px;
+}
+
 .pin-inputs-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -3186,8 +3190,8 @@ input:checked + .slider:before {
 
 .pin-submit-btn {
     width: 100%;
-    padding: 18px;
-    font-size: 18px;
+    padding: 12px;
+    font-size: 14px;
     border: none;
     border-radius: 8px;
     cursor: pointer;
@@ -3220,6 +3224,10 @@ input:checked + .slider:before {
 }
 
 @media (max-width: 600px) {
+    #pinFeature .feature-title {
+        margin-bottom: 10px;
+    }
+    
     .pin-inputs-grid {
         gap: 1.5px;
     }
@@ -3237,9 +3245,9 @@ input:checked + .slider:before {
     }
     
     .pin-submit-btn {
-        padding: 16px;
-        font-size: 16px;
-        min-height: 48px;
+        padding: 10px;
+        font-size: 14px;
+        min-height: 44px;
     }
 }
 
