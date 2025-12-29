@@ -231,8 +231,8 @@ function initializeDropdowns() {
     workflowSelect.insertAdjacentElement('afterend', workflowCustomSelect);
     const workflowSelectedText = workflowCustomSelect.querySelector('.selected-text');
     const workflowOptionsList = workflowCustomSelect.querySelector('.options-list');
-    workflowCustomSelect.style.zIndex = '9998';
-    workflowOptionsList.style.zIndex = '9999';
+    workflowCustomSelect.style.zIndex = '99999';
+    workflowOptionsList.style.zIndex = '99999';
     // Populate options
     workflowOptionsList.innerHTML = '';
     const defaultWorkflowOptions = [
@@ -258,22 +258,6 @@ function initializeDropdowns() {
         workflowOptionsList.classList.remove('show');
         workflowOptionsList.style.cssText = '';
         document.body.classList.remove('workflow-dropdown-open');
-        // Restore wordlist dropdown z-index and pointer-events
-        if (wordlistCustomSelect) {
-            wordlistCustomSelect.style.zIndex = '100';
-            wordlistCustomSelect.style.pointerEvents = 'auto';
-            wordlistCustomSelect.style.opacity = '1';
-            wordlistCustomSelect.classList.remove('workflow-dropdown-disabled');
-            // Restore pointer events on all child elements
-            const wordlistChildren = wordlistCustomSelect.querySelectorAll('*');
-            wordlistChildren.forEach(child => {
-                child.style.pointerEvents = '';
-            });
-        }
-        if (wordlistOptionsList) {
-            wordlistOptionsList.style.zIndex = '101';
-            wordlistOptionsList.style.pointerEvents = 'auto';
-        }
     };
     const toggleWorkflowDropdown = (e) => {
         if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -289,28 +273,11 @@ function initializeDropdowns() {
                 height: auto;
                 max-height: none;
                 overflow: visible;
-                z-index: 9999;
+                z-index: 99999 !important;
                 background: white;
                 box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             `;
             document.body.classList.add('workflow-dropdown-open');
-            // Lower wordlist dropdown z-index and disable pointer events on all elements
-            // The CSS rules will handle !important, but we also set inline styles as backup
-            if (wordlistCustomSelect) {
-                wordlistCustomSelect.style.zIndex = '1';
-                wordlistCustomSelect.style.pointerEvents = 'none';
-                wordlistCustomSelect.style.opacity = '0.2';
-                wordlistCustomSelect.classList.add('workflow-dropdown-disabled');
-                // Also disable pointer events on all child elements
-                const wordlistChildren = wordlistCustomSelect.querySelectorAll('*');
-                wordlistChildren.forEach(child => {
-                    child.style.pointerEvents = 'none';
-                });
-            }
-            if (wordlistOptionsList) {
-                wordlistOptionsList.style.zIndex = '1';
-                wordlistOptionsList.style.pointerEvents = 'none';
-            }
         }
     };
     workflowCustomSelect.addEventListener('click', toggleWorkflowDropdown);
@@ -5634,20 +5601,21 @@ select#wordlistSelect {
 `;
 document.head.appendChild(hideNativeSelectStyle);
 
-// Inject CSS to lower z-index and opacity of other custom-selects when workflow dropdown is open
+// Inject CSS to ensure workflow dropdown is always on top of everything
 const workflowDropdownCSS = document.createElement('style');
 workflowDropdownCSS.textContent = `
-body.workflow-dropdown-open .custom-select:not(#workflowCustomSelect),
-body.workflow-dropdown-open #wordlistCustomSelect,
-body.workflow-dropdown-open .workflow-dropdown-disabled {
-    z-index: 1 !important;
-    opacity: 0.2 !important;
-    pointer-events: none !important;
+#workflowCustomSelect {
+    z-index: 99999 !important;
+    position: relative;
 }
-body.workflow-dropdown-open .custom-select:not(#workflowCustomSelect) *,
-body.workflow-dropdown-open #wordlistCustomSelect *,
-body.workflow-dropdown-open .workflow-dropdown-disabled * {
-    pointer-events: none !important;
+#workflowCustomSelect .options-list,
+#workflowCustomSelect .options-list.show {
+    z-index: 99999 !important;
+    position: absolute !important;
+}
+body.workflow-dropdown-open #workflowCustomSelect,
+body.workflow-dropdown-open #workflowCustomSelect .options-list {
+    z-index: 99999 !important;
 }
 `;
 document.head.appendChild(workflowDropdownCSS);
