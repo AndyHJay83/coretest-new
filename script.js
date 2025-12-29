@@ -122,7 +122,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             const registration = await navigator.serviceWorker.register('/coretest/service-worker.js');
             console.log('Service Worker registered successfully:', registration);
             
-            // Check for updates
+            // Check for updates immediately and on focus
+            const checkForUpdates = () => {
+                registration.update().catch(err => console.log('Update check failed:', err));
+            };
+            
+            // Check immediately
+            checkForUpdates();
+            
+            // Check when page becomes visible (user returns to app)
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    checkForUpdates();
+                }
+            });
+            
+            // Check when window gains focus
+            window.addEventListener('focus', checkForUpdates);
+            
+            // Check for updates periodically
+            setInterval(checkForUpdates, 30000); // Check every 30 seconds
+            
+            // Listen for service worker updates
             registration.addEventListener('updatefound', () => {
                 const newWorker = registration.installing;
                 if (newWorker) {
@@ -130,16 +151,37 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                             // New service worker available, reload to use it
                             console.log('New service worker available, reloading...');
-                            window.location.reload();
+                            // Force reload after a short delay to ensure cache is cleared
+                            setTimeout(() => {
+                                window.location.reload(true);
+                            }, 100);
+                        } else if (newWorker.state === 'activated') {
+                            // Service worker activated, reload to get fresh content
+                            console.log('Service worker activated, reloading...');
+                            window.location.reload(true);
                         }
                     });
                 }
             });
             
-            // Check for updates periodically
-            setInterval(() => {
-                registration.update();
-            }, 60000); // Check every minute
+            // Listen for controller change (service worker takeover)
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                console.log('Service worker controller changed, reloading...');
+                window.location.reload(true);
+            });
+            
+            // Listen for messages from service worker
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'SW_ACTIVATED') {
+                    console.log('Service worker activated, reloading to get fresh content...');
+                    window.location.reload(true);
+                }
+            });
+            
+            // Send skip waiting message to service worker if it's waiting
+            if (registration.waiting) {
+                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
         } catch (error) {
             console.log('Service Worker registration failed:', error);
         }
