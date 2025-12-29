@@ -1,38 +1,37 @@
-const CACHE_NAME = 'word-filter-v9';
-const ASSETS_TO_CACHE = [
-  '/coretest/',
-  '/coretest/index.html',
-  '/coretest/styles.css',
-  '/coretest/script.js',
-  '/coretest/manifest.json',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css'
-];
+const CACHE_NAME = 'word-filter-v10';
+const VERSION = 'v10';
 
-// Install event - cache assets and skip waiting
+// Install event - skip waiting immediately, don't pre-cache
 self.addEventListener('install', (event) => {
+  console.log('Service Worker installing, version:', VERSION);
+  // Skip waiting to activate immediately
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(ASSETS_TO_CACHE);
-      })
-      .then(() => {
-        // Skip waiting to activate immediately
-        return self.skipWaiting();
-      })
+    // Delete all old caches first
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          console.log('Deleting old cache on install:', cacheName);
+          return caches.delete(cacheName);
+        })
+      );
+    }).then(() => {
+      // Skip waiting to activate immediately
+      return self.skipWaiting();
+    })
   );
 });
 
-// Activate event - clean up old caches and claim clients
+// Activate event - clean up ALL caches and claim clients
 self.addEventListener('activate', (event) => {
+  console.log('Service Worker activating, version:', VERSION);
   event.waitUntil(
     caches.keys().then((cacheNames) => {
-      // Delete ALL old caches, including current one if version changed
+      // Delete ALL caches to force fresh fetch
+      console.log('Clearing all caches on activate:', cacheNames);
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
+          console.log('Deleting cache:', cacheName);
+          return caches.delete(cacheName);
         })
       );
     }).then(() => {
@@ -42,7 +41,11 @@ self.addEventListener('activate', (event) => {
       // Send message to all clients to reload
       return self.clients.matchAll().then(clients => {
         clients.forEach(client => {
-          client.postMessage({ type: 'SW_ACTIVATED', cacheName: CACHE_NAME });
+          client.postMessage({ 
+            type: 'SW_ACTIVATED', 
+            cacheName: CACHE_NAME,
+            version: VERSION 
+          });
         });
       });
     })
@@ -65,42 +68,51 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Fetch event - network first with cache busting for app files
+// Fetch event - network first, never serve stale cache for app files
 self.addEventListener('fetch', (event) => {
-  // For HTML, CSS, and JS files, always check network first
   const url = new URL(event.request.url);
   const isAppFile = url.pathname.includes('/coretest/') && 
                     (url.pathname.endsWith('.html') || 
                      url.pathname.endsWith('.css') || 
-                     url.pathname.endsWith('.js'));
+                     url.pathname.endsWith('.js') ||
+                     url.pathname.endsWith('/') ||
+                     url.pathname === '/coretest/');
   
   if (isAppFile) {
-    // Network first strategy with cache busting for app files
+    // Network first with NO cache fallback for app files - always get fresh
     event.respondWith(
       fetch(event.request, {
-        cache: 'no-store', // Don't use browser cache
+        cache: 'no-store',
         headers: {
-          'Cache-Control': 'no-cache'
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
         }
       })
         .then((response) => {
-          // If network request succeeds, update cache and return response
+          // Only cache if we got a fresh response
           if (response && response.status === 200) {
             const responseClone = response.clone();
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseClone);
-              });
+            // Update cache in background
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseClone);
+            });
           }
           return response;
         })
         .catch(() => {
-          // If network fails, serve from cache
-          return caches.match(event.request);
+          // If network fails, try cache but add timestamp to force refresh next time
+          return caches.match(event.request).then(cachedResponse => {
+            if (cachedResponse) {
+              // Return cached but mark it as stale
+              return cachedResponse;
+            }
+            // No cache available, return network error
+            return new Response('Offline', { status: 503 });
+          });
         })
     );
   } else {
-    // Cache first strategy for other resources (images, fonts, etc.)
+    // For other resources (images, fonts, etc.), use cache first
     event.respondWith(
       caches.match(event.request)
         .then((response) => {
@@ -109,7 +121,6 @@ self.addEventListener('fetch', (event) => {
           }
           return fetch(event.request)
             .then((response) => {
-              // Cache new responses
               if (response && response.status === 200) {
                 const responseClone = response.clone();
                 caches.open(CACHE_NAME)

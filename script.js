@@ -173,8 +173,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Listen for messages from service worker
             navigator.serviceWorker.addEventListener('message', (event) => {
                 if (event.data && event.data.type === 'SW_ACTIVATED') {
-                    console.log('Service worker activated, reloading to get fresh content...');
-                    window.location.reload(true);
+                    console.log('Service worker activated, version:', event.data.version, '- reloading to get fresh content...');
+                    // Clear all caches before reload
+                    if ('caches' in window) {
+                        caches.keys().then(cacheNames => {
+                            return Promise.all(
+                                cacheNames.map(cacheName => {
+                                    console.log('Clearing cache:', cacheName);
+                                    return caches.delete(cacheName);
+                                })
+                            );
+                        }).then(() => {
+                            console.log('All caches cleared, reloading...');
+                            window.location.reload(true);
+                        });
+                    } else {
+                        window.location.reload(true);
+                    }
                 }
             });
             
