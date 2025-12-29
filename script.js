@@ -258,6 +258,16 @@ function initializeDropdowns() {
         workflowOptionsList.classList.remove('show');
         workflowOptionsList.style.cssText = '';
         document.body.classList.remove('workflow-dropdown-open');
+        // Restore wordlist dropdown z-index and pointer-events
+        if (wordlistCustomSelect) {
+            wordlistCustomSelect.style.zIndex = '100';
+            wordlistCustomSelect.style.pointerEvents = 'auto';
+            wordlistCustomSelect.style.opacity = '1';
+        }
+        if (wordlistOptionsList) {
+            wordlistOptionsList.style.zIndex = '101';
+            wordlistOptionsList.style.pointerEvents = 'auto';
+        }
     };
     const toggleWorkflowDropdown = (e) => {
         if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -278,6 +288,16 @@ function initializeDropdowns() {
                 box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             `;
             document.body.classList.add('workflow-dropdown-open');
+            // Lower wordlist dropdown z-index and disable pointer events
+            if (wordlistCustomSelect) {
+                wordlistCustomSelect.style.zIndex = '1';
+                wordlistCustomSelect.style.pointerEvents = 'none';
+                wordlistCustomSelect.style.opacity = '0.2';
+            }
+            if (wordlistOptionsList) {
+                wordlistOptionsList.style.zIndex = '1';
+                wordlistOptionsList.style.pointerEvents = 'none';
+            }
         }
     };
     workflowCustomSelect.addEventListener('click', toggleWorkflowDropdown);
