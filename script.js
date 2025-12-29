@@ -2045,37 +2045,19 @@ function createPinFeature() {
         <div class="feature-title">PIN</div>
         <div class="position-cons-form">
             <div class="pin-word-inputs">
-                <div class="position-cons-input-group">
-                    <label for="pinWord1">Word 1</label>
-                    <input type="text" id="pinWord1" placeholder="Enter word...">
-                </div>
-                <div class="position-cons-input-group">
-                    <label for="pinWord2">Word 2</label>
-                    <input type="text" id="pinWord2" placeholder="Enter word...">
-                </div>
-                <div class="position-cons-input-group">
-                    <label for="pinWord3">Word 3</label>
-                    <input type="text" id="pinWord3" placeholder="Enter word...">
-                </div>
-                <div class="position-cons-input-group">
-                    <label for="pinWord4">Word 4</label>
-                    <input type="text" id="pinWord4" placeholder="Enter word...">
-                </div>
-                <div class="position-cons-input-group">
-                    <label for="pinWord5">Word 5</label>
-                    <input type="text" id="pinWord5" placeholder="Enter word...">
-                </div>
-                <div class="position-cons-input-group">
-                    <label for="pinWord6">Word 6</label>
-                    <input type="text" id="pinWord6" placeholder="Enter word...">
-                </div>
+                <input type="text" id="pinWord1" class="pin-word-input" placeholder="Word 1">
+                <input type="text" id="pinWord2" class="pin-word-input" placeholder="Word 2">
+                <input type="text" id="pinWord3" class="pin-word-input" placeholder="Word 3">
+                <input type="text" id="pinWord4" class="pin-word-input" placeholder="Word 4">
+                <input type="text" id="pinWord5" class="pin-word-input" placeholder="Word 5">
+                <input type="text" id="pinWord6" class="pin-word-input" placeholder="Word 6">
             </div>
-            <div class="position-cons-input-group">
-                <label for="pinCode">Code</label>
-                <input type="text" id="pinCode" placeholder="Enter code (digits only, max 6)" maxlength="6">
-                <div class="position-cons-helper">Each digit represents how many letters from the corresponding word appear in the target word.</div>
+            <div class="pin-code-container">
+                <input type="text" id="pinCode" class="pin-code-input" placeholder="CODE" maxlength="6">
             </div>
-            <button id="pinSubmit" class="primary-btn">SUBMIT</button>
+            <div class="pin-submit-container">
+                <button id="pinSubmit" class="primary-btn">SUBMIT</button>
+            </div>
             <div id="pinMessage" class="position-cons-message"></div>
         </div>
     `;

@@ -3126,12 +3126,73 @@ input:checked + .slider:before {
 .pin-word-inputs {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 15px;
+    gap: 4px;
     width: 100%;
+    margin-bottom: 15px;
 }
 
-.pin-word-inputs .position-cons-input-group {
+.pin-word-input {
     width: 100%;
+    padding: 12px;
+    font-size: 14px;
+    border: 2px solid #1B5E20;
+    border-radius: 8px;
+    background-color: white;
+    color: #333;
+    text-align: center;
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+.pin-word-input::placeholder {
+    color: #999;
+    opacity: 1;
+}
+
+.pin-word-input:focus {
+    outline: none;
+    border-color: #1B5E20;
+    box-shadow: 0 0 0 2px rgba(27, 94, 32, 0.2);
+}
+
+.pin-code-container {
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+.pin-code-input {
+    width: 100%;
+    padding: 18px;
+    font-size: 18px;
+    border: 2px solid #1B5E20;
+    border-radius: 8px;
+    background-color: white;
+    color: #333;
+    text-align: center;
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+.pin-code-input::placeholder {
+    color: #999;
+    opacity: 1;
+}
+
+.pin-code-input:focus {
+    outline: none;
+    border-color: #1B5E20;
+    box-shadow: 0 0 0 2px rgba(27, 94, 32, 0.2);
+}
+
+.pin-submit-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
 }
 
 .position-cons-helper {
@@ -3145,8 +3206,19 @@ input:checked + .slider:before {
 
 @media (max-width: 600px) {
     .pin-word-inputs {
-        grid-template-columns: 1fr;
-        gap: 10px;
+        gap: 3px;
+    }
+    
+    .pin-word-input {
+        padding: 10px;
+        font-size: 14px;
+        min-height: 44px;
+    }
+    
+    .pin-code-input {
+        padding: 16px;
+        font-size: 16px;
+        min-height: 48px;
     }
 }
 
