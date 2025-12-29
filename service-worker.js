@@ -1,5 +1,5 @@
-const CACHE_NAME = 'word-filter-v10';
-const VERSION = 'v10';
+const CACHE_NAME = 'word-filter-v11';
+const VERSION = 'v11';
 
 // Install event - skip waiting immediately, don't pre-cache
 self.addEventListener('install', (event) => {
@@ -79,35 +79,27 @@ self.addEventListener('fetch', (event) => {
                      url.pathname === '/coretest/');
   
   if (isAppFile) {
-    // Network first with NO cache fallback for app files - always get fresh
+    // Network first - NEVER use cache for app files, always fetch fresh
     event.respondWith(
       fetch(event.request, {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
+          'Pragma': 'no-cache',
+          'X-Cache-Bust': Date.now().toString()
         }
       })
         .then((response) => {
-          // Only cache if we got a fresh response
-          if (response && response.status === 200) {
-            const responseClone = response.clone();
-            // Update cache in background
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
-          }
+          // Don't cache app files at all - always fetch fresh
+          // This ensures PWA always gets latest version
           return response;
         })
         .catch(() => {
-          // If network fails, try cache but add timestamp to force refresh next time
-          return caches.match(event.request).then(cachedResponse => {
-            if (cachedResponse) {
-              // Return cached but mark it as stale
-              return cachedResponse;
-            }
-            // No cache available, return network error
-            return new Response('Offline', { status: 503 });
+          // If network fails completely, return error
+          // Don't serve stale cache for app files
+          return new Response('Network error - please check connection', { 
+            status: 503,
+            headers: { 'Content-Type': 'text/plain' }
           });
         })
     );

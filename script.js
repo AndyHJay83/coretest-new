@@ -119,7 +119,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Register service worker for PWA functionality
     if ('serviceWorker' in navigator) {
         try {
-            const registration = await navigator.serviceWorker.register('/coretest/service-worker.js');
+            const registration = await navigator.serviceWorker.register('/coretest/service-worker.js', {
+                updateViaCache: 'none' // Never use cached service worker
+            });
             console.log('Service Worker registered successfully:', registration);
             
             // Check for updates immediately and on focus
