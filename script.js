@@ -1417,13 +1417,6 @@ async function executeWorkflow(steps) {
         let featureArea = document.getElementById('featureArea');
         let resultsContainer = document.getElementById('results');
         
-        if (!featureArea) {
-            featureArea = document.createElement('div');
-            featureArea.id = 'featureArea';
-            featureArea.className = 'feature-area';
-            workflowExecution.insertBefore(featureArea, workflowExecution.firstChild);
-        }
-        
         if (!resultsContainer) {
             resultsContainer = document.createElement('div');
             resultsContainer.id = 'results';
@@ -1431,17 +1424,28 @@ async function executeWorkflow(steps) {
             workflowExecution.appendChild(resultsContainer);
         }
         
-        // Set up the layout
-        featureArea.style.flex = '0 0 33dvh';
-        featureArea.style.minHeight = '200px';
-        featureArea.style.padding = '20px';
-        featureArea.style.backgroundColor = '#f5f5f5';
-        featureArea.style.borderBottom = '1px solid #ddd';
+        if (!featureArea) {
+            featureArea = document.createElement('div');
+            featureArea.id = 'featureArea';
+            featureArea.className = 'feature-area';
+            workflowExecution.appendChild(featureArea);
+        }
         
-        resultsContainer.style.flex = '1';
+        // Set up the layout - 50/50 split
+        // Top half: results container (wordlist)
+        resultsContainer.style.flex = '0 0 50%';
+        resultsContainer.style.minHeight = '0';
         resultsContainer.style.overflowY = 'auto';
         resultsContainer.style.padding = '20px';
         resultsContainer.style.backgroundColor = '#fff';
+        resultsContainer.style.borderBottom = '1px solid #ddd';
+        
+        // Bottom half: feature area
+        featureArea.style.flex = '0 0 50%';
+        featureArea.style.minHeight = '0';
+        featureArea.style.overflowY = 'auto';
+        featureArea.style.padding = '20px';
+        featureArea.style.backgroundColor = '#f5f5f5';
         
         // Clear any existing content
         featureArea.innerHTML = '';
