@@ -2244,17 +2244,21 @@ function filterWordsByPianoForte(words, letterSequence) {
             if (wordUpper.includes(letter)) return false;
         }
         
-        // Check that the sequence appears in chronological order
-        let wordIndex = 0;
-        for (const targetLetter of sequence) {
-            // Find the next occurrence of this letter in the word
-            const foundIndex = wordUpper.indexOf(targetLetter, wordIndex);
-            if (foundIndex === -1) {
-                // Letter not found
+        // Extract only A-G letters from the word, maintaining their order
+        const wordPressedSequence = wordUpper.split('').filter(char => 
+            ['A', 'B', 'C', 'D', 'E', 'F', 'G'].includes(char)
+        );
+        
+        // Check if the extracted sequence matches the pressed sequence exactly
+        if (wordPressedSequence.length !== sequence.length) {
+            return false;
+        }
+        
+        // Check each letter matches in order
+        for (let i = 0; i < sequence.length; i++) {
+            if (wordPressedSequence[i] !== sequence[i]) {
                 return false;
             }
-            // Move past this letter for the next search
-            wordIndex = foundIndex + 1;
         }
         
         return true;
