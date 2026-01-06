@@ -1659,13 +1659,13 @@ input:checked + .slider:before {
     
     .available-features {
         min-height: 400px;
-        max-height: calc(100dvh - 150px);
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
+        max-height: calc(100dvh - 150px) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
         background-color: #fafafa;
         border-radius: 8px;
-        height: auto !important; /* Remove fixed height to allow scrolling */
+        height: auto !important;
     }
 
     .available-features h3 {
@@ -1709,13 +1709,14 @@ input:checked + .slider:before {
         overflow-y: auto !important;
         overflow-x: hidden !important;
         -webkit-overflow-scrolling: touch !important;
-        padding: 10px;
+        padding: 10px !important;
         display: grid !important; /* Use grid layout for consistency */
         grid-template-columns: 1fr !important; /* Single column on mobile */
         gap: 8px !important;
         min-height: 0 !important; /* Important for flex scrolling */
         height: auto !important;
         max-height: none !important;
+        overscroll-behavior: contain !important;
     }
 
     .feature-group {
@@ -1735,10 +1736,11 @@ input:checked + .slider:before {
     .available-features {
         display: flex !important;
         flex-direction: column !important;
-        height: auto !important; /* Remove fixed 800px height */
+        height: auto !important;
         max-height: calc(100dvh - 150px) !important; /* Use viewport-based height */
         position: relative !important;
         overflow: hidden !important; /* Prevent parent from scrolling */
+        min-height: 400px !important;
     }
     
     .available-features h3 {
@@ -1760,6 +1762,7 @@ input:checked + .slider:before {
         overflow-y: auto !important;
         overflow-x: hidden !important;
         -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior: contain !important;
         min-height: 0 !important;
         height: auto !important;
         padding: 10px !important;
