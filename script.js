@@ -5544,7 +5544,13 @@ function initializeFeatureSelection() {
             const newButton = button.cloneNode(true);
             button.parentNode.replaceChild(newButton, button);
             
-            // Add click event
+            // Track touch state for scroll detection
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let touchStartTime = 0;
+            let hasMoved = false;
+            
+            // Add click event (desktop)
             newButton.addEventListener('click', () => {
                 const featureType = newButton.dataset.feature;
                 if (!isFeatureAlreadySelected(featureType)) {
@@ -5552,19 +5558,44 @@ function initializeFeatureSelection() {
                 }
             });
             
-            // Add touch event for mobile with debounce
-            let touchTimeout;
+            // Track touch start
             newButton.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                if (touchTimeout) {
-                    clearTimeout(touchTimeout);
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                touchStartTime = Date.now();
+                hasMoved = false;
+            }, { passive: true });
+            
+            // Track touch move to detect scrolling
+            newButton.addEventListener('touchmove', (e) => {
+                if (!hasMoved) {
+                    const deltaX = Math.abs(e.touches[0].clientX - touchStartX);
+                    const deltaY = Math.abs(e.touches[0].clientY - touchStartY);
+                    // If moved more than 10px, consider it a scroll
+                    if (deltaX > 10 || deltaY > 10) {
+                        hasMoved = true;
+                    }
                 }
-                touchTimeout = setTimeout(() => {
+            }, { passive: true });
+            
+            // Handle touch end - only trigger if it was a tap, not a scroll
+            newButton.addEventListener('touchend', (e) => {
+                const touchEndTime = Date.now();
+                const touchDuration = touchEndTime - touchStartTime;
+                
+                // Only trigger if:
+                // 1. Touch didn't move significantly (not a scroll)
+                // 2. Touch duration was short (less than 300ms - indicates a tap)
+                if (!hasMoved && touchDuration < 300) {
+                    e.preventDefault();
                     const featureType = newButton.dataset.feature;
-                if (!isFeatureAlreadySelected(featureType)) {
-                    addFeatureToSelected(featureType);
+                    if (!isFeatureAlreadySelected(featureType)) {
+                        addFeatureToSelected(featureType);
+                    }
                 }
-                }, 100);
+                
+                // Reset state
+                hasMoved = false;
             }, { passive: false });
         });
     }
@@ -6144,27 +6175,78 @@ function initializeFeatureSelection() {
             const newButton = button.cloneNode(true);
             button.parentNode.replaceChild(newButton, button);
             
-            // Single handler for both click and touch
-            const handleFeatureSelection = (e) => {
-                e.preventDefault();
+            // Track touch state for scroll detection
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let touchStartTime = 0;
+            let hasMoved = false;
+            
+            // Handle click (desktop)
+            newButton.addEventListener('click', (e) => {
                 const featureType = newButton.dataset.feature;
                 
                 // Check cooldown
                 const lastAdded = featureCooldown.get(featureType);
                 const now = Date.now();
                 if (lastAdded && (now - lastAdded) < 1000) {
-                    return; // Ignore if within cooldown period
+                    return;
                 }
                 
                 if (!isFeatureAlreadySelected(featureType)) {
                     addFeatureToSelected(featureType);
                     featureCooldown.set(featureType, now);
                 }
-            };
+            });
             
-            // Add both click and touch events
-            newButton.addEventListener('click', handleFeatureSelection);
-            newButton.addEventListener('touchstart', handleFeatureSelection, { passive: false });
+            // Track touch start
+            newButton.addEventListener('touchstart', (e) => {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                touchStartTime = Date.now();
+                hasMoved = false;
+            }, { passive: true });
+            
+            // Track touch move to detect scrolling
+            newButton.addEventListener('touchmove', (e) => {
+                if (!hasMoved) {
+                    const deltaX = Math.abs(e.touches[0].clientX - touchStartX);
+                    const deltaY = Math.abs(e.touches[0].clientY - touchStartY);
+                    // If moved more than 10px, consider it a scroll
+                    if (deltaX > 10 || deltaY > 10) {
+                        hasMoved = true;
+                    }
+                }
+            }, { passive: true });
+            
+            // Handle touch end - only trigger if it was a tap, not a scroll
+            newButton.addEventListener('touchend', (e) => {
+                const touchEndTime = Date.now();
+                const touchDuration = touchEndTime - touchStartTime;
+                
+                // Only trigger if:
+                // 1. Touch didn't move significantly (not a scroll)
+                // 2. Touch duration was short (less than 300ms - indicates a tap)
+                // 3. Not within cooldown period
+                if (!hasMoved && touchDuration < 300) {
+                    e.preventDefault();
+                    const featureType = newButton.dataset.feature;
+                    
+                    // Check cooldown
+                    const lastAdded = featureCooldown.get(featureType);
+                    const now = Date.now();
+                    if (lastAdded && (now - lastAdded) < 1000) {
+                        return;
+                    }
+                    
+                    if (!isFeatureAlreadySelected(featureType)) {
+                        addFeatureToSelected(featureType);
+                        featureCooldown.set(featureType, now);
+                    }
+                }
+                
+                // Reset state
+                hasMoved = false;
+            }, { passive: false });
         });
     }
 }
