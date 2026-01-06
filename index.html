@@ -187,6 +187,10 @@
                                 <button class="feature-button" data-feature="pianoForte" draggable="true">PIANO FORTE</button>
                                 <button class="info-button" data-feature="pianoForte"><i class="fas fa-info-circle"></i></button>
                             </div>
+                            <div class="feature-group">
+                                <button class="feature-button" data-feature="pianoPiano" draggable="true">PIANO PIANO</button>
+                                <button class="info-button" data-feature="pianoPiano"><i class="fas fa-info-circle"></i></button>
+                            </div>
                         </div>
                     </div>
 
@@ -530,6 +534,28 @@
                         <button id="pianoForteSkipButton" class="skip-button">SKIP</button>
                     </div>
                 </div>
+
+                <!-- PIANO PIANO feature -->
+                <div id="pianoPianoFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">PIANO PIANO</h2>
+                    <div class="piano-piano-row" style="display: flex; justify-content: center; gap: 10px;">
+                        <button class="piano-piano-btn" data-count="1">1</button>
+                        <button class="piano-piano-btn" data-count="2">2</button>
+                        <button class="piano-piano-btn" data-count="3">3</button>
+                        <button class="piano-piano-btn" data-count="4">4</button>
+                        <button class="piano-piano-btn" data-count="5">5</button>
+                        <button class="piano-piano-btn" data-count="6">6</button>
+                        <button class="piano-piano-btn" data-count="7">7</button>
+                    </div>
+                    <div id="pianoPianoDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+                        <span id="pianoPianoString">-</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+                        <button id="pianoPianoSubmitButton">SUBMIT</button>
+                        <button id="pianoPianoNoneButton" class="none-button">NONE</button>
+                        <button id="pianoPianoSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -716,6 +742,13 @@
             <div class="feature-info-content">
                 <h3>PIANO FORTE</h3>
                 <p><strong>Piano Forte</strong><br>Select letters A-G that MUST be in the word. Selected letters must be present, and unselected letters must NOT be present. Click SUBMIT to filter, or NONE if none of the letters A-G are in the word.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="pianoPianoInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>PIANO PIANO</h3>
+                <p><strong>Piano Piano</strong><br>Select a number (1-7) representing the total count of letters A-G in the word. The word must contain exactly that many A-G letters in any combination.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

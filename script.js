@@ -1544,6 +1544,9 @@ async function executeWorkflow(steps) {
                 case 'pianoForte':
                     featureElement = createPianoForteFeature();
                     break;
+                case 'pianoPiano':
+                    featureElement = createPianoPianoFeature();
+                    break;
                 default:
                     featureElement = null;
             }
@@ -2080,6 +2083,34 @@ function createPianoForteFeature() {
     return div;
 }
 
+// --- PIANO PIANO Feature Logic ---
+function createPianoPianoFeature() {
+    const div = document.createElement('div');
+    div.id = 'pianoPianoFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">PIANO PIANO</h2>
+        <div class="piano-piano-row" style="display: flex; justify-content: center; gap: 10px;">
+            <button class="piano-piano-btn" data-count="1">1</button>
+            <button class="piano-piano-btn" data-count="2">2</button>
+            <button class="piano-piano-btn" data-count="3">3</button>
+            <button class="piano-piano-btn" data-count="4">4</button>
+            <button class="piano-piano-btn" data-count="5">5</button>
+            <button class="piano-piano-btn" data-count="6">6</button>
+            <button class="piano-piano-btn" data-count="7">7</button>
+        </div>
+        <div id="pianoPianoDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+            <span id="pianoPianoString">-</span>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+            <button id="pianoPianoSubmitButton">SUBMIT</button>
+            <button id="pianoPianoNoneButton" class="none-button">NONE</button>
+            <button id="pianoPianoSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
 // --- FIND-EEE Feature Logic ---
 function createFindEeeFeature() {
     const div = document.createElement('div');
@@ -2262,6 +2293,21 @@ function filterWordsByPianoForte(words, letterSequence) {
         }
         
         return true;
+    });
+}
+
+// Filtering logic for PIANO PIANO feature
+function filterWordsByPianoPiano(words, count) {
+    return words.filter(word => {
+        const wordUpper = word.toUpperCase();
+        
+        // Extract only A-G letters from the word
+        const agLetters = wordUpper.split('').filter(char => 
+            ['A', 'B', 'C', 'D', 'E', 'F', 'G'].includes(char)
+        );
+        
+        // Check if the count matches exactly
+        return agLetters.length === count;
     });
 }
 
@@ -3659,6 +3705,103 @@ function setupFeatureListeners(feature, callback) {
                 skipBtn.onclick = () => {
                     callback(currentFilteredWords);
                     const featureDiv = document.getElementById('pianoForteFeature');
+                    featureDiv.classList.add('completed');
+                    featureDiv.dispatchEvent(new Event('completed'));
+                };
+                skipBtn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    skipBtn.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 'pianoPiano': {
+            const countBtns = Array.from(document.querySelectorAll('.piano-piano-btn'));
+            const submitBtn = document.getElementById('pianoPianoSubmitButton');
+            const skipBtn = document.getElementById('pianoPianoSkipButton');
+            const noneBtn = document.getElementById('pianoPianoNoneButton');
+            const countDisplay = document.getElementById('pianoPianoString');
+            let selectedCount = null;
+
+            // Initialize display
+            if (countDisplay) {
+                countDisplay.textContent = '-';
+            }
+
+            countBtns.forEach(btn => {
+                btn.classList.remove('active');
+                btn.onclick = () => {
+                    // Remove active from all buttons
+                    countBtns.forEach(b => b.classList.remove('active'));
+                    
+                    // Set selected count
+                    selectedCount = parseInt(btn.dataset.count);
+                    
+                    // Update display
+                    if (countDisplay) {
+                        countDisplay.textContent = selectedCount.toString();
+                    }
+                    
+                    // Visual feedback
+                    btn.classList.add('active');
+                };
+                // Touch event for mobile
+                btn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    btn.onclick();
+                }, { passive: false });
+            });
+
+            if (submitBtn) {
+                submitBtn.onclick = () => {
+                    if (selectedCount === null) {
+                        alert('Please select a count');
+                        return;
+                    }
+                    
+                    // Update workflow state
+                    workflowState.pianoPianoSelection = selectedCount;
+                    
+                    console.log(`Piano Piano feature completed. Count: ${selectedCount}`);
+                    logWorkflowState();
+                    
+                    const filteredWords = filterWordsByPianoPiano(currentFilteredWords, selectedCount);
+                    callback(filteredWords);
+                    const featureDiv = document.getElementById('pianoPianoFeature');
+                    featureDiv.classList.add('completed');
+                    featureDiv.dispatchEvent(new Event('completed'));
+                };
+                submitBtn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    submitBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (noneBtn) {
+                noneBtn.onclick = () => {
+                    // Filter out words containing any A-G letters
+                    const filteredWords = currentFilteredWords.filter(word => {
+                        const wordUpper = word.toUpperCase();
+                        return !['A', 'B', 'C', 'D', 'E', 'F', 'G'].some(letter => 
+                            wordUpper.includes(letter)
+                        );
+                    });
+                    
+                    callback(filteredWords);
+                    const featureDiv = document.getElementById('pianoPianoFeature');
+                    featureDiv.classList.add('completed');
+                    featureDiv.dispatchEvent(new Event('completed'));
+                };
+                noneBtn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    noneBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (skipBtn) {
+                skipBtn.onclick = () => {
+                    callback(currentFilteredWords);
+                    const featureDiv = document.getElementById('pianoPianoFeature');
                     featureDiv.classList.add('completed');
                     featureDiv.dispatchEvent(new Event('completed'));
                 };

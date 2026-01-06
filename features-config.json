@@ -160,6 +160,13 @@
       "displayName": "PIANO FORTE",
       "requiresParam": false,
       "analyzeFunction": "const results = []; const letters = ['A','B','C','D','E','F','G']; const pressedLetters = new Set(letters); for (let len = 1; len <= 4; len++) { const sequences = []; function generateSequences(seq, remaining) { if (seq.length === len) { sequences.push([...seq]); return; } remaining.forEach(letter => { generateSequences([...seq, letter], remaining); }); } generateSequences([], letters); sequences.forEach(sequence => { const filtered = wordlist.filter(w => { const wUpper = w.toUpperCase(); const wordPressedSequence = wUpper.split('').filter(char => ['A','B','C','D','E','F','G'].includes(char)); if (wordPressedSequence.length !== sequence.length) return false; for (let i = 0; i < sequence.length; i++) { if (wordPressedSequence[i] !== sequence[i]) return false; } const unpressedLetters = letters.filter(l => !new Set(sequence).has(l)); for (const letter of unpressedLetters) { if (wUpper.includes(letter)) return false; } return true; }); if (filtered.length > 0) { results.push({ param: sequence.join(''), wordsLeft: filtered.length, percentFiltered: 100 * (1 - filtered.length / totalWords) }); } }); } return results.slice(0, 50);"
+    },
+    {
+      "id": "pianoPiano",
+      "name": "PIANO PIANO",
+      "displayName": "PIANO PIANO",
+      "requiresParam": false,
+      "analyzeFunction": "const results = []; for (let count = 1; count <= 7; count++) { const filtered = wordlist.filter(w => { const wUpper = w.toUpperCase(); const agLetters = wUpper.split('').filter(char => ['A','B','C','D','E','F','G'].includes(char)); return agLetters.length === count; }); results.push({ param: count.toString(), wordsLeft: filtered.length, percentFiltered: 100 * (1 - filtered.length / totalWords) }); } return results;"
     }
   ]
 }
