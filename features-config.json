@@ -3,118 +3,163 @@
     {
       "id": "position1",
       "name": "Short Word",
-      "displayName": "Short Word"
+      "displayName": "Short Word",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires word input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "consMid",
       "name": "3 LETTER WORD",
-      "displayName": "3 LETTER WORD"
+      "displayName": "3 LETTER WORD",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires word input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "consMid2",
       "name": "Cons MID",
-      "displayName": "Cons MID"
+      "displayName": "Cons MID",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires word input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "vowel",
       "name": "Vowel",
-      "displayName": "Vowel"
+      "displayName": "Vowel",
+      "requiresParam": true,
+      "analyzeFunction": "const vowels = new Set('aeiou'); const results = []; vowels.forEach(v => { const yes = wordlist.filter(w => w.toLowerCase().includes(v)); const no = wordlist.filter(w => !w.toLowerCase().includes(v)); results.push({ param: v.toUpperCase() + ' - YES', wordsLeft: yes.length, percentFiltered: 100 * (1 - yes.length / totalWords) }); results.push({ param: v.toUpperCase() + ' - NO', wordsLeft: no.length, percentFiltered: 100 * (1 - no.length / totalWords) }); }); return results;"
     },
     {
       "id": "vowelPos",
       "name": "VOWEL POS",
-      "displayName": "VOWEL POS"
+      "displayName": "VOWEL POS",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires vowel and section input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "o",
       "name": "O?",
-      "displayName": "O?"
+      "displayName": "O?",
+      "requiresParam": false,
+      "analyzeFunction": "const hasO = wordlist.filter(w => w.toUpperCase().includes('O')); const noO = wordlist.filter(w => !w.toUpperCase().includes('O')); return [{ param: 'YES', wordsLeft: hasO.length, percentFiltered: 100 * (1 - hasO.length / totalWords) }, { param: 'NO', wordsLeft: noO.length, percentFiltered: 100 * (1 - noO.length / totalWords) }];"
     },
     {
       "id": "lexicon",
       "name": "Curved Pos.",
-      "displayName": "Curved Pos."
+      "displayName": "Curved Pos.",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires position input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "eee",
       "name": "EEE?",
-      "displayName": "EEE?"
+      "displayName": "EEE?",
+      "requiresParam": false,
+      "analyzeFunction": "const e = wordlist.filter(w => w.length >= 2 && w[1].toUpperCase() === 'E'); const yesLetters = new Set(['B', 'C', 'D', 'G', 'P', 'T', 'V', 'Z']); const yes = wordlist.filter(w => w.length >= 2 && yesLetters.has(w[1].toUpperCase())); const no = wordlist.filter(w => w.length >= 2 && !yesLetters.has(w[1].toUpperCase()) && w[1].toUpperCase() !== 'E'); return [{ param: 'E', wordsLeft: e.length, percentFiltered: 100 * (1 - e.length / totalWords) }, { param: 'YES', wordsLeft: yes.length, percentFiltered: 100 * (1 - yes.length / totalWords) }, { param: 'NO', wordsLeft: no.length, percentFiltered: 100 * (1 - no.length / totalWords) }];"
     },
     {
       "id": "eeeFirst",
       "name": "EEEFIRST",
-      "displayName": "EEEFIRST"
+      "displayName": "EEEFIRST",
+      "requiresParam": false,
+      "analyzeFunction": "const e = wordlist.filter(w => w.length >= 1 && w[0].toUpperCase() === 'E'); const yesLetters = new Set(['B', 'C', 'D', 'G', 'P', 'T', 'V', 'Z']); const yes = wordlist.filter(w => w.length >= 1 && yesLetters.has(w[0].toUpperCase())); const no = wordlist.filter(w => w.length >= 1 && !yesLetters.has(w[0].toUpperCase()) && w[0].toUpperCase() !== 'E'); return [{ param: 'E', wordsLeft: e.length, percentFiltered: 100 * (1 - e.length / totalWords) }, { param: 'YES', wordsLeft: yes.length, percentFiltered: 100 * (1 - yes.length / totalWords) }, { param: 'NO', wordsLeft: no.length, percentFiltered: 100 * (1 - no.length / totalWords) }];"
     },
     {
       "id": "originalLex",
       "name": "Lexicon",
-      "displayName": "Lexicon"
+      "displayName": "Lexicon",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires word input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "consonant",
       "name": "Cons. Together",
-      "displayName": "Cons. Together"
+      "displayName": "Cons. Together",
+      "requiresParam": false,
+      "analyzeFunction": "const vowels = new Set('aeiou'); const hasConsTogether = wordlist.filter(w => { for (let i = 0; i < w.length - 1; i++) { if (!vowels.has(w[i].toLowerCase()) && !vowels.has(w[i+1].toLowerCase())) return true; } return false; }); const noConsTogether = wordlist.filter(w => { for (let i = 0; i < w.length - 1; i++) { if (!vowels.has(w[i].toLowerCase()) && !vowels.has(w[i+1].toLowerCase())) return false; } return true; }); return [{ param: 'YES', wordsLeft: hasConsTogether.length, percentFiltered: 100 * (1 - hasConsTogether.length / totalWords) }, { param: 'NO', wordsLeft: noConsTogether.length, percentFiltered: 100 * (1 - noConsTogether.length / totalWords) }];"
     },
     {
       "id": "colour3",
       "name": "Colour3",
-      "displayName": "Colour3"
+      "displayName": "Colour3",
+      "requiresParam": false,
+      "analyzeFunction": "const colors = new Set(['r','e','d','b','l','u','e','g','r','e','e','n','y','e','l','l','o','w','o','r','a','n','g','e','p','u','r','p','l','e','p','i','n','k','b','r','o','w','n','b','l','a','c','k','w','h','i','t','e','g','r','a','y','g','r','e','y','c','y','a','n','m','a','g','e','n','t','a']); const yes = wordlist.filter(w => w.length >= 3 && colors.has(w[2].toLowerCase())); return [{ param: 'YES', wordsLeft: yes.length, percentFiltered: 100 * (1 - yes.length / totalWords) }];"
     },
     {
       "id": "length",
       "name": "LENGTH",
-      "displayName": "LENGTH"
+      "displayName": "LENGTH",
+      "requiresParam": true,
+      "analyzeFunction": "const lengths = {}; wordlist.forEach(w => { const len = w.length; lengths[len] = (lengths[len] || 0) + 1; }); return Object.keys(lengths).sort((a, b) => parseInt(a) - parseInt(b)).map(len => { const filtered = wordlist.filter(w => w.length === parseInt(len)); return { param: len + ' letters', wordsLeft: filtered.length, percentFiltered: 100 * (1 - filtered.length / totalWords) }; });"
     },
     {
       "id": "mostFrequent",
       "name": "MOST FREQUENT",
-      "displayName": "MOST FREQUENT"
+      "displayName": "MOST FREQUENT",
+      "requiresParam": false,
+      "analyzeFunction": "const letterCounts = {}; wordlist.forEach(w => { w.toUpperCase().split('').forEach(c => { if (c >= 'A' && c <= 'Z') letterCounts[c] = (letterCounts[c] || 0) + 1; }); }); const sorted = Object.entries(letterCounts).sort((a, b) => b[1] - a[1]); const mostFreq = sorted[0][0]; const hasLetter = wordlist.filter(w => w.toUpperCase().includes(mostFreq)); const noLetter = wordlist.filter(w => !w.toUpperCase().includes(mostFreq)); return [{ param: mostFreq + ' - YES', wordsLeft: hasLetter.length, percentFiltered: 100 * (1 - hasLetter.length / totalWords) }, { param: mostFreq + ' - NO', wordsLeft: noLetter.length, percentFiltered: 100 * (1 - noLetter.length / totalWords) }];"
     },
     {
       "id": "leastFrequent",
       "name": "LEAST FREQUENT",
-      "displayName": "LEAST FREQUENT"
+      "displayName": "LEAST FREQUENT",
+      "requiresParam": false,
+      "analyzeFunction": "const letterCounts = {}; wordlist.forEach(w => { w.toUpperCase().split('').forEach(c => { if (c >= 'A' && c <= 'Z') letterCounts[c] = (letterCounts[c] || 0) + 1; }); }); const sorted = Object.entries(letterCounts).sort((a, b) => a[1] - b[1]); const leastFreq = sorted[0][0]; const hasLetter = wordlist.filter(w => w.toUpperCase().includes(leastFreq)); const noLetter = wordlist.filter(w => !w.toUpperCase().includes(leastFreq)); return [{ param: leastFreq + ' - YES', wordsLeft: hasLetter.length, percentFiltered: 100 * (1 - hasLetter.length / totalWords) }, { param: leastFreq + ' - NO', wordsLeft: noLetter.length, percentFiltered: 100 * (1 - noLetter.length / totalWords) }];"
     },
     {
       "id": "notIn",
       "name": "NOT IN",
-      "displayName": "NOT IN"
+      "displayName": "NOT IN",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires letters input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "abcde",
       "name": "ABCDE",
-      "displayName": "ABCDE"
+      "displayName": "ABCDE",
+      "requiresParam": false,
+      "analyzeFunction": "const results = []; const letters = ['A','B','C','D','E']; for (let i = 0; i < Math.pow(2, 5); i++) { const selected = []; letters.forEach((l, idx) => { if (i & (1 << idx)) selected.push(l); }); if (selected.length === 0) continue; const filtered = wordlist.filter(w => { const wUpper = w.toUpperCase(); const selectedUpper = selected.map(l => l.toUpperCase()); for (const letter of selectedUpper) { if (!wUpper.includes(letter)) return false; } for (const letter of letters) { if (!selectedUpper.includes(letter) && wUpper.includes(letter)) return false; } return true; }); results.push({ param: selected.join(','), wordsLeft: filtered.length, percentFiltered: 100 * (1 - filtered.length / totalWords) }); } return results;"
     },
     {
       "id": "abc",
       "name": "ABC",
-      "displayName": "ABC"
+      "displayName": "ABC",
+      "requiresParam": false,
+      "analyzeFunction": "const results = []; const letters = ['A','B','C']; for (let i = 0; i < Math.pow(2, 3); i++) { const selected = []; letters.forEach((l, idx) => { if (i & (1 << idx)) selected.push(l); }); if (selected.length === 0) continue; const filtered = wordlist.filter(w => { const wUpper = w.toUpperCase(); const selectedUpper = selected.map(l => l.toUpperCase()); for (const letter of selectedUpper) { if (!wUpper.includes(letter)) return false; } for (const letter of letters) { if (!selectedUpper.includes(letter) && wUpper.includes(letter)) return false; } return true; }); results.push({ param: selected.join(','), wordsLeft: filtered.length, percentFiltered: 100 * (1 - filtered.length / totalWords) }); } return results;"
     },
     {
       "id": "findEee",
       "name": "FIND-EEE",
-      "displayName": "FIND-EEE"
+      "displayName": "FIND-EEE",
+      "requiresParam": false,
+      "analyzeFunction": "const letters = ['B','C','D','E','G','P','T','V','Z']; const results = []; letters.forEach(letter => { const hasLetter = wordlist.filter(w => w.toUpperCase().includes(letter)); results.push({ param: letter, wordsLeft: hasLetter.length, percentFiltered: 100 * (1 - hasLetter.length / totalWords) }); }); return results;"
     },
     {
       "id": "positionCons",
       "name": "POSITION-CONS",
-      "displayName": "POSITION-CONS"
+      "displayName": "POSITION-CONS",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires position, letters, and count input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "firstCurved",
       "name": "FIRST CURVED",
-      "displayName": "FIRST CURVED"
+      "displayName": "FIRST CURVED",
+      "requiresParam": false,
+      "analyzeFunction": "const curvedLetters = new Set(['B','C','D','G','J','O','P','Q','R','S','U']); const results = []; for (let pos = 1; pos <= 8; pos++) { const filtered = wordlist.filter(w => { const upperWord = w.toUpperCase(); if (upperWord.length <= pos - 1) return false; for (let i = 0; i < pos - 1; i++) { if (curvedLetters.has(upperWord[i])) return false; } return curvedLetters.has(upperWord[pos - 1]); }); results.push({ param: 'Position ' + pos, wordsLeft: filtered.length, percentFiltered: 100 * (1 - filtered.length / totalWords) }); } return results;"
     },
     {
       "id": "pin",
       "name": "PIN",
-      "displayName": "PIN"
+      "displayName": "PIN",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires words and code input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "pianoForte",
       "name": "PIANO FORTE",
-      "displayName": "PIANO FORTE"
+      "displayName": "PIANO FORTE",
+      "requiresParam": false,
+      "analyzeFunction": "const results = []; const letters = ['A','B','C','D','E','F','G']; const pressedLetters = new Set(letters); for (let len = 1; len <= 4; len++) { const sequences = []; function generateSequences(seq, remaining) { if (seq.length === len) { sequences.push([...seq]); return; } remaining.forEach(letter => { generateSequences([...seq, letter], remaining); }); } generateSequences([], letters); sequences.forEach(sequence => { const filtered = wordlist.filter(w => { const wUpper = w.toUpperCase(); const wordPressedSequence = wUpper.split('').filter(char => ['A','B','C','D','E','F','G'].includes(char)); if (wordPressedSequence.length !== sequence.length) return false; for (let i = 0; i < sequence.length; i++) { if (wordPressedSequence[i] !== sequence[i]) return false; } const unpressedLetters = letters.filter(l => !new Set(sequence).has(l)); for (const letter of unpressedLetters) { if (wUpper.includes(letter)) return false; } return true; }); if (filtered.length > 0) { results.push({ param: sequence.join(''), wordsLeft: filtered.length, percentFiltered: 100 * (1 - filtered.length / totalWords) }); } }); } return results.slice(0, 50);"
     }
   ]
 }
-
