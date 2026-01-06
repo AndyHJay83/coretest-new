@@ -1,0 +1,120 @@
+{
+  "features": [
+    {
+      "id": "position1",
+      "name": "Short Word",
+      "displayName": "Short Word"
+    },
+    {
+      "id": "consMid",
+      "name": "3 LETTER WORD",
+      "displayName": "3 LETTER WORD"
+    },
+    {
+      "id": "consMid2",
+      "name": "Cons MID",
+      "displayName": "Cons MID"
+    },
+    {
+      "id": "vowel",
+      "name": "Vowel",
+      "displayName": "Vowel"
+    },
+    {
+      "id": "vowelPos",
+      "name": "VOWEL POS",
+      "displayName": "VOWEL POS"
+    },
+    {
+      "id": "o",
+      "name": "O?",
+      "displayName": "O?"
+    },
+    {
+      "id": "lexicon",
+      "name": "Curved Pos.",
+      "displayName": "Curved Pos."
+    },
+    {
+      "id": "eee",
+      "name": "EEE?",
+      "displayName": "EEE?"
+    },
+    {
+      "id": "eeeFirst",
+      "name": "EEEFIRST",
+      "displayName": "EEEFIRST"
+    },
+    {
+      "id": "originalLex",
+      "name": "Lexicon",
+      "displayName": "Lexicon"
+    },
+    {
+      "id": "consonant",
+      "name": "Cons. Together",
+      "displayName": "Cons. Together"
+    },
+    {
+      "id": "colour3",
+      "name": "Colour3",
+      "displayName": "Colour3"
+    },
+    {
+      "id": "length",
+      "name": "LENGTH",
+      "displayName": "LENGTH"
+    },
+    {
+      "id": "mostFrequent",
+      "name": "MOST FREQUENT",
+      "displayName": "MOST FREQUENT"
+    },
+    {
+      "id": "leastFrequent",
+      "name": "LEAST FREQUENT",
+      "displayName": "LEAST FREQUENT"
+    },
+    {
+      "id": "notIn",
+      "name": "NOT IN",
+      "displayName": "NOT IN"
+    },
+    {
+      "id": "abcde",
+      "name": "ABCDE",
+      "displayName": "ABCDE"
+    },
+    {
+      "id": "abc",
+      "name": "ABC",
+      "displayName": "ABC"
+    },
+    {
+      "id": "findEee",
+      "name": "FIND-EEE",
+      "displayName": "FIND-EEE"
+    },
+    {
+      "id": "positionCons",
+      "name": "POSITION-CONS",
+      "displayName": "POSITION-CONS"
+    },
+    {
+      "id": "firstCurved",
+      "name": "FIRST CURVED",
+      "displayName": "FIRST CURVED"
+    },
+    {
+      "id": "pin",
+      "name": "PIN",
+      "displayName": "PIN"
+    },
+    {
+      "id": "pianoForte",
+      "name": "PIANO FORTE",
+      "displayName": "PIANO FORTE"
+    }
+  ]
+}
+
