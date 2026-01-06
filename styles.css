@@ -1665,11 +1665,23 @@ input:checked + .slider:before {
         overflow: hidden;
         background-color: #fafafa;
         border-radius: 8px;
+        height: auto !important; /* Remove fixed height to allow scrolling */
     }
 
-    .available-features, .selected-features {
-        height: 800px !important;
-        max-height: 800px !important;
+    .available-features h3 {
+        flex-shrink: 0; /* Keep header fixed */
+        padding: 10px 15px;
+        background-color: #f0f0f0;
+        border-bottom: 1px solid #e0e0e0;
+        margin: 0;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    .selected-features {
+        height: auto !important;
+        max-height: none !important;
     }
 
     .selected-features {
@@ -1693,16 +1705,17 @@ input:checked + .slider:before {
     }
 
     #availableFeatures {
-        flex: 1;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
+        flex: 1 1 auto !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
         padding: 10px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 7.5px;
-        align-content: flex-start;
-        min-height: 350px;
-        height: calc(100% - 70px);
+        display: grid !important; /* Use grid layout for consistency */
+        grid-template-columns: 1fr !important; /* Single column on mobile */
+        gap: 8px !important;
+        min-height: 0 !important; /* Important for flex scrolling */
+        height: auto !important;
+        max-height: none !important;
     }
 
     .feature-group {
@@ -1719,20 +1732,40 @@ input:checked + .slider:before {
     .workflow-content {
         height: 100% !important;
     }
-    .available-features, .selected-features {
+    .available-features {
         display: flex !important;
         flex-direction: column !important;
-        min-height: 800px !important;
-        max-height: 800px !important;
-        height: 800px !important;
+        height: auto !important; /* Remove fixed 800px height */
+        max-height: calc(100dvh - 150px) !important; /* Use viewport-based height */
         position: relative !important;
+        overflow: hidden !important; /* Prevent parent from scrolling */
     }
+    
+    .available-features h3 {
+        flex-shrink: 0 !important;
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 1 !important;
+    }
+    
+    .selected-features {
+        display: flex !important;
+        flex-direction: column !important;
+        height: auto !important;
+        max-height: none !important;
+    }
+    
     #availableFeatures {
         flex: 1 1 auto !important;
         overflow-y: auto !important;
+        overflow-x: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
         min-height: 0 !important;
         height: auto !important;
-        padding-bottom: 0 !important;
+        padding: 10px !important;
+        display: grid !important; /* Use grid layout */
+        grid-template-columns: 1fr !important; /* Single column on mobile */
+        gap: 8px !important;
     }
     .scroll-indicator-container {
         flex: 0 0 48px !important;
@@ -1986,8 +2019,36 @@ input:checked + .slider:before {
         height: 1500px;
     }
     
-    .available-features, .selected-features {
-        height: 100%;
+    .available-features {
+        height: auto;
+        min-height: 400px;
+        max-height: calc(100dvh - 150px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    
+    .available-features h3 {
+        flex-shrink: 0;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+    
+    #availableFeatures {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 10px;
+    }
+    
+    .selected-features {
+        height: auto;
         min-height: 0;
         max-height: none;
     }
@@ -2004,12 +2065,6 @@ input:checked + .slider:before {
     
     .save-workflow-button {
         width: 100%;
-    }
-    
-    .available-features, .selected-features {
-        min-height: 600px;
-        height: 100%;
-        max-height: none;
     }
     
     .feature-button {
@@ -2947,10 +3002,15 @@ input:checked + .slider:before {
     }
     #availableFeatures {
         display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
+        grid-template-columns: 1fr !important; /* Single column on mobile for better scrolling */
         gap: 8px !important;
-        height: 100% !important;
+        flex: 1 1 auto !important;
         overflow-y: auto !important;
+        overflow-x: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
+        min-height: 0 !important;
+        height: auto !important;
+        padding: 10px !important;
     }
     #selectedFeaturesList {
         display: flex !important;
