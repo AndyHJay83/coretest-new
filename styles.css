@@ -2749,6 +2749,59 @@ input:checked + .slider:before {
     }
 }
 
+.piano-forte-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.piano-forte-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    border-radius: 8px;
+    background: #f0f0f0;
+    border: 1px solid #1B5E20;
+    color: #1B5E20;
+    font-size: 1em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.piano-forte-btn:hover {
+    background: #e0e0e0;
+    transform: scale(1.05);
+}
+
+.piano-forte-btn.active {
+    background-color: #87CEEB !important;
+    color: white !important;
+    transform: scale(1.05);
+}
+
+@media (max-width: 600px) {
+    .piano-forte-row {
+        gap: 6px;
+    }
+    .piano-forte-btn {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        min-height: 38px;
+        max-width: 38px;
+        max-height: 38px;
+        font-size: 0.95em;
+    }
+}
+
 /* FIND-EEE Feature Styles */
 .find-eee-row {
     display: flex;

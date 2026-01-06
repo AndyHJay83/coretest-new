@@ -183,6 +183,10 @@
                                 <button class="feature-button" data-feature="pin" draggable="true">PIN</button>
                                 <button class="info-button" data-feature="pin"><i class="fas fa-info-circle"></i></button>
                             </div>
+                            <div class="feature-group">
+                                <button class="feature-button" data-feature="pianoForte" draggable="true">PIANO FORTE</button>
+                                <button class="info-button" data-feature="pianoForte"><i class="fas fa-info-circle"></i></button>
+                            </div>
                         </div>
                     </div>
 
@@ -683,6 +687,13 @@
             <div class="feature-info-content">
                 <h3>PIN</h3>
                 <p><strong>PIN</strong><br>Enter up to 6 words and a corresponding code. Each digit in the code represents how many letters from the corresponding word appear in the target word. The feature filters words that match all code requirements.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="pianoForteInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>PIANO FORTE</h3>
+                <p><strong>Piano Forte</strong><br>Select letters A-G that MUST be in the word. Selected letters must be present, and unselected letters must NOT be present. Click SUBMIT to filter, or NONE if none of the letters A-G are in the word.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

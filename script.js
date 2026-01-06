@@ -1541,6 +1541,9 @@ async function executeWorkflow(steps) {
                 case 'pin':
                     featureElement = createPinFeature();
                     break;
+                case 'pianoForte':
+                    featureElement = createPianoForteFeature();
+                    break;
                 default:
                     featureElement = null;
             }
@@ -2049,6 +2052,31 @@ function createAbcFeature() {
     return div;
 }
 
+// --- PIANO FORTE Feature Logic ---
+function createPianoForteFeature() {
+    const div = document.createElement('div');
+    div.id = 'pianoForteFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">PIANO FORTE</h2>
+        <div class="piano-forte-row" style="display: flex; justify-content: center; gap: 10px;">
+            <button class="piano-forte-btn" data-letter="A">A</button>
+            <button class="piano-forte-btn" data-letter="B">B</button>
+            <button class="piano-forte-btn" data-letter="C">C</button>
+            <button class="piano-forte-btn" data-letter="D">D</button>
+            <button class="piano-forte-btn" data-letter="E">E</button>
+            <button class="piano-forte-btn" data-letter="F">F</button>
+            <button class="piano-forte-btn" data-letter="G">G</button>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+            <button id="pianoForteSubmitButton">SUBMIT</button>
+            <button id="pianoForteNoneButton" class="none-button">NONE</button>
+            <button id="pianoForteSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
 // --- FIND-EEE Feature Logic ---
 function createFindEeeFeature() {
     const div = document.createElement('div');
@@ -2188,6 +2216,24 @@ function filterWordsByAbc(words, yesLetters) {
         }
         // Must NOT include any of the other letters (A-C not in yesLetters)
         for (const letter of ['A','B','C']) {
+            if (!yesLettersUpper.includes(letter) && wordUpper.includes(letter)) return false;
+        }
+        return true;
+    });
+}
+
+// Filtering logic for PIANO FORTE feature
+function filterWordsByPianoForte(words, yesLetters) {
+    return words.filter(word => {
+        const wordUpper = word.toUpperCase();
+        // Convert yesLetters to uppercase for consistent comparison
+        const yesLettersUpper = yesLetters.map(letter => letter.toUpperCase());
+        // Must include all YES letters
+        for (const letter of yesLettersUpper) {
+            if (!wordUpper.includes(letter)) return false;
+        }
+        // Must NOT include any of the other letters (A-G not in yesLetters)
+        for (const letter of ['A','B','C','D','E','F','G']) {
             if (!yesLettersUpper.includes(letter) && wordUpper.includes(letter)) return false;
         }
         return true;
@@ -3464,6 +3510,109 @@ function setupFeatureListeners(feature, callback) {
                 skipBtn.onclick = () => {
                     callback(currentFilteredWords);
                     const featureDiv = document.getElementById('abcFeature');
+                    featureDiv.classList.add('completed');
+                    featureDiv.dispatchEvent(new Event('completed'));
+                };
+                skipBtn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    skipBtn.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 'pianoForte': {
+            const yesBtns = Array.from(document.querySelectorAll('.piano-forte-btn'));
+            const submitBtn = document.getElementById('pianoForteSubmitButton');
+            const skipBtn = document.getElementById('pianoForteSkipButton');
+            const noneBtn = document.getElementById('pianoForteNoneButton');
+            let yesLetters = [];
+
+            yesBtns.forEach(btn => {
+                btn.classList.remove('active');
+                btn.onclick = () => {
+                    const letter = btn.dataset.letter;
+                    if (yesLetters.includes(letter)) {
+                        yesLetters = yesLetters.filter(l => l !== letter);
+                        btn.classList.remove('active');
+                    } else {
+                        yesLetters.push(letter);
+                        btn.classList.add('active');
+                    }
+                };
+                // Touch event for mobile
+                btn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    btn.onclick();
+                }, { passive: false });
+            });
+
+            if (submitBtn) {
+                submitBtn.onclick = () => {
+                    // Update workflow state with Piano Forte selections
+                    workflowState.pianoForteSelection = new Set(yesLetters);
+                    
+                    // Add selected letters to confirmed letters
+                    yesLetters.forEach(letter => {
+                        workflowState.confirmedLetters.add(letter);
+                    });
+                    
+                    // Add unselected letters to excluded letters
+                    ['A', 'B', 'C', 'D', 'E', 'F', 'G'].forEach(letter => {
+                        if (!yesLetters.includes(letter)) {
+                            workflowState.excludedLetters.add(letter);
+                        }
+                    });
+                    
+                    console.log(`Piano Forte feature completed. Selected: ${yesLetters.join(', ')}`);
+                    logWorkflowState();
+                    
+                    const filteredWords = filterWordsByPianoForte(currentFilteredWords, yesLetters);
+                    callback(filteredWords);
+                    const featureDiv = document.getElementById('pianoForteFeature');
+                    featureDiv.classList.add('completed');
+                    featureDiv.dispatchEvent(new Event('completed'));
+                };
+                submitBtn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    submitBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (noneBtn) {
+                noneBtn.onclick = () => {
+                    // Update workflow state - exclude all Piano Forte letters
+                    workflowState.pianoForteSelection = new Set([]);
+                    
+                    // Add all Piano Forte letters to excluded letters
+                    ['A', 'B', 'C', 'D', 'E', 'F', 'G'].forEach(letter => {
+                        workflowState.excludedLetters.add(letter);
+                    });
+                    
+                    console.log(`Piano Forte feature completed. NONE selected - all letters excluded`);
+                    logWorkflowState();
+                    
+                    // Filter out words containing any of A, B, C, D, E, F, G
+                    const filteredWords = currentFilteredWords.filter(word => {
+                        return !['A', 'B', 'C', 'D', 'E', 'F', 'G'].some(letter => 
+                            word.toUpperCase().includes(letter)
+                        );
+                    });
+                    
+                    callback(filteredWords);
+                    const featureDiv = document.getElementById('pianoForteFeature');
+                    featureDiv.classList.add('completed');
+                    featureDiv.dispatchEvent(new Event('completed'));
+                };
+                noneBtn.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    noneBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (skipBtn) {
+                skipBtn.onclick = () => {
+                    callback(currentFilteredWords);
+                    const featureDiv = document.getElementById('pianoForteFeature');
                     featureDiv.classList.add('completed');
                     featureDiv.dispatchEvent(new Event('completed'));
                 };
