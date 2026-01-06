@@ -779,11 +779,13 @@
 
         // Prevent bounce effect on iOS
         document.body.addEventListener('touchmove', function(e) {
-            // Allow touchmove on inputs and their containers
+            // Allow touchmove on inputs and their containers, and scrollable containers
             if (e.target.closest('.results-container') !== null || 
                 e.target.closest('input') !== null ||
                 e.target.closest('.position-cons-input-group') !== null ||
-                e.target.closest('.position-cons-form') !== null) {
+                e.target.closest('.position-cons-form') !== null ||
+                e.target.closest('#availableFeatures') !== null ||
+                e.target.closest('.available-features') !== null) {
                 return;
             }
             e.preventDefault();
