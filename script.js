@@ -2068,6 +2068,9 @@ function createPianoForteFeature() {
             <button class="piano-forte-btn" data-letter="F">F</button>
             <button class="piano-forte-btn" data-letter="G">G</button>
         </div>
+        <div id="pianoForteStringDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20; letter-spacing: 8px;">
+            <span id="pianoForteString">-</span>
+        </div>
         <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
             <button id="pianoForteSubmitButton">SUBMIT</button>
             <button id="pianoForteNoneButton" class="none-button">NONE</button>
@@ -2222,20 +2225,38 @@ function filterWordsByAbc(words, yesLetters) {
     });
 }
 
-// Filtering logic for PIANO FORTE feature
-function filterWordsByPianoForte(words, yesLetters) {
+// Filtering logic for PIANO FORTE feature (chronological order)
+function filterWordsByPianoForte(words, letterSequence) {
     return words.filter(word => {
         const wordUpper = word.toUpperCase();
-        // Convert yesLetters to uppercase for consistent comparison
-        const yesLettersUpper = yesLetters.map(letter => letter.toUpperCase());
-        // Must include all YES letters
-        for (const letter of yesLettersUpper) {
-            if (!wordUpper.includes(letter)) return false;
+        const sequence = letterSequence.map(letter => letter.toUpperCase());
+        
+        // Get unique letters that were pressed
+        const pressedLetters = new Set(sequence);
+        
+        // Get letters that were NOT pressed (A-G not in sequence)
+        const unpressedLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].filter(
+            letter => !pressedLetters.has(letter)
+        );
+        
+        // Check that unpressed letters are NOT in the word
+        for (const letter of unpressedLetters) {
+            if (wordUpper.includes(letter)) return false;
         }
-        // Must NOT include any of the other letters (A-G not in yesLetters)
-        for (const letter of ['A','B','C','D','E','F','G']) {
-            if (!yesLettersUpper.includes(letter) && wordUpper.includes(letter)) return false;
+        
+        // Check that the sequence appears in chronological order
+        let wordIndex = 0;
+        for (const targetLetter of sequence) {
+            // Find the next occurrence of this letter in the word
+            const foundIndex = wordUpper.indexOf(targetLetter, wordIndex);
+            if (foundIndex === -1) {
+                // Letter not found
+                return false;
+            }
+            // Move past this letter for the next search
+            wordIndex = foundIndex + 1;
         }
+        
         return true;
     });
 }
@@ -3525,19 +3546,31 @@ function setupFeatureListeners(feature, callback) {
             const submitBtn = document.getElementById('pianoForteSubmitButton');
             const skipBtn = document.getElementById('pianoForteSkipButton');
             const noneBtn = document.getElementById('pianoForteNoneButton');
-            let yesLetters = [];
+            const stringDisplay = document.getElementById('pianoForteString');
+            let letterSequence = []; // Array to store the chronological sequence
+
+            // Initialize display
+            if (stringDisplay) {
+                stringDisplay.textContent = '-';
+            }
 
             yesBtns.forEach(btn => {
                 btn.classList.remove('active');
                 btn.onclick = () => {
                     const letter = btn.dataset.letter;
-                    if (yesLetters.includes(letter)) {
-                        yesLetters = yesLetters.filter(l => l !== letter);
-                        btn.classList.remove('active');
-                    } else {
-                        yesLetters.push(letter);
-                        btn.classList.add('active');
+                    // Add letter to sequence (can be pressed multiple times)
+                    letterSequence.push(letter);
+                    
+                    // Update display
+                    if (stringDisplay) {
+                        stringDisplay.textContent = letterSequence.join('');
                     }
+                    
+                    // Visual feedback - briefly highlight the button
+                    btn.classList.add('active');
+                    setTimeout(() => {
+                        btn.classList.remove('active');
+                    }, 200);
                 };
                 // Touch event for mobile
                 btn.addEventListener('touchstart', function(e) {
@@ -3548,25 +3581,34 @@ function setupFeatureListeners(feature, callback) {
 
             if (submitBtn) {
                 submitBtn.onclick = () => {
-                    // Update workflow state with Piano Forte selections
-                    workflowState.pianoForteSelection = new Set(yesLetters);
+                    if (letterSequence.length === 0) {
+                        alert('Please select at least one letter');
+                        return;
+                    }
                     
-                    // Add selected letters to confirmed letters
-                    yesLetters.forEach(letter => {
+                    // Update workflow state with Piano Forte selections
+                    workflowState.pianoForteSelection = letterSequence;
+                    
+                    // Get unique pressed letters
+                    const pressedLetters = new Set(letterSequence);
+                    const unpressedLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].filter(
+                        letter => !pressedLetters.has(letter)
+                    );
+                    
+                    // Add pressed letters to confirmed letters
+                    pressedLetters.forEach(letter => {
                         workflowState.confirmedLetters.add(letter);
                     });
                     
-                    // Add unselected letters to excluded letters
-                    ['A', 'B', 'C', 'D', 'E', 'F', 'G'].forEach(letter => {
-                        if (!yesLetters.includes(letter)) {
-                            workflowState.excludedLetters.add(letter);
-                        }
+                    // Add unpressed letters to excluded letters
+                    unpressedLetters.forEach(letter => {
+                        workflowState.excludedLetters.add(letter);
                     });
                     
-                    console.log(`Piano Forte feature completed. Selected: ${yesLetters.join(', ')}`);
+                    console.log(`Piano Forte feature completed. Sequence: ${letterSequence.join('')}`);
                     logWorkflowState();
                     
-                    const filteredWords = filterWordsByPianoForte(currentFilteredWords, yesLetters);
+                    const filteredWords = filterWordsByPianoForte(currentFilteredWords, letterSequence);
                     callback(filteredWords);
                     const featureDiv = document.getElementById('pianoForteFeature');
                     featureDiv.classList.add('completed');
@@ -3581,7 +3623,7 @@ function setupFeatureListeners(feature, callback) {
             if (noneBtn) {
                 noneBtn.onclick = () => {
                     // Update workflow state - exclude all Piano Forte letters
-                    workflowState.pianoForteSelection = new Set([]);
+                    workflowState.pianoForteSelection = [];
                     
                     // Add all Piano Forte letters to excluded letters
                     ['A', 'B', 'C', 'D', 'E', 'F', 'G'].forEach(letter => {
