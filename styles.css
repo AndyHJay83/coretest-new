@@ -1727,6 +1727,27 @@ input:checked + .slider:before {
         flex-shrink: 0;
         width: 100%;
     }
+    
+    /* Reduce spacing for T9 and Alpha-Numeric features in PWA/mobile mode */
+    .t9-feature-button,
+    .alphanumeric-feature-button {
+        margin: 1px 0 !important;
+        padding: 6px 10px !important;
+    }
+    
+    /* Reduce gap between feature groups containing T9 or Alpha-Numeric buttons */
+    .feature-group:has(.t9-feature-button),
+    .feature-group:has(.alphanumeric-feature-button) {
+        margin: 0 !important;
+        gap: 2px !important;
+    }
+    
+    /* Reduce overall gap in availableFeatures when showing T9 or Alpha-Numeric features */
+    #availableFeatures:has(.t9-feature-button),
+    #availableFeatures:has(.alphanumeric-feature-button) {
+        gap: 4px !important;
+        padding: 8px !important;
+    }
 }
 
 @media (max-width: 768px) {
@@ -2268,6 +2289,14 @@ input:checked + .slider:before {
         padding: 8px 12px;
         margin: 2px;
         font-size: 14px;
+    }
+    
+    /* Ensure T9 and Alpha-Numeric mode buttons match mobile feature button sizing */
+    .t9-mode-button,
+    .alphanumeric-mode-button {
+        padding: 8px 12px !important;
+        margin: 2px !important;
+        font-size: 14px !important;
     }
     
     .selected-feature-item {
@@ -3139,6 +3168,11 @@ input:checked + .slider:before {
     color: white !important;
     border-color: #e68900 !important;
     font-weight: bold;
+    width: 100% !important;
+    padding: 10px 12px !important;
+    margin: 0 !important;
+    font-size: 14px !important;
+    box-sizing: border-box !important;
 }
 
 .t9-mode-button:hover {
@@ -3161,6 +3195,11 @@ input:checked + .slider:before {
     color: white !important;
     border-color: #1976D2 !important;
     font-weight: bold;
+    width: 100% !important;
+    padding: 10px 12px !important;
+    margin: 0 !important;
+    font-size: 14px !important;
+    box-sizing: border-box !important;
 }
 
 .alphanumeric-mode-button:hover {
@@ -3342,6 +3381,27 @@ input:checked + .slider:before {
         min-height: 0 !important;
         height: auto !important;
         padding: 10px !important;
+    }
+    
+    /* Reduce spacing for T9 and Alpha-Numeric features */
+    .t9-feature-button,
+    .alphanumeric-feature-button {
+        margin: 1px 0 !important;
+        padding: 6px 10px !important;
+    }
+    
+    /* Reduce gap between feature groups containing T9 or Alpha-Numeric buttons */
+    .feature-group:has(.t9-feature-button),
+    .feature-group:has(.alphanumeric-feature-button) {
+        margin: 0 !important;
+        gap: 2px !important;
+    }
+    
+    /* Reduce overall gap in availableFeatures when showing T9 or Alpha-Numeric features */
+    #availableFeatures:has(.t9-feature-button),
+    #availableFeatures:has(.alphanumeric-feature-button) {
+        gap: 4px !important;
+        padding: 8px !important;
     }
     #selectedFeaturesList {
         display: flex !important;
