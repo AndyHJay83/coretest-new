@@ -1747,18 +1747,19 @@ input:checked + .slider:before {
         padding: 6px 10px !important;
     }
     
-    /* Reduce gap between feature groups containing T9 or Alpha-Numeric buttons */
+    /* Match normal feature-group gap for T9 or Alpha-Numeric buttons */
     .feature-group:has(.t9-feature-button),
     .feature-group:has(.alphanumeric-feature-button) {
         margin: 0 !important;
-        gap: 2px !important;
+        gap: 5px !important;
     }
     
-    /* Reduce overall gap in availableFeatures when showing T9 or Alpha-Numeric features */
+    /* Match normal filter padding and align to top for T9 or Alpha-Numeric features */
     #availableFeatures:has(.t9-feature-button),
     #availableFeatures:has(.alphanumeric-feature-button) {
-        gap: 4px !important;
-        padding: 8px !important;
+        gap: 8px !important;
+        padding: 10px !important;
+        align-content: start !important;
     }
 }
 
@@ -3416,18 +3417,19 @@ input:checked + .slider:before {
         padding: 6px 10px !important;
     }
     
-    /* Reduce gap between feature groups containing T9 or Alpha-Numeric buttons */
+    /* Match normal feature-group gap for T9 or Alpha-Numeric buttons */
     .feature-group:has(.t9-feature-button),
     .feature-group:has(.alphanumeric-feature-button) {
         margin: 0 !important;
-        gap: 2px !important;
+        gap: 5px !important;
     }
     
-    /* Reduce overall gap in availableFeatures when showing T9 or Alpha-Numeric features */
+    /* Match normal filter padding and align to top for T9 or Alpha-Numeric features */
     #availableFeatures:has(.t9-feature-button),
     #availableFeatures:has(.alphanumeric-feature-button) {
-        gap: 4px !important;
-        padding: 8px !important;
+        gap: 8px !important;
+        padding: 10px !important;
+        align-content: start !important;
     }
     #selectedFeaturesList {
         display: flex !important;
