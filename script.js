@@ -76,6 +76,36 @@ function resetWorkflowState() {
     };
 }
 
+// T9 conversion mapping (standard phone keypad)
+const t9Mapping = {
+    'A': '2', 'B': '2', 'C': '2',
+    'D': '3', 'E': '3', 'F': '3',
+    'G': '4', 'H': '4', 'I': '4',
+    'J': '5', 'K': '5', 'L': '5',
+    'M': '6', 'N': '6', 'O': '6',
+    'P': '7', 'Q': '7', 'R': '7', 'S': '7',
+    'T': '8', 'U': '8', 'V': '8',
+    'W': '9', 'X': '9', 'Y': '9', 'Z': '9'
+};
+
+// Convert word to T9 string
+function wordToT9(word) {
+    return word.toUpperCase().split('').map(char => t9Mapping[char] || '').join('');
+}
+
+// Calculate and store T9 strings for wordlist (only when needed)
+let t9StringsMap = new Map();
+let t9StringsCalculated = false;
+
+function calculateT9Strings(words) {
+    if (!t9StringsCalculated) {
+        words.forEach(word => {
+            t9StringsMap.set(word, wordToT9(word));
+        });
+        t9StringsCalculated = true;
+    }
+}
+
 // Function to check if a letter is already known
 function isLetterKnown(letter) {
     return workflowState.confirmedLetters.has(letter) || workflowState.excludedLetters.has(letter);
@@ -1287,6 +1317,10 @@ async function executeWorkflow(steps) {
         // Reset used letters at the start of a new workflow
         usedLettersInWorkflow = [];
         
+        // Reset T9 state at the beginning of each workflow
+        t9StringsMap.clear();
+        t9StringsCalculated = false;
+        
         console.log('Starting workflow with steps:', steps);
         console.log('Using wordlist:', selectedWordlist);
         console.log('Current word count:', currentFilteredWords.length);
@@ -1546,6 +1580,36 @@ async function executeWorkflow(steps) {
                     break;
                 case 'pianoPiano':
                     featureElement = createPianoPianoFeature();
+                    break;
+                case 't9Length':
+                    featureElement = createT9LengthFeature();
+                    break;
+                case 't9LastTwo':
+                    featureElement = createT9LastTwoFeature();
+                    break;
+                case 't9OneLie':
+                    featureElement = createT9OneLieFeature();
+                    break;
+                case 't9Repeat':
+                    featureElement = createT9RepeatFeature();
+                    break;
+                case 't9Higher':
+                    featureElement = createT9HigherFeature();
+                    break;
+                case 't9OneTruth':
+                    featureElement = createT9OneTruthFeature();
+                    break;
+                case 'alphaNumeric':
+                    featureElement = createAlphaNumericFeature();
+                    break;
+                case 'lettersAbove':
+                    featureElement = createLettersAboveFeature();
+                    break;
+                case 'dictionaryAlpha':
+                    featureElement = createDictionaryAlphaFeature();
+                    break;
+                case 'smlLength':
+                    featureElement = createSmlLengthFeature();
                     break;
                 default:
                     featureElement = null;
@@ -2111,6 +2175,216 @@ function createPianoPianoFeature() {
     return div;
 }
 
+// --- T9 LENGTH Feature Logic ---
+function createT9LengthFeature() {
+    const div = document.createElement('div');
+    div.id = 't9LengthFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">LENGTH</h2>
+        <div class="length-input">
+            <input type="text" id="t9LengthInput" placeholder="Enter length (3+)" inputmode="numeric" pattern="[0-9]*" autocomplete="off" min="3">
+            <button id="t9LengthButton">SUBMIT</button>
+            <button id="t9LengthSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- T9 LAST TWO Feature Logic ---
+function createT9LastTwoFeature() {
+    const div = document.createElement('div');
+    div.id = 't9LastTwoFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">LAST TWO</h2>
+        <div class="t9-last-two-row" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+            <button class="t9-last-two-btn" data-digit="2">2</button>
+            <button class="t9-last-two-btn" data-digit="3">3</button>
+            <button class="t9-last-two-btn" data-digit="4">4</button>
+            <button class="t9-last-two-btn" data-digit="5">5</button>
+            <button class="t9-last-two-btn" data-digit="6">6</button>
+            <button class="t9-last-two-btn" data-digit="7">7</button>
+            <button class="t9-last-two-btn" data-digit="8">8</button>
+            <button class="t9-last-two-btn" data-digit="9">9</button>
+        </div>
+        <div id="t9LastTwoDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+            <span id="t9LastTwoString">-</span>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+            <button id="t9LastTwoSubmitButton">SUBMIT</button>
+            <button id="t9LastTwoResetButton" class="reset-button">RESET</button>
+            <button id="t9LastTwoSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- T9 1 LIE (4) Feature Logic ---
+function createT9OneLieFeature() {
+    const div = document.createElement('div');
+    div.id = 't9OneLieFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">1 LIE (L4)</h2>
+        <div class="t9-one-lie-row" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+            <button class="t9-one-lie-btn" data-digit="2">2</button>
+            <button class="t9-one-lie-btn" data-digit="3">3</button>
+            <button class="t9-one-lie-btn" data-digit="4">4</button>
+            <button class="t9-one-lie-btn" data-digit="5">5</button>
+            <button class="t9-one-lie-btn" data-digit="6">6</button>
+            <button class="t9-one-lie-btn" data-digit="7">7</button>
+            <button class="t9-one-lie-btn" data-digit="8">8</button>
+            <button class="t9-one-lie-btn" data-digit="9">9</button>
+        </div>
+        <div id="t9OneLieDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+            <span id="t9OneLieString">-</span>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+            <button id="t9OneLieSubmitButton">SUBMIT</button>
+            <button id="t9OneLieResetButton" class="reset-button">RESET</button>
+            <button id="t9OneLieSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- T9 REPEAT Feature Logic ---
+function createT9RepeatFeature() {
+    const div = document.createElement('div');
+    div.id = 't9RepeatFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">Repeat?</h2>
+        <p style="text-align: center; margin: 20px 0; font-size: 18px; font-weight: bold;">Repeated Digits?</p>
+        <div class="button-container">
+            <button id="t9RepeatYesBtn" class="yes-btn">YES</button>
+            <button id="t9RepeatNoBtn" class="no-btn">NO</button>
+            <button id="t9RepeatSkipBtn" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- T9 HIGHER Feature Logic ---
+function createT9HigherFeature() {
+    const div = document.createElement('div');
+    div.id = 't9HigherFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">Higher?</h2>
+        <p style="text-align: center; margin: 20px 0; font-size: 18px; font-weight: bold;">Second digit higher than first?</p>
+        <div class="button-container">
+            <button id="t9HigherYesBtn" class="yes-btn">YES</button>
+            <button id="t9HigherNoBtn" class="no-btn">NO</button>
+            <button id="t9HigherSameBtn" class="yes-btn" style="background-color: #ff9800;">SAME</button>
+            <button id="t9HigherSkipBtn" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- T9 1 TRUTH (F4) Feature Logic ---
+function createT9OneTruthFeature() {
+    const div = document.createElement('div');
+    div.id = 't9OneTruthFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">1 TRUTH (F4)</h2>
+        <div class="t9-one-truth-row" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+            <button class="t9-one-truth-btn" data-digit="2">2</button>
+            <button class="t9-one-truth-btn" data-digit="3">3</button>
+            <button class="t9-one-truth-btn" data-digit="4">4</button>
+            <button class="t9-one-truth-btn" data-digit="5">5</button>
+            <button class="t9-one-truth-btn" data-digit="6">6</button>
+            <button class="t9-one-truth-btn" data-digit="7">7</button>
+            <button class="t9-one-truth-btn" data-digit="8">8</button>
+            <button class="t9-one-truth-btn" data-digit="9">9</button>
+        </div>
+        <div id="t9OneTruthDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+            <span id="t9OneTruthString">-</span>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+            <button id="t9OneTruthSubmitButton">SUBMIT</button>
+            <button id="t9OneTruthResetButton" class="reset-button">RESET</button>
+            <button id="t9OneTruthSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- AlphaNumeric Feature Logic ---
+function createAlphaNumericFeature() {
+    const div = document.createElement('div');
+    div.id = 'alphaNumericFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">AlphaNumeric</h2>
+        <div class="button-container">
+            <button id="alphaNumericYesBtn" class="yes-btn">YES</button>
+            <button id="alphaNumericNoBtn" class="no-btn">NO</button>
+            <button id="alphaNumericSkipBtn" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- Letters Above Feature Logic ---
+function createLettersAboveFeature() {
+    const div = document.createElement('div');
+    div.id = 'lettersAboveFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">Letters Above</h2>
+        <div class="length-input">
+            <input type="text" id="lettersAboveInput" placeholder="Enter number (0-26)" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+            <button id="lettersAboveButton">SUBMIT</button>
+            <button id="lettersAboveSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- Dictionary (Alpha) Feature Logic ---
+function createDictionaryAlphaFeature() {
+    const div = document.createElement('div');
+    div.id = 'dictionaryAlphaFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">Dictionary (Alpha)</h2>
+        <div class="section-buttons">
+            <button class="section-btn" data-section="begin">Beginning</button>
+            <button class="section-btn" data-section="mid">Middle</button>
+            <button class="section-btn" data-section="end">End</button>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+            <button id="dictionaryAlphaSubmitButton">SUBMIT</button>
+            <button id="dictionaryAlphaSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- S/M/L (Length) Feature Logic ---
+function createSmlLengthFeature() {
+    const div = document.createElement('div');
+    div.id = 'smlLengthFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">S/M/L (Length)</h2>
+        <div class="section-buttons">
+            <button class="section-btn" data-section="small">Small</button>
+            <button class="section-btn" data-section="medium">Medium</button>
+            <button class="section-btn" data-section="long">Long</button>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+            <button id="smlLengthSubmitButton">SUBMIT</button>
+            <button id="smlLengthSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
 // --- FIND-EEE Feature Logic ---
 function createFindEeeFeature() {
     const div = document.createElement('div');
@@ -2308,6 +2582,278 @@ function filterWordsByPianoPiano(words, count) {
         
         // Check if the count matches exactly
         return agLetters.length === count;
+    });
+}
+
+// Filtering logic for T9 LENGTH feature
+function filterWordsByT9Length(words, length) {
+    // Calculate T9 strings if not already done
+    calculateT9Strings(words);
+    
+    return words.filter(word => {
+        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        return t9String.length === length;
+    });
+}
+
+// Filtering logic for T9 LAST TWO feature
+function filterWordsByT9LastTwo(words, lastTwo) {
+    // Calculate T9 strings if not already done
+    calculateT9Strings(words);
+    
+    return words.filter(word => {
+        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        // Check if T9 string ends with the last two digits
+        return t9String.length >= 2 && t9String.slice(-2) === lastTwo;
+    });
+}
+
+// Filtering logic for T9 REPEAT feature
+function filterWordsByT9Repeat(words, hasRepeat) {
+    // Calculate T9 strings if not already done
+    calculateT9Strings(words);
+    
+    return words.filter(word => {
+        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        
+        // Check for consecutive repeated digits
+        for (let i = 0; i < t9String.length - 1; i++) {
+            if (t9String[i] === t9String[i + 1]) {
+                return hasRepeat; // Found a repeat
+            }
+        }
+        
+        return !hasRepeat; // No repeats found
+    });
+}
+
+// Filtering logic for T9 HIGHER feature
+function filterWordsByT9Higher(words, option) {
+    // Calculate T9 strings if not already done
+    calculateT9Strings(words);
+    
+    return words.filter(word => {
+        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        
+        // Must have at least 2 digits
+        if (t9String.length < 2) return false;
+        
+        const firstDigit = parseInt(t9String[0]);
+        const secondDigit = parseInt(t9String[1]);
+        
+        if (option === 'yes') {
+            return secondDigit > firstDigit;
+        } else if (option === 'no') {
+            return secondDigit < firstDigit;
+        } else if (option === 'same') {
+            return secondDigit === firstDigit;
+        }
+        
+        return false;
+    });
+}
+
+// Filtering logic for T9 1 TRUTH (F4) feature
+function filterWordsByT9OneTruth(words, fourDigits) {
+    // Calculate T9 strings if not already done
+    calculateT9Strings(words);
+    
+    // Extract the 4 digits
+    const digits = fourDigits.split('');
+    
+    return words.filter(word => {
+        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        
+        // Must have at least 4 digits
+        if (t9String.length < 4) return false;
+        
+        const firstFour = t9String.slice(0, 4);
+        const firstFourDigits = firstFour.split('');
+        
+        // Check all 4 scenarios where exactly one digit is correct
+        // Scenario 1: First digit correct, others wrong
+        if (firstFourDigits[0] === digits[0] && 
+            firstFourDigits[1] !== digits[1] && 
+            firstFourDigits[2] !== digits[2] && 
+            firstFourDigits[3] !== digits[3]) {
+            return true;
+        }
+        
+        // Scenario 2: Second digit correct, others wrong
+        if (firstFourDigits[0] !== digits[0] && 
+            firstFourDigits[1] === digits[1] && 
+            firstFourDigits[2] !== digits[2] && 
+            firstFourDigits[3] !== digits[3]) {
+            return true;
+        }
+        
+        // Scenario 3: Third digit correct, others wrong
+        if (firstFourDigits[0] !== digits[0] && 
+            firstFourDigits[1] !== digits[1] && 
+            firstFourDigits[2] === digits[2] && 
+            firstFourDigits[3] !== digits[3]) {
+            return true;
+        }
+        
+        // Scenario 4: Fourth digit correct, others wrong
+        if (firstFourDigits[0] !== digits[0] && 
+            firstFourDigits[1] !== digits[1] && 
+            firstFourDigits[2] !== digits[2] && 
+            firstFourDigits[3] === digits[3]) {
+            return true;
+        }
+        
+        return false;
+    });
+}
+
+// Filtering logic for T9 1 LIE (4) feature
+function filterWordsByT9OneLie(words, fourDigits) {
+    // Calculate T9 strings if not already done
+    calculateT9Strings(words);
+    
+    // Extract the 4 digits
+    const digits = fourDigits.split('');
+    
+    return words.filter(word => {
+        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        
+        // Must have at least 4 digits
+        if (t9String.length < 4) return false;
+        
+        const lastFour = t9String.slice(-4);
+        const lastFourDigits = lastFour.split('');
+        
+        // Check all 4 scenarios where exactly one digit is wrong
+        // Scenario 1: First digit wrong, others correct
+        if (lastFourDigits[1] === digits[1] && 
+            lastFourDigits[2] === digits[2] && 
+            lastFourDigits[3] === digits[3] && 
+            lastFourDigits[0] !== digits[0]) {
+            return true;
+        }
+        
+        // Scenario 2: Second digit wrong, others correct
+        if (lastFourDigits[0] === digits[0] && 
+            lastFourDigits[2] === digits[2] && 
+            lastFourDigits[3] === digits[3] && 
+            lastFourDigits[1] !== digits[1]) {
+            return true;
+        }
+        
+        // Scenario 3: Third digit wrong, others correct
+        if (lastFourDigits[0] === digits[0] && 
+            lastFourDigits[1] === digits[1] && 
+            lastFourDigits[3] === digits[3] && 
+            lastFourDigits[2] !== digits[2]) {
+            return true;
+        }
+        
+        // Scenario 4: Fourth digit wrong, others correct
+        if (lastFourDigits[0] === digits[0] && 
+            lastFourDigits[1] === digits[1] && 
+            lastFourDigits[2] === digits[2] && 
+            lastFourDigits[3] !== digits[3]) {
+            return true;
+        }
+        
+        return false;
+    });
+}
+
+// --- AlphaNumeric Filter Logic ---
+function filterWordsByAlphaNumeric(words, keepRule) {
+    return words.filter(word => {
+        const wordLength = word.length;
+        const upperWord = word.toUpperCase();
+        
+        // Check if word follows the rule: length matches letter position AND letter is in word
+        let followsRule = false;
+        for (let i = 1; i <= 26 && i <= wordLength; i++) {
+            const letter = String.fromCharCode(64 + i); // A=65, B=66, etc.
+            if (wordLength === i && upperWord.includes(letter)) {
+                followsRule = true;
+                break;
+            }
+        }
+        
+        // YES: keep words that follow rule, NO: keep words that don't follow rule
+        return keepRule ? followsRule : !followsRule;
+    });
+}
+
+// --- Letters Above Filter Logic ---
+function filterWordsByLettersAbove(words, count) {
+    const numCount = parseInt(count, 10);
+    if (isNaN(numCount) || numCount < 0 || numCount > 26) {
+        return words; // Invalid input, return all words
+    }
+    
+    return words.filter(word => {
+        const upperWord = word.toUpperCase();
+        const lettersInWord = new Set(upperWord.split('').filter(c => c >= 'A' && c <= 'Z'));
+        
+        // Check if there exists a letter L in the word such that
+        // exactly 'count' letters before L (in alphabet) are also in the word
+        for (const letter of lettersInWord) {
+            const letterPos = letter.charCodeAt(0) - 64; // A=1, B=2, etc.
+            
+            // Count how many letters before this letter are in the word
+            let lettersBeforeCount = 0;
+            for (let i = 1; i < letterPos; i++) {
+                const beforeLetter = String.fromCharCode(64 + i);
+                if (lettersInWord.has(beforeLetter)) {
+                    lettersBeforeCount++;
+                }
+            }
+            
+            // If exactly 'count' letters before are in the word, this word matches
+            if (lettersBeforeCount === numCount) {
+                return true;
+            }
+        }
+        
+        return false;
+    });
+}
+
+// --- Dictionary (Alpha) Filter Logic ---
+function filterWordsByDictionaryAlpha(words, section) {
+    return words.filter(word => {
+        if (!word || word.length === 0) return false;
+        const firstLetter = word[0].toUpperCase();
+        const letterCode = firstLetter.charCodeAt(0);
+        
+        // A=65, M=77, I=73, T=84, N=78, Z=90
+        if (section === 'begin') {
+            // Beginning: A-M
+            return letterCode >= 65 && letterCode <= 77;
+        } else if (section === 'mid') {
+            // Middle: I-T
+            return letterCode >= 73 && letterCode <= 84;
+        } else if (section === 'end') {
+            // End: N-Z
+            return letterCode >= 78 && letterCode <= 90;
+        }
+        return false;
+    });
+}
+
+// --- S/M/L (Length) Filter Logic ---
+function filterWordsBySmlLength(words, category) {
+    return words.filter(word => {
+        const length = word.length;
+        if (category === 'small') {
+            // Small: 1-6 characters
+            return length >= 1 && length <= 6;
+        } else if (category === 'medium') {
+            // Medium: 5-9 characters
+            return length >= 5 && length <= 9;
+        } else if (category === 'long') {
+            // Long: 7+ characters
+            return length >= 7;
+        }
+        return false;
     });
 }
 
@@ -3812,6 +4358,661 @@ function setupFeatureListeners(feature, callback) {
             }
             break;
         }
+        case 't9Length': {
+            const t9LengthButton = document.getElementById('t9LengthButton');
+            const t9LengthInput = document.getElementById('t9LengthInput');
+            const t9LengthSkipButton = document.getElementById('t9LengthSkipButton');
+            
+            if (t9LengthButton && t9LengthInput) {
+                t9LengthButton.onclick = () => {
+                    const lengthValue = parseInt(t9LengthInput.value.trim());
+                    if (isNaN(lengthValue) || lengthValue < 3) {
+                        alert('Please enter a valid length (3 or greater)');
+                        return;
+                    }
+                    
+                    // Calculate T9 strings if not already done
+                    calculateT9Strings(currentFilteredWords);
+                    
+                    const filteredWords = filterWordsByT9Length(currentFilteredWords, lengthValue);
+                    callback(filteredWords);
+                    document.getElementById('t9LengthFeature').classList.add('completed');
+                    document.getElementById('t9LengthFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9LengthButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9LengthButton.onclick();
+                }, { passive: false });
+                
+                // Enter key support
+                t9LengthInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        t9LengthButton.onclick();
+                    }
+                });
+            }
+            
+            if (t9LengthSkipButton) {
+                t9LengthSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('t9LengthFeature').classList.add('completed');
+                    document.getElementById('t9LengthFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9LengthSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9LengthSkipButton.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 't9LastTwo': {
+            let selectedDigits = [];
+            const t9LastTwoButtons = document.querySelectorAll('.t9-last-two-btn');
+            const t9LastTwoDisplay = document.getElementById('t9LastTwoString');
+            const t9LastTwoSubmitButton = document.getElementById('t9LastTwoSubmitButton');
+            const t9LastTwoResetButton = document.getElementById('t9LastTwoResetButton');
+            const t9LastTwoSkipButton = document.getElementById('t9LastTwoSkipButton');
+            
+            // Initialize display
+            if (t9LastTwoDisplay) {
+                t9LastTwoDisplay.textContent = '-';
+            }
+            
+            // Number button handlers
+            t9LastTwoButtons.forEach(btn => {
+                btn.onclick = () => {
+                    if (selectedDigits.length < 2) {
+                        const digit = btn.dataset.digit;
+                        selectedDigits.push(digit);
+                        if (t9LastTwoDisplay) {
+                            t9LastTwoDisplay.textContent = selectedDigits.join('');
+                        }
+                        btn.classList.add('active');
+                    }
+                };
+                
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (selectedDigits.length < 2) {
+                        const digit = btn.dataset.digit;
+                        selectedDigits.push(digit);
+                        if (t9LastTwoDisplay) {
+                            t9LastTwoDisplay.textContent = selectedDigits.join('');
+                        }
+                        btn.classList.add('active');
+                    }
+                }, { passive: false });
+            });
+            
+            // Submit button
+            if (t9LastTwoSubmitButton) {
+                t9LastTwoSubmitButton.onclick = () => {
+                    if (selectedDigits.length !== 2) {
+                        alert('Please select exactly 2 digits');
+                        return;
+                    }
+                    
+                    const lastTwo = selectedDigits.join('');
+                    
+                    // Calculate T9 strings if not already done
+                    calculateT9Strings(currentFilteredWords);
+                    
+                    const filteredWords = filterWordsByT9LastTwo(currentFilteredWords, lastTwo);
+                    callback(filteredWords);
+                    document.getElementById('t9LastTwoFeature').classList.add('completed');
+                    document.getElementById('t9LastTwoFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9LastTwoSubmitButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9LastTwoSubmitButton.onclick();
+                }, { passive: false });
+            }
+            
+            // Reset button
+            if (t9LastTwoResetButton) {
+                t9LastTwoResetButton.onclick = () => {
+                    selectedDigits = [];
+                    if (t9LastTwoDisplay) {
+                        t9LastTwoDisplay.textContent = '-';
+                    }
+                    t9LastTwoButtons.forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                };
+                
+                t9LastTwoResetButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9LastTwoResetButton.onclick();
+                }, { passive: false });
+            }
+            
+            // Skip button
+            if (t9LastTwoSkipButton) {
+                t9LastTwoSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('t9LastTwoFeature').classList.add('completed');
+                    document.getElementById('t9LastTwoFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9LastTwoSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9LastTwoSkipButton.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 't9OneLie': {
+            let selectedDigits = [];
+            const t9OneLieButtons = document.querySelectorAll('.t9-one-lie-btn');
+            const t9OneLieDisplay = document.getElementById('t9OneLieString');
+            const t9OneLieSubmitButton = document.getElementById('t9OneLieSubmitButton');
+            const t9OneLieResetButton = document.getElementById('t9OneLieResetButton');
+            const t9OneLieSkipButton = document.getElementById('t9OneLieSkipButton');
+            
+            // Initialize display
+            if (t9OneLieDisplay) {
+                t9OneLieDisplay.textContent = '-';
+            }
+            
+            // Number button handlers
+            t9OneLieButtons.forEach(btn => {
+                btn.onclick = () => {
+                    if (selectedDigits.length < 4) {
+                        const digit = btn.dataset.digit;
+                        selectedDigits.push(digit);
+                        if (t9OneLieDisplay) {
+                            t9OneLieDisplay.textContent = selectedDigits.join('');
+                        }
+                        btn.classList.add('active');
+                    }
+                };
+                
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (selectedDigits.length < 4) {
+                        const digit = btn.dataset.digit;
+                        selectedDigits.push(digit);
+                        if (t9OneLieDisplay) {
+                            t9OneLieDisplay.textContent = selectedDigits.join('');
+                        }
+                        btn.classList.add('active');
+                    }
+                }, { passive: false });
+            });
+            
+            // Submit button
+            if (t9OneLieSubmitButton) {
+                t9OneLieSubmitButton.onclick = () => {
+                    if (selectedDigits.length !== 4) {
+                        alert('Please select exactly 4 digits');
+                        return;
+                    }
+                    
+                    const fourDigits = selectedDigits.join('');
+                    
+                    // Calculate T9 strings if not already done
+                    calculateT9Strings(currentFilteredWords);
+                    
+                    const filteredWords = filterWordsByT9OneLie(currentFilteredWords, fourDigits);
+                    callback(filteredWords);
+                    document.getElementById('t9OneLieFeature').classList.add('completed');
+                    document.getElementById('t9OneLieFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9OneLieSubmitButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9OneLieSubmitButton.onclick();
+                }, { passive: false });
+            }
+            
+            // Reset button
+            if (t9OneLieResetButton) {
+                t9OneLieResetButton.onclick = () => {
+                    selectedDigits = [];
+                    if (t9OneLieDisplay) {
+                        t9OneLieDisplay.textContent = '-';
+                    }
+                    t9OneLieButtons.forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                };
+                
+                t9OneLieResetButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9OneLieResetButton.onclick();
+                }, { passive: false });
+            }
+            
+            // Skip button
+            if (t9OneLieSkipButton) {
+                t9OneLieSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('t9OneLieFeature').classList.add('completed');
+                    document.getElementById('t9OneLieFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9OneLieSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9OneLieSkipButton.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 't9Repeat': {
+            const t9RepeatYesBtn = document.getElementById('t9RepeatYesBtn');
+            const t9RepeatNoBtn = document.getElementById('t9RepeatNoBtn');
+            const t9RepeatSkipBtn = document.getElementById('t9RepeatSkipBtn');
+            
+            if (t9RepeatYesBtn) {
+                t9RepeatYesBtn.onclick = () => {
+                    calculateT9Strings(currentFilteredWords);
+                    const filteredWords = filterWordsByT9Repeat(currentFilteredWords, true);
+                    callback(filteredWords);
+                    document.getElementById('t9RepeatFeature').classList.add('completed');
+                    document.getElementById('t9RepeatFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9RepeatYesBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9RepeatYesBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (t9RepeatNoBtn) {
+                t9RepeatNoBtn.onclick = () => {
+                    calculateT9Strings(currentFilteredWords);
+                    const filteredWords = filterWordsByT9Repeat(currentFilteredWords, false);
+                    callback(filteredWords);
+                    document.getElementById('t9RepeatFeature').classList.add('completed');
+                    document.getElementById('t9RepeatFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9RepeatNoBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9RepeatNoBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (t9RepeatSkipBtn) {
+                t9RepeatSkipBtn.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('t9RepeatFeature').classList.add('completed');
+                    document.getElementById('t9RepeatFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9RepeatSkipBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9RepeatSkipBtn.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 't9Higher': {
+            const t9HigherYesBtn = document.getElementById('t9HigherYesBtn');
+            const t9HigherNoBtn = document.getElementById('t9HigherNoBtn');
+            const t9HigherSameBtn = document.getElementById('t9HigherSameBtn');
+            const t9HigherSkipBtn = document.getElementById('t9HigherSkipBtn');
+            
+            if (t9HigherYesBtn) {
+                t9HigherYesBtn.onclick = () => {
+                    calculateT9Strings(currentFilteredWords);
+                    const filteredWords = filterWordsByT9Higher(currentFilteredWords, 'yes');
+                    callback(filteredWords);
+                    document.getElementById('t9HigherFeature').classList.add('completed');
+                    document.getElementById('t9HigherFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9HigherYesBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9HigherYesBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (t9HigherNoBtn) {
+                t9HigherNoBtn.onclick = () => {
+                    calculateT9Strings(currentFilteredWords);
+                    const filteredWords = filterWordsByT9Higher(currentFilteredWords, 'no');
+                    callback(filteredWords);
+                    document.getElementById('t9HigherFeature').classList.add('completed');
+                    document.getElementById('t9HigherFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9HigherNoBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9HigherNoBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (t9HigherSameBtn) {
+                t9HigherSameBtn.onclick = () => {
+                    calculateT9Strings(currentFilteredWords);
+                    const filteredWords = filterWordsByT9Higher(currentFilteredWords, 'same');
+                    callback(filteredWords);
+                    document.getElementById('t9HigherFeature').classList.add('completed');
+                    document.getElementById('t9HigherFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9HigherSameBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9HigherSameBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (t9HigherSkipBtn) {
+                t9HigherSkipBtn.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('t9HigherFeature').classList.add('completed');
+                    document.getElementById('t9HigherFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9HigherSkipBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9HigherSkipBtn.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 't9OneTruth': {
+            let selectedDigits = [];
+            const t9OneTruthButtons = document.querySelectorAll('.t9-one-truth-btn');
+            const t9OneTruthDisplay = document.getElementById('t9OneTruthString');
+            const t9OneTruthSubmitButton = document.getElementById('t9OneTruthSubmitButton');
+            const t9OneTruthResetButton = document.getElementById('t9OneTruthResetButton');
+            const t9OneTruthSkipButton = document.getElementById('t9OneTruthSkipButton');
+            
+            // Initialize display
+            if (t9OneTruthDisplay) {
+                t9OneTruthDisplay.textContent = '-';
+            }
+            
+            // Number button handlers
+            t9OneTruthButtons.forEach(btn => {
+                btn.onclick = () => {
+                    if (selectedDigits.length < 4) {
+                        const digit = btn.dataset.digit;
+                        selectedDigits.push(digit);
+                        if (t9OneTruthDisplay) {
+                            t9OneTruthDisplay.textContent = selectedDigits.join('');
+                        }
+                        btn.classList.add('active');
+                    }
+                };
+                
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (selectedDigits.length < 4) {
+                        const digit = btn.dataset.digit;
+                        selectedDigits.push(digit);
+                        if (t9OneTruthDisplay) {
+                            t9OneTruthDisplay.textContent = selectedDigits.join('');
+                        }
+                        btn.classList.add('active');
+                    }
+                }, { passive: false });
+            });
+            
+            // Submit button
+            if (t9OneTruthSubmitButton) {
+                t9OneTruthSubmitButton.onclick = () => {
+                    if (selectedDigits.length !== 4) {
+                        alert('Please select exactly 4 digits');
+                        return;
+                    }
+                    
+                    const fourDigits = selectedDigits.join('');
+                    
+                    // Calculate T9 strings if not already done
+                    calculateT9Strings(currentFilteredWords);
+                    
+                    const filteredWords = filterWordsByT9OneTruth(currentFilteredWords, fourDigits);
+                    callback(filteredWords);
+                    document.getElementById('t9OneTruthFeature').classList.add('completed');
+                    document.getElementById('t9OneTruthFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9OneTruthSubmitButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9OneTruthSubmitButton.onclick();
+                }, { passive: false });
+            }
+            
+            // Reset button
+            if (t9OneTruthResetButton) {
+                t9OneTruthResetButton.onclick = () => {
+                    selectedDigits = [];
+                    if (t9OneTruthDisplay) {
+                        t9OneTruthDisplay.textContent = '-';
+                    }
+                    t9OneTruthButtons.forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                };
+                
+                t9OneTruthResetButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9OneTruthResetButton.onclick();
+                }, { passive: false });
+            }
+            
+            // Skip button
+            if (t9OneTruthSkipButton) {
+                t9OneTruthSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('t9OneTruthFeature').classList.add('completed');
+                    document.getElementById('t9OneTruthFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9OneTruthSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9OneTruthSkipButton.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 'alphaNumeric': {
+            const alphaNumericYesBtn = document.getElementById('alphaNumericYesBtn');
+            const alphaNumericNoBtn = document.getElementById('alphaNumericNoBtn');
+            const alphaNumericSkipBtn = document.getElementById('alphaNumericSkipBtn');
+            
+            if (alphaNumericYesBtn) {
+                alphaNumericYesBtn.onclick = () => {
+                    const filteredWords = filterWordsByAlphaNumeric(currentFilteredWords, true);
+                    callback(filteredWords);
+                    document.getElementById('alphaNumericFeature').classList.add('completed');
+                    document.getElementById('alphaNumericFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                alphaNumericYesBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaNumericYesBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (alphaNumericNoBtn) {
+                alphaNumericNoBtn.onclick = () => {
+                    const filteredWords = filterWordsByAlphaNumeric(currentFilteredWords, false);
+                    callback(filteredWords);
+                    document.getElementById('alphaNumericFeature').classList.add('completed');
+                    document.getElementById('alphaNumericFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                alphaNumericNoBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaNumericNoBtn.onclick();
+                }, { passive: false });
+            }
+            
+            if (alphaNumericSkipBtn) {
+                alphaNumericSkipBtn.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('alphaNumericFeature').classList.add('completed');
+                    document.getElementById('alphaNumericFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                alphaNumericSkipBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaNumericSkipBtn.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 'lettersAbove': {
+            const lettersAboveButton = document.getElementById('lettersAboveButton');
+            const lettersAboveInput = document.getElementById('lettersAboveInput');
+            const lettersAboveSkipButton = document.getElementById('lettersAboveSkipButton');
+            
+            if (lettersAboveButton && lettersAboveInput) {
+                lettersAboveButton.onclick = () => {
+                    const count = lettersAboveInput.value.trim();
+                    if (count === '' || isNaN(parseInt(count, 10))) {
+                        alert('Please enter a valid number (0-26)');
+                        return;
+                    }
+                    
+                    const numCount = parseInt(count, 10);
+                    if (numCount < 0 || numCount > 26) {
+                        alert('Please enter a number between 0 and 26');
+                        return;
+                    }
+                    
+                    const filteredWords = filterWordsByLettersAbove(currentFilteredWords, count);
+                    callback(filteredWords);
+                    document.getElementById('lettersAboveFeature').classList.add('completed');
+                    document.getElementById('lettersAboveFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                lettersAboveButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    lettersAboveButton.onclick();
+                }, { passive: false });
+            }
+            
+            if (lettersAboveSkipButton) {
+                lettersAboveSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('lettersAboveFeature').classList.add('completed');
+                    document.getElementById('lettersAboveFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                lettersAboveSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    lettersAboveSkipButton.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 'dictionaryAlpha': {
+            let selectedSection = null;
+            const sectionBtns = document.querySelectorAll('#dictionaryAlphaFeature .section-btn');
+            const dictionaryAlphaSubmitButton = document.getElementById('dictionaryAlphaSubmitButton');
+            const dictionaryAlphaSkipButton = document.getElementById('dictionaryAlphaSkipButton');
+            
+            // Section button handlers
+            sectionBtns.forEach(btn => {
+                btn.onclick = () => {
+                    sectionBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    selectedSection = btn.dataset.section;
+                };
+                
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    btn.onclick();
+                }, { passive: false });
+            });
+            
+            // Submit button
+            if (dictionaryAlphaSubmitButton) {
+                dictionaryAlphaSubmitButton.onclick = () => {
+                    if (!selectedSection) {
+                        alert('Please select a section (Beginning, Middle, or End)');
+                        return;
+                    }
+                    const filteredWords = filterWordsByDictionaryAlpha(currentFilteredWords, selectedSection);
+                    callback(filteredWords);
+                    document.getElementById('dictionaryAlphaFeature').classList.add('completed');
+                    document.getElementById('dictionaryAlphaFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                dictionaryAlphaSubmitButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    dictionaryAlphaSubmitButton.onclick();
+                }, { passive: false });
+            }
+            
+            // Skip button
+            if (dictionaryAlphaSkipButton) {
+                dictionaryAlphaSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('dictionaryAlphaFeature').classList.add('completed');
+                    document.getElementById('dictionaryAlphaFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                dictionaryAlphaSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    dictionaryAlphaSkipButton.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        
+        case 'smlLength': {
+            let selectedCategory = null;
+            const categoryBtns = document.querySelectorAll('#smlLengthFeature .section-btn');
+            const smlLengthSubmitButton = document.getElementById('smlLengthSubmitButton');
+            const smlLengthSkipButton = document.getElementById('smlLengthSkipButton');
+            
+            // Category button handlers
+            categoryBtns.forEach(btn => {
+                btn.onclick = () => {
+                    categoryBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    selectedCategory = btn.dataset.section;
+                };
+                
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    btn.onclick();
+                }, { passive: false });
+            });
+            
+            // Submit button
+            if (smlLengthSubmitButton) {
+                smlLengthSubmitButton.onclick = () => {
+                    if (!selectedCategory) {
+                        alert('Please select a category (Small, Medium, or Long)');
+                        return;
+                    }
+                    const filteredWords = filterWordsBySmlLength(currentFilteredWords, selectedCategory);
+                    callback(filteredWords);
+                    document.getElementById('smlLengthFeature').classList.add('completed');
+                    document.getElementById('smlLengthFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                smlLengthSubmitButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    smlLengthSubmitButton.onclick();
+                }, { passive: false });
+            }
+            
+            // Skip button
+            if (smlLengthSkipButton) {
+                smlLengthSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('smlLengthFeature').classList.add('completed');
+                    document.getElementById('smlLengthFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                smlLengthSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    smlLengthSkipButton.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
         case 'findEee': {
             const letterBtns = Array.from(document.querySelectorAll('.find-eee-btn'));
             const positionBtns = Array.from(document.querySelectorAll('.find-eee-position-btn'));
@@ -5275,6 +6476,14 @@ function editWorkflow(workflow) {
     workflow.steps.forEach(step => {
         const featureItem = document.createElement('div');
         featureItem.className = 'selected-feature-item';
+        // Add T9 class if it's a T9 feature
+        if (step.feature.startsWith('t9')) {
+            featureItem.classList.add('t9-selected-feature');
+        }
+        // Add Alpha-Numeric class if it's an Alpha-Numeric feature
+        if (step.feature === 'alphaNumeric' || step.feature === 'lettersAbove') {
+            featureItem.classList.add('alphanumeric-selected-feature');
+        }
         featureItem.setAttribute('data-feature', step.feature);
         featureItem.draggable = true;
         
@@ -5403,6 +6612,14 @@ function addFeatureToSelected(featureType) {
     
     const selectedFeature = document.createElement('div');
     selectedFeature.className = 'selected-feature-item';
+    // Add T9 class if it's a T9 feature
+    if (featureType.startsWith('t9')) {
+        selectedFeature.classList.add('t9-selected-feature');
+    }
+    // Add Alpha-Numeric class if it's an Alpha-Numeric feature
+    if (featureType === 'alphaNumeric' || featureType === 'lettersAbove') {
+        selectedFeature.classList.add('alphanumeric-selected-feature');
+    }
     selectedFeature.dataset.feature = featureType;
     
     const featureName = document.createElement('span');
@@ -5589,9 +6806,9 @@ function initializeFeatureSelection() {
                 if (!hasMoved && touchDuration < 300) {
                     e.preventDefault();
                     const featureType = newButton.dataset.feature;
-                    if (!isFeatureAlreadySelected(featureType)) {
-                        addFeatureToSelected(featureType);
-                    }
+                if (!isFeatureAlreadySelected(featureType)) {
+                    addFeatureToSelected(featureType);
+                }
                 }
                 
                 // Reset state
@@ -5630,6 +6847,14 @@ function addFeatureToSelected(featureType) {
     
     const selectedFeature = document.createElement('div');
     selectedFeature.className = 'selected-feature-item';
+    // Add T9 class if it's a T9 feature
+    if (featureType.startsWith('t9')) {
+        selectedFeature.classList.add('t9-selected-feature');
+    }
+    // Add Alpha-Numeric class if it's an Alpha-Numeric feature
+    if (featureType === 'alphaNumeric' || featureType === 'lettersAbove') {
+        selectedFeature.classList.add('alphanumeric-selected-feature');
+    }
     selectedFeature.dataset.feature = featureType;
     
     const featureName = document.createElement('span');
@@ -5656,9 +6881,151 @@ function addFeatureToSelected(featureType) {
 // Remove the duplicate addFeatureToList function since we're using addFeatureToSelected
 // ... existing code ...
 
+// Track T9 mode state
+let isT9Mode = false;
+
+// Track Alpha-Numeric mode state
+let isAlphaNumericMode = false;
+
+function showT9Features() {
+    isT9Mode = true;
+    const availableFeatures = document.getElementById('availableFeatures');
+    const normalFeatures = availableFeatures.innerHTML;
+    
+    // Store normal features (if not already stored)
+    if (!availableFeatures.dataset.normalFeatures) {
+        availableFeatures.dataset.normalFeatures = normalFeatures;
+    }
+    
+    // Show T9 features
+    availableFeatures.innerHTML = `
+        <div class="feature-group">
+            <button class="feature-button t9-feature-button" data-feature="t9Length" draggable="true">LENGTH</button>
+            <button class="info-button" data-feature="t9Length"><i class="fas fa-info-circle"></i></button>
+        </div>
+        <div class="feature-group">
+            <button class="feature-button t9-feature-button" data-feature="t9LastTwo" draggable="true">LAST TWO</button>
+            <button class="info-button" data-feature="t9LastTwo"><i class="fas fa-info-circle"></i></button>
+        </div>
+        <div class="feature-group">
+            <button class="feature-button t9-feature-button" data-feature="t9OneLie" draggable="true">1 LIE (L4)</button>
+            <button class="info-button" data-feature="t9OneLie"><i class="fas fa-info-circle"></i></button>
+        </div>
+        <div class="feature-group">
+            <button class="feature-button t9-feature-button" data-feature="t9Repeat" draggable="true">Repeat?</button>
+            <button class="info-button" data-feature="t9Repeat"><i class="fas fa-info-circle"></i></button>
+        </div>
+        <div class="feature-group">
+            <button class="feature-button t9-feature-button" data-feature="t9Higher" draggable="true">Higher?</button>
+            <button class="info-button" data-feature="t9Higher"><i class="fas fa-info-circle"></i></button>
+        </div>
+        <div class="feature-group">
+            <button class="feature-button t9-feature-button" data-feature="t9OneTruth" draggable="true">1 TRUTH (F4)</button>
+            <button class="info-button" data-feature="t9OneTruth"><i class="fas fa-info-circle"></i></button>
+        </div>
+    `;
+    
+    // Show BACK button
+    const backButton = document.querySelector('.available-features .back-button');
+    if (!backButton) {
+        const h3 = document.querySelector('.available-features h3');
+        if (h3 && h3.parentElement) {
+            const backBtn = document.createElement('button');
+            backBtn.className = 'back-button';
+            backBtn.textContent = 'BACK';
+            backBtn.onclick = showNormalFeatures;
+            h3.parentElement.style.position = 'relative';
+            h3.parentElement.insertBefore(backBtn, h3);
+        }
+    }
+    
+    // Reinitialize feature selection
+    initializeFeatureSelection();
+}
+
+function showNormalFeatures() {
+    isT9Mode = false;
+    isAlphaNumericMode = false;
+    const availableFeatures = document.getElementById('availableFeatures');
+    
+    // Restore normal features
+    if (availableFeatures.dataset.normalFeatures) {
+        availableFeatures.innerHTML = availableFeatures.dataset.normalFeatures;
+    }
+    
+    // Remove BACK button
+    const backButton = document.querySelector('.available-features .back-button');
+    if (backButton) {
+        backButton.remove();
+    }
+    
+    // Reinitialize feature selection
+    initializeFeatureSelection();
+}
+
+function showAlphaNumericFeatures() {
+    isAlphaNumericMode = true;
+    const availableFeatures = document.getElementById('availableFeatures');
+    const normalFeatures = availableFeatures.innerHTML;
+    
+    // Store normal features (if not already stored)
+    if (!availableFeatures.dataset.normalFeatures) {
+        availableFeatures.dataset.normalFeatures = normalFeatures;
+    }
+    
+    // Show Alpha-Numeric features
+    availableFeatures.innerHTML = `
+        <div class="feature-group">
+            <button class="feature-button alphanumeric-feature-button" data-feature="alphaNumeric" draggable="true">AlphaNumeric</button>
+            <button class="info-button" data-feature="alphaNumeric"><i class="fas fa-info-circle"></i></button>
+        </div>
+        <div class="feature-group">
+            <button class="feature-button alphanumeric-feature-button" data-feature="lettersAbove" draggable="true">Letters Above</button>
+            <button class="info-button" data-feature="lettersAbove"><i class="fas fa-info-circle"></i></button>
+        </div>
+    `;
+    
+    // Show BACK button
+    const backButton = document.querySelector('.available-features .back-button');
+    if (!backButton) {
+        const h3 = document.querySelector('.available-features h3');
+        if (h3 && h3.parentElement) {
+            const backBtn = document.createElement('button');
+            backBtn.className = 'back-button';
+            backBtn.textContent = 'BACK';
+            backBtn.onclick = showNormalFeatures;
+            h3.parentElement.style.position = 'relative';
+            h3.parentElement.insertBefore(backBtn, h3);
+        }
+    }
+    
+    // Reinitialize feature selection
+    initializeFeatureSelection();
+}
+
 // Initialize feature selection when the DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     initializeFeatureSelection();
+    
+    // Initialize T9 mode button
+    const t9Button = document.getElementById('t9ModeButton');
+    if (t9Button) {
+        t9Button.addEventListener('click', showT9Features);
+        t9Button.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            showT9Features();
+        }, { passive: false });
+    }
+    
+    // Initialize Alpha-Numeric mode button
+    const alphanumericButton = document.getElementById('alphanumericModeButton');
+    if (alphanumericButton) {
+        alphanumericButton.addEventListener('click', showAlphaNumericFeatures);
+        alphanumericButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            showAlphaNumericFeatures();
+        }, { passive: false });
+    }
 });
 
 // Re-initialize feature selection when new content is added
@@ -6228,20 +7595,20 @@ function initializeFeatureSelection() {
                 // 2. Touch duration was short (less than 300ms - indicates a tap)
                 // 3. Not within cooldown period
                 if (!hasMoved && touchDuration < 300) {
-                    e.preventDefault();
-                    const featureType = newButton.dataset.feature;
-                    
-                    // Check cooldown
-                    const lastAdded = featureCooldown.get(featureType);
-                    const now = Date.now();
-                    if (lastAdded && (now - lastAdded) < 1000) {
+                e.preventDefault();
+                const featureType = newButton.dataset.feature;
+                
+                // Check cooldown
+                const lastAdded = featureCooldown.get(featureType);
+                const now = Date.now();
+                if (lastAdded && (now - lastAdded) < 1000) {
                         return;
-                    }
-                    
-                    if (!isFeatureAlreadySelected(featureType)) {
-                        addFeatureToSelected(featureType);
-                        featureCooldown.set(featureType, now);
-                    }
+                }
+                
+                if (!isFeatureAlreadySelected(featureType)) {
+                    addFeatureToSelected(featureType);
+                    featureCooldown.set(featureType, now);
+                }
                 }
                 
                 // Reset state
@@ -6271,6 +7638,14 @@ function addFeatureToSelected(featureType) {
     
     const selectedFeature = document.createElement('div');
     selectedFeature.className = 'selected-feature-item';
+    // Add T9 class if it's a T9 feature
+    if (featureType.startsWith('t9')) {
+        selectedFeature.classList.add('t9-selected-feature');
+    }
+    // Add Alpha-Numeric class if it's an Alpha-Numeric feature
+    if (featureType === 'alphaNumeric' || featureType === 'lettersAbove') {
+        selectedFeature.classList.add('alphanumeric-selected-feature');
+    }
     selectedFeature.dataset.feature = featureType;
     
     const featureName = document.createElement('span');

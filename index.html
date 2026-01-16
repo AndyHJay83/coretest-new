@@ -96,6 +96,12 @@
                         <h3>Available Features</h3>
                         <div id="availableFeatures">
                             <div class="feature-group">
+                                <button class="feature-button t9-mode-button" id="t9ModeButton" draggable="false">T9</button>
+                            </div>
+                            <div class="feature-group">
+                                <button class="feature-button alphanumeric-mode-button" id="alphanumericModeButton" draggable="false">Alpha-Numeric</button>
+                            </div>
+                            <div class="feature-group">
                                 <button class="feature-button" data-feature="position1" draggable="true">Short Word</button>
                                 <button class="info-button" data-feature="position1"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -190,6 +196,14 @@
                             <div class="feature-group">
                                 <button class="feature-button" data-feature="pianoPiano" draggable="true">PIANO PIANO</button>
                                 <button class="info-button" data-feature="pianoPiano"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                            <div class="feature-group">
+                                <button class="feature-button" data-feature="dictionaryAlpha" draggable="true">Dictionary (Alpha)</button>
+                                <button class="info-button" data-feature="dictionaryAlpha"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                            <div class="feature-group">
+                                <button class="feature-button" data-feature="smlLength" draggable="true">S/M/L (Length)</button>
+                                <button class="info-button" data-feature="smlLength"><i class="fas fa-info-circle"></i></button>
                             </div>
                         </div>
                     </div>
@@ -556,6 +570,156 @@
                         <button id="pianoPianoSkipButton" class="skip-button">SKIP</button>
                     </div>
                 </div>
+
+                <!-- T9 LENGTH feature -->
+                <div id="t9LengthFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">LENGTH</h2>
+                    <div class="length-input">
+                        <input type="text" id="t9LengthInput" placeholder="Enter length (3+)" inputmode="numeric" pattern="[0-9]*" autocomplete="off" min="3">
+                        <button id="t9LengthButton">SUBMIT</button>
+                        <button id="t9LengthSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- T9 LAST TWO feature -->
+                <div id="t9LastTwoFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">LAST TWO</h2>
+                    <div class="t9-last-two-row" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+                        <button class="t9-last-two-btn" data-digit="2">2</button>
+                        <button class="t9-last-two-btn" data-digit="3">3</button>
+                        <button class="t9-last-two-btn" data-digit="4">4</button>
+                        <button class="t9-last-two-btn" data-digit="5">5</button>
+                        <button class="t9-last-two-btn" data-digit="6">6</button>
+                        <button class="t9-last-two-btn" data-digit="7">7</button>
+                        <button class="t9-last-two-btn" data-digit="8">8</button>
+                        <button class="t9-last-two-btn" data-digit="9">9</button>
+                    </div>
+                    <div id="t9LastTwoDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+                        <span id="t9LastTwoString">-</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+                        <button id="t9LastTwoSubmitButton">SUBMIT</button>
+                        <button id="t9LastTwoResetButton" class="reset-button">RESET</button>
+                        <button id="t9LastTwoSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- T9 1 LIE (L4) feature -->
+                <div id="t9OneLieFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">1 LIE (L4)</h2>
+                    <div class="t9-one-lie-row" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+                        <button class="t9-one-lie-btn" data-digit="2">2</button>
+                        <button class="t9-one-lie-btn" data-digit="3">3</button>
+                        <button class="t9-one-lie-btn" data-digit="4">4</button>
+                        <button class="t9-one-lie-btn" data-digit="5">5</button>
+                        <button class="t9-one-lie-btn" data-digit="6">6</button>
+                        <button class="t9-one-lie-btn" data-digit="7">7</button>
+                        <button class="t9-one-lie-btn" data-digit="8">8</button>
+                        <button class="t9-one-lie-btn" data-digit="9">9</button>
+                    </div>
+                    <div id="t9OneLieDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+                        <span id="t9OneLieString">-</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+                        <button id="t9OneLieSubmitButton">SUBMIT</button>
+                        <button id="t9OneLieResetButton" class="reset-button">RESET</button>
+                        <button id="t9OneLieSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- T9 REPEAT feature -->
+                <div id="t9RepeatFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">Repeat?</h2>
+                    <p style="text-align: center; margin: 20px 0; font-size: 18px; font-weight: bold;">Repeated Digits?</p>
+                    <div class="button-container">
+                        <button id="t9RepeatYesBtn" class="yes-btn">YES</button>
+                        <button id="t9RepeatNoBtn" class="no-btn">NO</button>
+                        <button id="t9RepeatSkipBtn" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- T9 HIGHER feature -->
+                <div id="t9HigherFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">Higher?</h2>
+                    <p style="text-align: center; margin: 20px 0; font-size: 18px; font-weight: bold;">Second digit higher than first?</p>
+                    <div class="button-container">
+                        <button id="t9HigherYesBtn" class="yes-btn">YES</button>
+                        <button id="t9HigherNoBtn" class="no-btn">NO</button>
+                        <button id="t9HigherSameBtn" class="yes-btn" style="background-color: #ff9800;">SAME</button>
+                        <button id="t9HigherSkipBtn" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- T9 1 TRUTH (F4) feature -->
+                <div id="t9OneTruthFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">1 TRUTH (F4)</h2>
+                    <div class="t9-one-truth-row" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+                        <button class="t9-one-truth-btn" data-digit="2">2</button>
+                        <button class="t9-one-truth-btn" data-digit="3">3</button>
+                        <button class="t9-one-truth-btn" data-digit="4">4</button>
+                        <button class="t9-one-truth-btn" data-digit="5">5</button>
+                        <button class="t9-one-truth-btn" data-digit="6">6</button>
+                        <button class="t9-one-truth-btn" data-digit="7">7</button>
+                        <button class="t9-one-truth-btn" data-digit="8">8</button>
+                        <button class="t9-one-truth-btn" data-digit="9">9</button>
+                    </div>
+                    <div id="t9OneTruthDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+                        <span id="t9OneTruthString">-</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+                        <button id="t9OneTruthSubmitButton">SUBMIT</button>
+                        <button id="t9OneTruthResetButton" class="reset-button">RESET</button>
+                        <button id="t9OneTruthSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- AlphaNumeric feature -->
+                <div id="alphaNumericFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">AlphaNumeric</h2>
+                    <div class="button-container">
+                        <button id="alphaNumericYesBtn" class="yes-btn">YES</button>
+                        <button id="alphaNumericNoBtn" class="no-btn">NO</button>
+                        <button id="alphaNumericSkipBtn" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- Letters Above feature -->
+                <div id="lettersAboveFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">Letters Above</h2>
+                    <div class="length-input">
+                        <input type="text" id="lettersAboveInput" placeholder="Enter number (0-26)" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                        <button id="lettersAboveButton">SUBMIT</button>
+                        <button id="lettersAboveSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- Dictionary (Alpha) feature -->
+                <div id="dictionaryAlphaFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">Dictionary (Alpha)</h2>
+                    <div class="section-buttons">
+                        <button class="section-btn" data-section="begin">Beginning</button>
+                        <button class="section-btn" data-section="mid">Middle</button>
+                        <button class="section-btn" data-section="end">End</button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+                        <button id="dictionaryAlphaSubmitButton">SUBMIT</button>
+                        <button id="dictionaryAlphaSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- S/M/L (Length) feature -->
+                <div id="smlLengthFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">S/M/L (Length)</h2>
+                    <div class="section-buttons">
+                        <button class="section-btn" data-section="small">Small</button>
+                        <button class="section-btn" data-section="medium">Medium</button>
+                        <button class="section-btn" data-section="long">Long</button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+                        <button id="smlLengthSubmitButton">SUBMIT</button>
+                        <button id="smlLengthSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -749,6 +913,76 @@
             <div class="feature-info-content">
                 <h3>PIANO PIANO</h3>
                 <p><strong>Piano Piano</strong><br>Select a number (1-7) representing the total count of letters A-G in the word. The word must contain exactly that many A-G letters in any combination.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="t9LengthInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>LENGTH</h3>
+                <p><strong>T9 Length</strong><br>Type in a number referring to the length of the T9 number string for the word. The word's T9 representation must match this length exactly.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="t9LastTwoInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>LAST TWO</h3>
+                <p><strong>T9 Last Two</strong><br>Select 2 digits (2-9) to check if the T9 string ends with those digits. Only words whose T9 representation ends with the selected digits will be kept.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="t9OneLieInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>1 LIE (L4)</h3>
+                <p><strong>T9 1 Lie (L4)</strong><br>Select 4 digits (2-9) representing the last 4 digits of the T9 string. The filter assumes exactly ONE of these digits is incorrect. Words will be kept if their T9 string's last 4 digits match any scenario where 3 digits are correct and 1 digit is different.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="t9RepeatInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>Repeat?</h3>
+                <p><strong>T9 Repeated Digits</strong><br>Filters words based on whether their T9 string contains two consecutive repeated digits. Select YES if the T9 string has repeated digits next to each other, or NO if it does not.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="t9HigherInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>Higher?</h3>
+                <p><strong>T9 Second Digit Comparison</strong><br>Filters words based on the relationship between the first two digits of the T9 string. Select YES if the second digit is higher than the first, NO if it's lower, or SAME if both digits are equal.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="t9OneTruthInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>1 TRUTH (F4)</h3>
+                <p><strong>T9 1 Truth (F4)</strong><br>Select 4 digits (2-9) representing the first 4 digits of the T9 string. The filter assumes exactly ONE of these digits is correct. Words will be kept if their T9 string's first 4 digits match any scenario where 1 digit is correct and 3 digits are different.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="alphaNumericInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>AlphaNumeric</h3>
+                <p><strong>AlphaNumeric Rule</strong><br>YES: Keeps words where the word length matches a letter's position in the alphabet AND that letter is in the word (e.g., 1-letter words with A, 2-letter words with B, etc.). NO: Removes words that follow the rule, keeping all others.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="lettersAboveInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>Letters Above</h3>
+                <p><strong>Letters Above</strong><br>Enter a number (0-26) representing how many letters before a secret chosen letter must be in the word. Words are kept if there exists at least one letter in the word such that exactly that many letters before it (in the alphabet) are also present in the word.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="dictionaryAlphaInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>Dictionary (Alpha)</h3>
+                <p><strong>First Letter Location</strong><br>Filters words based on the first letter's position in the alphabet. Beginning: A-M, Middle: I-T, End: N-Z. Select a section and click SUBMIT.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="smlLengthInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>S/M/L (Length)</h3>
+                <p><strong>Word Length Categories</strong><br>Filters words by length: Small (1-6 characters), Medium (5-9 characters), Long (7+ characters). Select a category and click SUBMIT.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

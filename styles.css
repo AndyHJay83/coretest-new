@@ -1893,6 +1893,200 @@ input:checked + .slider:before {
     margin-right: 8px;
 }
 
+/* T9 Selected Feature Styling (Orange) */
+.selected-feature-item.t9-selected-feature {
+    background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%) !important;
+}
+
+.selected-feature-item.t9-selected-feature::before {
+    background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%) !important;
+}
+
+.selected-feature-item.t9-selected-feature:hover {
+    background: linear-gradient(135deg, #f57c00 0%, #e65100 100%) !important;
+    box-shadow: 0 8px 24px rgba(255, 152, 0, 0.28) !important;
+}
+
+/* T9 LAST TWO Feature Styles */
+.t9-last-two-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+}
+
+.t9-last-two-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    border-radius: 8px;
+    background: #f0f0f0;
+    border: 1px solid #1B5E20;
+    color: #1B5E20;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.t9-last-two-btn:hover {
+    background: #e0e0e0;
+    transform: scale(1.05);
+}
+
+.t9-last-two-btn.active {
+    background-color: #87CEEB !important;
+    color: white !important;
+    transform: scale(1.05);
+}
+
+.reset-button {
+    background-color: #ff9800;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.reset-button:hover {
+    background-color: #f57c00;
+}
+
+@media (max-width: 600px) {
+    .t9-last-two-row {
+        gap: 6px;
+    }
+    .t9-last-two-btn {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        min-height: 38px;
+        max-width: 38px;
+        max-height: 38px;
+        font-size: 0.95em;
+    }
+}
+
+/* T9 1 LIE (4) Feature Styles */
+.t9-one-lie-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+}
+
+.t9-one-lie-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    border-radius: 8px;
+    background: #f0f0f0;
+    border: 1px solid #1B5E20;
+    color: #1B5E20;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.t9-one-lie-btn:hover {
+    background: #e0e0e0;
+    transform: scale(1.05);
+}
+
+.t9-one-lie-btn.active {
+    background-color: #87CEEB !important;
+    color: white !important;
+    transform: scale(1.05);
+}
+
+@media (max-width: 600px) {
+    .t9-one-lie-row {
+        gap: 6px;
+    }
+    .t9-one-lie-btn {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        min-height: 38px;
+        max-width: 38px;
+        max-height: 38px;
+        font-size: 0.95em;
+    }
+}
+
+/* T9 1 TRUTH (F4) Feature Styles */
+.t9-one-truth-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+}
+
+.t9-one-truth-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    max-width: 44px;
+    max-height: 44px;
+    border-radius: 8px;
+    background: #f0f0f0;
+    border: 1px solid #1B5E20;
+    color: #1B5E20;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.t9-one-truth-btn:hover {
+    background: #e0e0e0;
+    transform: scale(1.05);
+}
+
+.t9-one-truth-btn.active {
+    background-color: #87CEEB !important;
+    color: white !important;
+    transform: scale(1.05);
+}
+
+@media (max-width: 600px) {
+    .t9-one-truth-row {
+        gap: 6px;
+    }
+    .t9-one-truth-btn {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        min-height: 38px;
+        max-width: 38px;
+        max-height: 38px;
+        font-size: 0.95em;
+    }
+}
+
 /* Animation for newly added features */
 .selected-feature-item {
     animation: slideInFromTop 0.3s ease-out;
@@ -2927,6 +3121,87 @@ input:checked + .slider:before {
         max-height: 38px;
         font-size: 0.95em;
     }
+}
+
+/* T9 Feature Styles */
+.t9-feature-button {
+    background-color: #ff9800 !important; /* Orange */
+    color: white !important;
+    border-color: #e68900 !important;
+}
+
+.t9-feature-button:hover {
+    background-color: #f57c00 !important;
+}
+
+.t9-mode-button {
+    background-color: #ff9800 !important;
+    color: white !important;
+    border-color: #e68900 !important;
+    font-weight: bold;
+}
+
+.t9-mode-button:hover {
+    background-color: #f57c00 !important;
+}
+
+/* Alpha-Numeric Feature Styles (Blue) */
+.alphanumeric-feature-button {
+    background-color: #2196F3 !important; /* Blue */
+    color: white !important;
+    border-color: #1976D2 !important;
+}
+
+.alphanumeric-feature-button:hover {
+    background-color: #1976D2 !important;
+}
+
+.alphanumeric-mode-button {
+    background-color: #2196F3 !important;
+    color: white !important;
+    border-color: #1976D2 !important;
+    font-weight: bold;
+}
+
+.alphanumeric-mode-button:hover {
+    background-color: #1976D2 !important;
+}
+
+/* Alpha-Numeric Selected Feature Styling (Blue) */
+.selected-feature-item.alphanumeric-selected-feature {
+    background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%) !important;
+}
+
+.selected-feature-item.alphanumeric-selected-feature::before {
+    background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%) !important;
+}
+
+.selected-feature-item.alphanumeric-selected-feature:hover {
+    background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%) !important;
+    box-shadow: 0 8px 24px rgba(33, 150, 243, 0.28) !important;
+}
+
+.back-button {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 8px 15px;
+    background: #1B5E20;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    z-index: 10;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.back-button:hover {
+    background: #2e7d32;
+}
+
+.available-features {
+    position: relative;
 }
 
 /* FIND-EEE Feature Styles */
