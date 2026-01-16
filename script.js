@@ -4905,17 +4905,22 @@ function setupFeatureListeners(feature, callback) {
             break;
         }
         case 'dictionaryAlpha': {
-            let selectedSection = null;
             const sectionBtns = document.querySelectorAll('#dictionaryAlphaFeature .section-btn');
-            const dictionaryAlphaSubmitButton = document.getElementById('dictionaryAlphaSubmitButton');
             const dictionaryAlphaSkipButton = document.getElementById('dictionaryAlphaSkipButton');
             
-            // Section button handlers
+            // Section button handlers - auto-submit on click
             sectionBtns.forEach(btn => {
                 btn.onclick = () => {
+                    const section = btn.dataset.section;
+                    // Visual feedback
                     sectionBtns.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
-                    selectedSection = btn.dataset.section;
+                    
+                    // Immediately filter and progress
+                    const filteredWords = filterWordsByDictionaryAlpha(currentFilteredWords, section);
+                    callback(filteredWords);
+                    document.getElementById('dictionaryAlphaFeature').classList.add('completed');
+                    document.getElementById('dictionaryAlphaFeature').dispatchEvent(new Event('completed'));
                 };
                 
                 btn.addEventListener('touchstart', (e) => {
@@ -4923,25 +4928,6 @@ function setupFeatureListeners(feature, callback) {
                     btn.onclick();
                 }, { passive: false });
             });
-            
-            // Submit button
-            if (dictionaryAlphaSubmitButton) {
-                dictionaryAlphaSubmitButton.onclick = () => {
-                    if (!selectedSection) {
-                        alert('Please select a section (Beginning, Middle, or End)');
-                        return;
-                    }
-                    const filteredWords = filterWordsByDictionaryAlpha(currentFilteredWords, selectedSection);
-                    callback(filteredWords);
-                    document.getElementById('dictionaryAlphaFeature').classList.add('completed');
-                    document.getElementById('dictionaryAlphaFeature').dispatchEvent(new Event('completed'));
-                };
-                
-                dictionaryAlphaSubmitButton.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    dictionaryAlphaSubmitButton.onclick();
-                }, { passive: false });
-            }
             
             // Skip button
             if (dictionaryAlphaSkipButton) {
@@ -4960,17 +4946,22 @@ function setupFeatureListeners(feature, callback) {
         }
         
         case 'smlLength': {
-            let selectedCategory = null;
             const categoryBtns = document.querySelectorAll('#smlLengthFeature .section-btn');
-            const smlLengthSubmitButton = document.getElementById('smlLengthSubmitButton');
             const smlLengthSkipButton = document.getElementById('smlLengthSkipButton');
             
-            // Category button handlers
+            // Category button handlers - auto-submit on click
             categoryBtns.forEach(btn => {
                 btn.onclick = () => {
+                    const category = btn.dataset.section;
+                    // Visual feedback
                     categoryBtns.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
-                    selectedCategory = btn.dataset.section;
+                    
+                    // Immediately filter and progress
+                    const filteredWords = filterWordsBySmlLength(currentFilteredWords, category);
+                    callback(filteredWords);
+                    document.getElementById('smlLengthFeature').classList.add('completed');
+                    document.getElementById('smlLengthFeature').dispatchEvent(new Event('completed'));
                 };
                 
                 btn.addEventListener('touchstart', (e) => {
@@ -4978,25 +4969,6 @@ function setupFeatureListeners(feature, callback) {
                     btn.onclick();
                 }, { passive: false });
             });
-            
-            // Submit button
-            if (smlLengthSubmitButton) {
-                smlLengthSubmitButton.onclick = () => {
-                    if (!selectedCategory) {
-                        alert('Please select a category (Small, Medium, or Long)');
-                        return;
-                    }
-                    const filteredWords = filterWordsBySmlLength(currentFilteredWords, selectedCategory);
-                    callback(filteredWords);
-                    document.getElementById('smlLengthFeature').classList.add('completed');
-                    document.getElementById('smlLengthFeature').dispatchEvent(new Event('completed'));
-                };
-                
-                smlLengthSubmitButton.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    smlLengthSubmitButton.onclick();
-                }, { passive: false });
-            }
             
             // Skip button
             if (smlLengthSkipButton) {

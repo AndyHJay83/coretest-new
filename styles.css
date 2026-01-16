@@ -1728,6 +1728,18 @@ input:checked + .slider:before {
         width: 100%;
     }
     
+    /* Ensure mode buttons match the width of regular feature buttons */
+    .feature-group:has(.t9-mode-button),
+    .feature-group:has(.alphanumeric-mode-button) {
+        width: 100% !important;
+    }
+    
+    .t9-mode-button,
+    .alphanumeric-mode-button {
+        flex: 1 1 auto !important;
+        max-width: 100% !important;
+    }
+    
     /* Reduce spacing for T9 and Alpha-Numeric features in PWA/mobile mode */
     .t9-feature-button,
     .alphanumeric-feature-button {
@@ -2745,6 +2757,13 @@ input:checked + .slider:before {
     box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
 }
 
+.section-btn.active {
+    background-color: #007bff !important;
+    color: #fff !important;
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.4) !important;
+    transform: translateY(-2px) !important;
+}
+
 @media (max-width: 600px) {
     .section-buttons {
         gap: 8px;
@@ -3173,6 +3192,8 @@ input:checked + .slider:before {
     margin: 0 !important;
     font-size: 14px !important;
     box-sizing: border-box !important;
+    flex: 1 1 auto !important;
+    max-width: 100% !important;
 }
 
 .t9-mode-button:hover {
@@ -3181,13 +3202,16 @@ input:checked + .slider:before {
 
 /* Alpha-Numeric Feature Styles (Blue) */
 .alphanumeric-feature-button {
-    background-color: #2196F3 !important; /* Blue */
+    background-color: #2196F3 !important; /* Blue - matches T9 orange pattern */
     color: white !important;
     border-color: #1976D2 !important;
+    font-weight: 500 !important;
 }
 
 .alphanumeric-feature-button:hover {
     background-color: #1976D2 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
 }
 
 .alphanumeric-mode-button {
@@ -3200,6 +3224,8 @@ input:checked + .slider:before {
     margin: 0 !important;
     font-size: 14px !important;
     box-sizing: border-box !important;
+    flex: 1 1 auto !important;
+    max-width: 100% !important;
 }
 
 .alphanumeric-mode-button:hover {

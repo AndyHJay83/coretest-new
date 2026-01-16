@@ -97,9 +97,11 @@
                         <div id="availableFeatures">
                             <div class="feature-group">
                                 <button class="feature-button t9-mode-button" id="t9ModeButton" draggable="false">T9</button>
+                                <button class="info-button" data-feature="t9Mode"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
                                 <button class="feature-button alphanumeric-mode-button" id="alphanumericModeButton" draggable="false">Alpha-Numeric</button>
+                                <button class="info-button" data-feature="alphanumericMode"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
                                 <button class="feature-button" data-feature="position1" draggable="true">Short Word</button>
@@ -983,6 +985,20 @@
             <div class="feature-info-content">
                 <h3>S/M/L (Length)</h3>
                 <p><strong>Word Length Categories</strong><br>Filters words by length: Small (1-6 characters), Medium (5-9 characters), Long (7+ characters). Select a category and click SUBMIT.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="t9ModeInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>T9</h3>
+                <p><strong>T9 Features Category</strong><br>Click this button to view and access T9-based filtering features. T9 features filter words based on their phone keypad number representation (A-Z mapped to 2-9).</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="alphanumericModeInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>Alpha-Numeric</h3>
+                <p><strong>Alpha-Numeric Features Category</strong><br>Click this button to view and access Alpha-Numeric filtering features. These features filter words based on relationships between letters and their positions in the alphabet.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
