@@ -2236,6 +2236,7 @@ function createT9OneLieFeature() {
             <button class="t9-one-lie-btn" data-digit="7">7</button>
             <button class="t9-one-lie-btn" data-digit="8">8</button>
             <button class="t9-one-lie-btn" data-digit="9">9</button>
+            <button class="t9-one-lie-btn blank-btn" data-digit="BLANK" style="background-color: #f44336; color: white; font-weight: bold;">B</button>
         </div>
         <div id="t9OneLieDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
             <span id="t9OneLieString">-</span>
@@ -2708,12 +2709,13 @@ function filterWordsByT9OneTruth(words, fourDigits) {
 }
 
 // Filtering logic for T9 1 LIE (4) feature
-function filterWordsByT9OneLie(words, fourDigits) {
+function filterWordsByT9OneLie(words, selectedDigits) {
     // Calculate T9 strings if not already done
     calculateT9Strings(words);
     
-    // Extract the 4 digits
-    const digits = fourDigits.split('');
+    // Check if BLANK is used (marking a specific position as the lie)
+    const blankIndex = selectedDigits.indexOf('BLANK');
+    const hasBlank = blankIndex !== -1;
     
     return words.filter(word => {
         const t9String = t9StringsMap.get(word) || wordToT9(word);
@@ -2724,37 +2726,56 @@ function filterWordsByT9OneLie(words, fourDigits) {
         const lastFour = t9String.slice(-4);
         const lastFourDigits = lastFour.split('');
         
-        // Check all 4 scenarios where exactly one digit is wrong
-        // Scenario 1: First digit wrong, others correct
-        if (lastFourDigits[1] === digits[1] && 
-            lastFourDigits[2] === digits[2] && 
-            lastFourDigits[3] === digits[3] && 
-            lastFourDigits[0] !== digits[0]) {
-            return true;
-        }
-        
-        // Scenario 2: Second digit wrong, others correct
-        if (lastFourDigits[0] === digits[0] && 
-            lastFourDigits[2] === digits[2] && 
-            lastFourDigits[3] === digits[3] && 
-            lastFourDigits[1] !== digits[1]) {
-            return true;
-        }
-        
-        // Scenario 3: Third digit wrong, others correct
-        if (lastFourDigits[0] === digits[0] && 
-            lastFourDigits[1] === digits[1] && 
-            lastFourDigits[3] === digits[3] && 
-            lastFourDigits[2] !== digits[2]) {
-            return true;
-        }
-        
-        // Scenario 4: Fourth digit wrong, others correct
-        if (lastFourDigits[0] === digits[0] && 
-            lastFourDigits[1] === digits[1] && 
-            lastFourDigits[2] === digits[2] && 
-            lastFourDigits[3] !== digits[3]) {
-            return true;
+        if (hasBlank) {
+            // BLANK is specified - only check that specific position as the lie
+            // All other positions must be correct
+            
+            // Check that all non-BLANK positions match
+            for (let i = 0; i < 4; i++) {
+                if (i !== blankIndex && selectedDigits[i] !== 'BLANK') {
+                    if (lastFourDigits[i] !== selectedDigits[i]) {
+                        return false; // This position must match and doesn't
+                    }
+                }
+            }
+            
+            // The BLANK position must NOT match (it's the lie)
+            // Since BLANK means "this position is wrong", we just need to ensure
+            // all other positions are correct, which we've already checked above
+            return true; // All conditions met
+        } else {
+            // No BLANK - check all 4 scenarios where exactly one digit is wrong
+            // Scenario 1: First digit wrong, others correct
+            if (lastFourDigits[1] === selectedDigits[1] && 
+                lastFourDigits[2] === selectedDigits[2] && 
+                lastFourDigits[3] === selectedDigits[3] && 
+                lastFourDigits[0] !== selectedDigits[0]) {
+                return true;
+            }
+            
+            // Scenario 2: Second digit wrong, others correct
+            if (lastFourDigits[0] === selectedDigits[0] && 
+                lastFourDigits[2] === selectedDigits[2] && 
+                lastFourDigits[3] === selectedDigits[3] && 
+                lastFourDigits[1] !== selectedDigits[1]) {
+                return true;
+            }
+            
+            // Scenario 3: Third digit wrong, others correct
+            if (lastFourDigits[0] === selectedDigits[0] && 
+                lastFourDigits[1] === selectedDigits[1] && 
+                lastFourDigits[3] === selectedDigits[3] && 
+                lastFourDigits[2] !== selectedDigits[2]) {
+                return true;
+            }
+            
+            // Scenario 4: Fourth digit wrong, others correct
+            if (lastFourDigits[0] === selectedDigits[0] && 
+                lastFourDigits[1] === selectedDigits[1] && 
+                lastFourDigits[2] === selectedDigits[2] && 
+                lastFourDigits[3] !== selectedDigits[3]) {
+                return true;
+            }
         }
         
         return false;
@@ -4524,7 +4545,14 @@ function setupFeatureListeners(feature, callback) {
                         const digit = btn.dataset.digit;
                         selectedDigits.push(digit);
                         if (t9OneLieDisplay) {
-                            t9OneLieDisplay.textContent = selectedDigits.join('');
+                            // Build display with red "B" for BLANK
+                            const displayHTML = selectedDigits.map(d => {
+                                if (d === 'BLANK') {
+                                    return '<span style="color: #f44336; font-weight: bold;">B</span>';
+                                }
+                                return d;
+                            }).join('');
+                            t9OneLieDisplay.innerHTML = displayHTML;
                         }
                         btn.classList.add('active');
                     }
@@ -4536,7 +4564,14 @@ function setupFeatureListeners(feature, callback) {
                         const digit = btn.dataset.digit;
                         selectedDigits.push(digit);
                         if (t9OneLieDisplay) {
-                            t9OneLieDisplay.textContent = selectedDigits.join('');
+                            // Build display with red "B" for BLANK
+                            const displayHTML = selectedDigits.map(d => {
+                                if (d === 'BLANK') {
+                                    return '<span style="color: #f44336; font-weight: bold;">B</span>';
+                                }
+                                return d;
+                            }).join('');
+                            t9OneLieDisplay.innerHTML = displayHTML;
                         }
                         btn.classList.add('active');
                     }
@@ -4547,16 +4582,14 @@ function setupFeatureListeners(feature, callback) {
             if (t9OneLieSubmitButton) {
                 t9OneLieSubmitButton.onclick = () => {
                     if (selectedDigits.length !== 4) {
-                        alert('Please select exactly 4 digits');
+                        alert('Please select exactly 4 digits (or use BLANK)');
                         return;
                     }
-                    
-                    const fourDigits = selectedDigits.join('');
                     
                     // Calculate T9 strings if not already done
                     calculateT9Strings(currentFilteredWords);
                     
-                    const filteredWords = filterWordsByT9OneLie(currentFilteredWords, fourDigits);
+                    const filteredWords = filterWordsByT9OneLie(currentFilteredWords, selectedDigits);
                     callback(filteredWords);
                     document.getElementById('t9OneLieFeature').classList.add('completed');
                     document.getElementById('t9OneLieFeature').dispatchEvent(new Event('completed'));
