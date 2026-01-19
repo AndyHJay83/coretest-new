@@ -26,6 +26,9 @@ let leastFrequentLetter = null;
 let usedLettersInWorkflow = [];  // Track letters used in current workflow
 let letterFrequencyMap = new Map();  // Store frequency of all letters
 
+// Version constant - increment .1 for each push update, major version when specified
+const APP_VERSION = '12.0';
+
 // Store T9 1 LIE (L4) data for "B" feature
 let t9OneLieBlankIndex = null;  // Position of BLANK (0-3)
 let t9OneLiePossibleDigits = []; // Array of possible digits for BLANK
@@ -272,6 +275,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     }
+    
+    // Initialize version display
+    function initializeVersionDisplay() {
+        const versionDisplay = document.getElementById('versionDisplay');
+        if (versionDisplay) {
+            // Check if in PWA mode (standalone or fullscreen)
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                                window.matchMedia('(display-mode: fullscreen)').matches ||
+                                (window.navigator.standalone === true);
+            
+            // Format version: "B12.0" in browser, "12.0" in PWA
+            if (isStandalone) {
+                versionDisplay.textContent = `V: ${APP_VERSION}`;
+            } else {
+                versionDisplay.textContent = `V: B${APP_VERSION}`;
+            }
+        }
+    }
+    
+    // Initialize version display
+    initializeVersionDisplay();
+    
+    // Also check on resize/orientation change (in case mode changes)
+    window.addEventListener('resize', initializeVersionDisplay);
+    window.addEventListener('orientationchange', initializeVersionDisplay);
     
     // Initialize dropdowns and button listeners
     initializeDropdowns();

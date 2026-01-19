@@ -3936,4 +3936,20 @@ input:checked + .slider:before {
         padding: 12px !important;
         font-size: 14px !important;
     }
+}
+
+/* Version Display - Visible in all modes */
+.version-display {
+    position: fixed;
+    bottom: 8px;
+    left: 8px;
+    padding: 4px 8px;
+    background-color: rgba(0, 0, 0, 0.3);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 10px;
+    font-weight: normal;
+    border-radius: 4px;
+    z-index: 9999;
+    pointer-events: none;
+    user-select: none;
 } 
