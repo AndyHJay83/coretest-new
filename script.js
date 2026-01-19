@@ -230,6 +230,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
             
+            // Manual cache clear function (for testing/debugging)
+            window.clearAllCaches = async function() {
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    await Promise.all(cacheNames.map(name => {
+                        console.log('Deleting cache:', name);
+                        return caches.delete(name);
+                    }));
+                }
+                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+                }
+                console.log('All caches cleared. Reloading...');
+                window.location.reload(true);
+            };
+            
             // Send skip waiting message to service worker if it's waiting
             if (registration.waiting) {
                 registration.waiting.postMessage({ type: 'SKIP_WAITING' });
