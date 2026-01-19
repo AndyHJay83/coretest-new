@@ -26,6 +26,11 @@ let leastFrequentLetter = null;
 let usedLettersInWorkflow = [];  // Track letters used in current workflow
 let letterFrequencyMap = new Map();  // Store frequency of all letters
 
+// Store T9 1 LIE (L4) data for "B" feature
+let t9OneLieBlankIndex = null;  // Position of BLANK (0-3)
+let t9OneLiePossibleDigits = []; // Array of possible digits for BLANK
+let t9OneLieSelectedDigits = []; // The full 4-digit selection from 1 LIE
+
 // POSITION-CONS Constants
 const ALPHABET_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 const VOWEL_SET = new Set(['A', 'E', 'I', 'O', 'U']);
@@ -1320,6 +1325,9 @@ async function executeWorkflow(steps) {
         // Reset T9 state at the beginning of each workflow
         t9StringsMap.clear();
         t9StringsCalculated = false;
+        t9OneLieBlankIndex = null;
+        t9OneLiePossibleDigits = [];
+        t9OneLieSelectedDigits = [];
         
         console.log('Starting workflow with steps:', steps);
         console.log('Using wordlist:', selectedWordlist);
@@ -1527,6 +1535,9 @@ async function executeWorkflow(steps) {
                 case 'vowel':
                     featureElement = createVowelFeature();
                     break;
+                case 'vowel2':
+                    featureElement = createVowel2Feature();
+                    break;
                 case 'vowelPos':
                     featureElement = createVowelPosFeature();
                     break;
@@ -1598,6 +1609,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 't9OneTruth':
                     featureElement = createT9OneTruthFeature();
+                    break;
+                case 't9B':
+                    featureElement = createT9BFeature();
                     break;
                 case 'alphaNumeric':
                     featureElement = createAlphaNumericFeature();
@@ -1836,6 +1850,26 @@ function createVowelFeature() {
             <button class="position-btn" data-position="6">6</button>
             <button class="position-btn" data-position="7">7</button>
             <button class="position-btn" data-position="8">8</button>
+        </div>
+    `;
+    return div;
+}
+
+function createVowel2Feature() {
+    const div = document.createElement('div');
+    div.id = 'vowel2Feature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">VOWEL2</h2>
+        <div class="vowel-letter"></div>
+        <div class="button-container">
+            <button class="vowel-btn yes-btn">YES</button>
+            <button class="vowel-btn no-btn">NO</button>
+        </div>
+        <div class="section-buttons">
+            <button class="section-btn" data-section="start">START</button>
+            <button class="section-btn" data-section="middle">MIDDLE</button>
+            <button class="section-btn" data-section="end">END</button>
         </div>
     `;
     return div;
@@ -2245,6 +2279,9 @@ function createT9OneLieFeature() {
             <button id="t9OneLieSubmitButton">SUBMIT</button>
             <button id="t9OneLieResetButton" class="reset-button">RESET</button>
             <button id="t9OneLieSkipButton" class="skip-button">SKIP</button>
+            <div id="t9OneLiePossibleDigits" style="margin-top: 15px; padding: 10px; font-size: 14px; color: #666; text-align: center; min-height: 20px;">
+                <span style="font-weight: bold;">Possible T9 digits for BLANK:</span> <span id="t9OneLiePossibleDigitsList">-</span>
+            </div>
         </div>
     `;
     return div;
@@ -2301,6 +2338,7 @@ function createT9OneTruthFeature() {
             <button class="t9-one-truth-btn" data-digit="7">7</button>
             <button class="t9-one-truth-btn" data-digit="8">8</button>
             <button class="t9-one-truth-btn" data-digit="9">9</button>
+            <button class="t9-one-truth-btn blank-btn" data-digit="BLANK" style="background-color: #f44336; color: white; font-weight: bold;">B</button>
         </div>
         <div id="t9OneTruthDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
             <span id="t9OneTruthString">-</span>
@@ -2309,6 +2347,35 @@ function createT9OneTruthFeature() {
             <button id="t9OneTruthSubmitButton">SUBMIT</button>
             <button id="t9OneTruthResetButton" class="reset-button">RESET</button>
             <button id="t9OneTruthSkipButton" class="skip-button">SKIP</button>
+            <div id="t9OneTruthPossibleDigits" style="margin-top: 15px; padding: 10px; font-size: 14px; color: #666; text-align: center; min-height: 20px;">
+                <span style="font-weight: bold;">Possible T9 digits for BLANK:</span> <span id="t9OneTruthPossibleDigitsList">-</span>
+            </div>
+        </div>
+    `;
+    return div;
+}
+
+// --- T9 B Feature Logic ---
+function createT9BFeature() {
+    const div = document.createElement('div');
+    div.id = 't9BFeature';
+    div.className = 'feature-section';
+    
+    // Get possible digits from stored data
+    const possibleDigits = t9OneLiePossibleDigits.length > 0 ? t9OneLiePossibleDigits : [];
+    
+    div.innerHTML = `
+        <h2 class="feature-title">B-IDENTITY</h2>
+        <p style="text-align: center; margin: 20px 0; font-size: 16px; color: #666;">
+            Select the T9 digit for the BLANK position from 1 LIE (L4)
+        </p>
+        <div class="t9-b-row" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+            ${possibleDigits.map(digit => 
+                `<button class="t9-b-btn" data-digit="${digit}" style="padding: 15px 25px; font-size: 18px; font-weight: bold; background-color: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; min-width: 60px;">${digit}</button>`
+            ).join('')}
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+            <button id="t9BSkipButton" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
@@ -2655,12 +2722,13 @@ function filterWordsByT9Higher(words, option) {
 }
 
 // Filtering logic for T9 1 TRUTH (F4) feature
-function filterWordsByT9OneTruth(words, fourDigits) {
+function filterWordsByT9OneTruth(words, selectedDigits) {
     // Calculate T9 strings if not already done
     calculateT9Strings(words);
     
-    // Extract the 4 digits
-    const digits = fourDigits.split('');
+    // Check if BLANK is used (marking a specific position as the truth)
+    const blankIndex = selectedDigits.indexOf('BLANK');
+    const hasBlank = blankIndex !== -1;
     
     return words.filter(word => {
         const t9String = t9StringsMap.get(word) || wordToT9(word);
@@ -2671,40 +2739,184 @@ function filterWordsByT9OneTruth(words, fourDigits) {
         const firstFour = t9String.slice(0, 4);
         const firstFourDigits = firstFour.split('');
         
-        // Check all 4 scenarios where exactly one digit is correct
-        // Scenario 1: First digit correct, others wrong
-        if (firstFourDigits[0] === digits[0] && 
-            firstFourDigits[1] !== digits[1] && 
-            firstFourDigits[2] !== digits[2] && 
-            firstFourDigits[3] !== digits[3]) {
-            return true;
-        }
-        
-        // Scenario 2: Second digit correct, others wrong
-        if (firstFourDigits[0] !== digits[0] && 
-            firstFourDigits[1] === digits[1] && 
-            firstFourDigits[2] !== digits[2] && 
-            firstFourDigits[3] !== digits[3]) {
-            return true;
-        }
-        
-        // Scenario 3: Third digit correct, others wrong
-        if (firstFourDigits[0] !== digits[0] && 
-            firstFourDigits[1] !== digits[1] && 
-            firstFourDigits[2] === digits[2] && 
-            firstFourDigits[3] !== digits[3]) {
-            return true;
-        }
-        
-        // Scenario 4: Fourth digit correct, others wrong
-        if (firstFourDigits[0] !== digits[0] && 
-            firstFourDigits[1] !== digits[1] && 
-            firstFourDigits[2] !== digits[2] && 
-            firstFourDigits[3] === digits[3]) {
-            return true;
+        if (hasBlank) {
+            // BLANK is specified - only check that specific position as the truth
+            // All other positions must be incorrect (NOT match)
+            
+            // Check that all non-BLANK positions do NOT match (they are incorrect)
+            for (let i = 0; i < 4; i++) {
+                if (i !== blankIndex && selectedDigits[i] !== 'BLANK') {
+                    if (firstFourDigits[i] === selectedDigits[i]) {
+                        return false; // This position should be wrong but it matches
+                    }
+                }
+            }
+            
+            // The BLANK position is correct (we don't check what it is, just that others are wrong)
+            return true; // All conditions met
+        } else {
+            // No BLANK - check all 4 scenarios where exactly one digit is correct
+            // Convert selectedDigits array to string for backward compatibility
+            const digits = Array.isArray(selectedDigits) ? selectedDigits : selectedDigits.split('');
+            
+            // Scenario 1: First digit correct, others wrong
+            if (firstFourDigits[0] === digits[0] && 
+                firstFourDigits[1] !== digits[1] && 
+                firstFourDigits[2] !== digits[2] && 
+                firstFourDigits[3] !== digits[3]) {
+                return true;
+            }
+            
+            // Scenario 2: Second digit correct, others wrong
+            if (firstFourDigits[0] !== digits[0] && 
+                firstFourDigits[1] === digits[1] && 
+                firstFourDigits[2] !== digits[2] && 
+                firstFourDigits[3] !== digits[3]) {
+                return true;
+            }
+            
+            // Scenario 3: Third digit correct, others wrong
+            if (firstFourDigits[0] !== digits[0] && 
+                firstFourDigits[1] !== digits[1] && 
+                firstFourDigits[2] === digits[2] && 
+                firstFourDigits[3] !== digits[3]) {
+                return true;
+            }
+            
+            // Scenario 4: Fourth digit correct, others wrong
+            if (firstFourDigits[0] !== digits[0] && 
+                firstFourDigits[1] !== digits[1] && 
+                firstFourDigits[2] !== digits[2] && 
+                firstFourDigits[3] === digits[3]) {
+                return true;
+            }
         }
         
         return false;
+    });
+}
+
+// Helper function to calculate possible T9 digits for BLANK position
+function calculatePossibleT9DigitsForBlank(words, selectedDigits) {
+    // Check if BLANK is used
+    const blankIndex = selectedDigits.indexOf('BLANK');
+    if (blankIndex === -1 || selectedDigits.length !== 4) {
+        return [];
+    }
+    
+    // Calculate T9 strings if not already done
+    calculateT9Strings(words);
+    
+    const possibleDigits = new Set();
+    
+    words.forEach(word => {
+        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        
+        // Must have at least 4 digits
+        if (t9String.length < 4) return;
+        
+        const lastFour = t9String.slice(-4);
+        const lastFourDigits = lastFour.split('');
+        
+        // Check if this word matches the pattern (non-BLANK positions must match)
+        let matches = true;
+        for (let i = 0; i < 4; i++) {
+            if (i !== blankIndex && selectedDigits[i] !== 'BLANK') {
+                if (lastFourDigits[i] !== selectedDigits[i]) {
+                    matches = false;
+                    break;
+                }
+            }
+        }
+        
+        if (matches) {
+            // This word matches the pattern, add its T9 digit at the BLANK position
+            possibleDigits.add(lastFourDigits[blankIndex]);
+        }
+    });
+    
+    return Array.from(possibleDigits).sort();
+}
+
+// Helper function to calculate possible T9 digits for BLANK position in 1 TRUTH (F4)
+function calculatePossibleT9DigitsForBlankTruth(words, selectedDigits) {
+    // Check if BLANK is used
+    const blankIndex = selectedDigits.indexOf('BLANK');
+    if (blankIndex === -1 || selectedDigits.length !== 4) {
+        return [];
+    }
+    
+    // Calculate T9 strings if not already done
+    calculateT9Strings(words);
+    
+    const possibleDigits = new Set();
+    
+    words.forEach(word => {
+        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        
+        // Must have at least 4 digits
+        if (t9String.length < 4) return;
+        
+        const firstFour = t9String.slice(0, 4);
+        const firstFourDigits = firstFour.split('');
+        
+        // Check if this word matches the pattern:
+        // BLANK position is correct (we collect all possible values),
+        // other positions must NOT match (they are incorrect)
+        let matches = true;
+        for (let i = 0; i < 4; i++) {
+            if (i === blankIndex) {
+                // BLANK position - this will be collected, continue
+                continue;
+            } else if (selectedDigits[i] !== 'BLANK') {
+                // Non-BLANK positions must NOT match (they are incorrect)
+                if (firstFourDigits[i] === selectedDigits[i]) {
+                    matches = false;
+                    break;
+                }
+            }
+        }
+        
+        if (matches) {
+            // This word matches the pattern (BLANK position is correct, others are wrong)
+            // Add its T9 digit at the BLANK position
+            possibleDigits.add(firstFourDigits[blankIndex]);
+        }
+    });
+    
+    return Array.from(possibleDigits).sort();
+}
+
+// Filtering logic for T9 B feature
+function filterWordsByT9B(words, selectedDigit) {
+    // Calculate T9 strings if not already done
+    calculateT9Strings(words);
+    
+    // Must have stored data from 1 LIE (L4)
+    if (t9OneLieBlankIndex === null || t9OneLieSelectedDigits.length !== 4) {
+        return words; // Return unfiltered if no data
+    }
+    
+    return words.filter(word => {
+        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        
+        // Must have at least 4 digits
+        if (t9String.length < 4) return false;
+        
+        const lastFour = t9String.slice(-4);
+        const lastFourDigits = lastFour.split('');
+        
+        // Check that all non-BLANK positions match
+        for (let i = 0; i < 4; i++) {
+            if (i !== t9OneLieBlankIndex && t9OneLieSelectedDigits[i] !== 'BLANK') {
+                if (lastFourDigits[i] !== t9OneLieSelectedDigits[i]) {
+                    return false; // This position must match and doesn't
+                }
+            }
+        }
+        
+        // The BLANK position must match the selected digit
+        return lastFourDigits[t9OneLieBlankIndex] === selectedDigit;
     });
 }
 
@@ -3201,7 +3413,129 @@ function setupFeatureListeners(feature, callback) {
             }
             break;
         }
-        
+            
+        case 'vowel2': {
+            const vowelYesBtn = document.querySelector('#vowel2Feature .yes-btn');
+            const vowelNoBtn = document.querySelector('#vowel2Feature .no-btn');
+            const sectionBtns = document.querySelectorAll('#vowel2Feature .section-btn');
+            
+            // Initialize vowel processing with current words
+            currentFilteredWordsForVowels = [...currentFilteredWords];
+            originalFilteredWords = [...currentFilteredWords];
+            currentVowelIndex = 0;
+            
+            // Get vowels from Position 1 word in order
+            const vowels = new Set(['a', 'e', 'i', 'o', 'u']);
+            uniqueVowels = [];
+            if (currentPosition1Word) {
+                for (const char of currentPosition1Word.toLowerCase()) {
+                    if (vowels.has(char)) {
+                        uniqueVowels.push(char);
+                    }
+                }
+            }
+            
+            // Set up the vowel display
+            const vowelFeature = document.getElementById('vowel2Feature');
+            const vowelLetter = vowelFeature.querySelector('.vowel-letter');
+            if (uniqueVowels.length > 0) {
+                vowelLetter.textContent = uniqueVowels[0].toUpperCase();
+                vowelLetter.style.display = 'inline-block';
+            }
+
+            // Function to filter words by vowel section (start, middle, end)
+            function filterWordsByVowelSection(words, vowel, section) {
+                return words.filter(word => {
+                    const wordLower = word.toLowerCase();
+                    const vowelLower = vowel.toLowerCase();
+                    
+                    if (!wordLower.includes(vowelLower)) {
+                        return false; // Word doesn't contain the vowel
+                    }
+                    
+                    const wordLength = word.length;
+                    
+                    // Find all positions where the vowel appears
+                    const vowelPositions = [];
+                    for (let i = 0; i < wordLength; i++) {
+                        if (wordLower[i] === vowelLower) {
+                            vowelPositions.push(i);
+                        }
+                    }
+                    
+                    // Check if any vowel position is in the specified section
+                    return vowelPositions.some(pos => {
+                        if (section === 'start') {
+                            // First half: positions 0 to Math.floor(wordLength/2)
+                            return pos <= Math.floor(wordLength / 2);
+                        } else if (section === 'end') {
+                            // Last half: positions Math.ceil(wordLength/2) to end
+                            return pos >= Math.ceil(wordLength / 2);
+                        } else if (section === 'middle') {
+                            // Middle half: positions in the middle third
+                            const start = Math.floor(wordLength / 3);
+                            const end = Math.ceil((2 * wordLength) / 3);
+                            return pos >= start && pos < end;
+                        }
+                        return false;
+                    });
+                });
+            }
+
+            // Add click handlers for section buttons
+            sectionBtns.forEach(btn => {
+                btn.onclick = () => {
+                    const section = btn.dataset.section;
+                    const currentVowel = uniqueVowels[currentVowelIndex];
+                    if (currentVowel) {
+                        const filteredWords = filterWordsByVowelSection(currentFilteredWords, currentVowel, section);
+                        callback(filteredWords);
+                        document.getElementById('vowel2Feature').dispatchEvent(new Event('completed'));
+                    }
+                };
+                
+                // Add touch event for mobile
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    btn.click();
+                }, { passive: false });
+            });
+
+            // YES/NO button handlers
+            if (vowelYesBtn) {
+                vowelYesBtn.onclick = () => {
+                    const currentVowel = uniqueVowels[currentVowelIndex];
+                    if (currentVowel) {
+                        const filteredWords = currentFilteredWords.filter(word => word.toLowerCase().includes(currentVowel.toLowerCase()));
+                        callback(filteredWords);
+                        document.getElementById('vowel2Feature').dispatchEvent(new Event('completed'));
+                    }
+                };
+                // Add touch event for mobile
+                vowelYesBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    vowelYesBtn.click();
+                }, { passive: false });
+            }
+            
+            if (vowelNoBtn) {
+                vowelNoBtn.onclick = () => {
+                    const currentVowel = uniqueVowels[currentVowelIndex];
+                    if (currentVowel) {
+                        const filteredWords = currentFilteredWords.filter(word => !word.toLowerCase().includes(currentVowel.toLowerCase()));
+                        callback(filteredWords);
+                        document.getElementById('vowel2Feature').dispatchEvent(new Event('completed'));
+                    }
+                };
+                // Add touch event for mobile
+                vowelNoBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    vowelNoBtn.click();
+                }, { passive: false });
+            }
+            break;
+        }
+            
         case 'vowelPos': {
             const vowelPosYesBtn = document.querySelector('#vowelPosFeature .yes-btn');
             const vowelPosNoBtn = document.querySelector('#vowelPosFeature .no-btn');
@@ -4529,13 +4863,34 @@ function setupFeatureListeners(feature, callback) {
             let selectedDigits = [];
             const t9OneLieButtons = document.querySelectorAll('.t9-one-lie-btn');
             const t9OneLieDisplay = document.getElementById('t9OneLieString');
+            const t9OneLiePossibleDigitsList = document.getElementById('t9OneLiePossibleDigitsList');
             const t9OneLieSubmitButton = document.getElementById('t9OneLieSubmitButton');
             const t9OneLieResetButton = document.getElementById('t9OneLieResetButton');
             const t9OneLieSkipButton = document.getElementById('t9OneLieSkipButton');
             
+            // Function to update the possible digits display
+            const updatePossibleDigits = () => {
+                if (t9OneLiePossibleDigitsList) {
+                    const blankIndex = selectedDigits.indexOf('BLANK');
+                    if (blankIndex !== -1 && selectedDigits.length === 4) {
+                        const possibleDigits = calculatePossibleT9DigitsForBlank(currentFilteredWords, selectedDigits);
+                        if (possibleDigits.length > 0) {
+                            t9OneLiePossibleDigitsList.textContent = possibleDigits.join(', ');
+                        } else {
+                            t9OneLiePossibleDigitsList.textContent = 'None found';
+                        }
+                    } else {
+                        t9OneLiePossibleDigitsList.textContent = '-';
+                    }
+                }
+            };
+            
             // Initialize display
             if (t9OneLieDisplay) {
                 t9OneLieDisplay.textContent = '-';
+            }
+            if (t9OneLiePossibleDigitsList) {
+                t9OneLiePossibleDigitsList.textContent = '-';
             }
             
             // Number button handlers
@@ -4555,6 +4910,9 @@ function setupFeatureListeners(feature, callback) {
                             t9OneLieDisplay.innerHTML = displayHTML;
                         }
                         btn.classList.add('active');
+                        
+                        // Update possible digits display
+                        updatePossibleDigits();
                     }
                 };
                 
@@ -4574,6 +4932,9 @@ function setupFeatureListeners(feature, callback) {
                             t9OneLieDisplay.innerHTML = displayHTML;
                         }
                         btn.classList.add('active');
+                        
+                        // Update possible digits display
+                        updatePossibleDigits();
                     }
                 }, { passive: false });
             });
@@ -4588,6 +4949,19 @@ function setupFeatureListeners(feature, callback) {
                     
                     // Calculate T9 strings if not already done
                     calculateT9Strings(currentFilteredWords);
+                    
+                    // Store data for "B" feature if BLANK is used
+                    const blankIndex = selectedDigits.indexOf('BLANK');
+                    if (blankIndex !== -1) {
+                        t9OneLieBlankIndex = blankIndex;
+                        t9OneLieSelectedDigits = [...selectedDigits];
+                        t9OneLiePossibleDigits = calculatePossibleT9DigitsForBlank(currentFilteredWords, selectedDigits);
+                    } else {
+                        // Clear if no BLANK
+                        t9OneLieBlankIndex = null;
+                        t9OneLieSelectedDigits = [];
+                        t9OneLiePossibleDigits = [];
+                    }
                     
                     const filteredWords = filterWordsByT9OneLie(currentFilteredWords, selectedDigits);
                     callback(filteredWords);
@@ -4607,6 +4981,9 @@ function setupFeatureListeners(feature, callback) {
                     selectedDigits = [];
                     if (t9OneLieDisplay) {
                         t9OneLieDisplay.textContent = '-';
+                    }
+                    if (t9OneLiePossibleDigitsList) {
+                        t9OneLiePossibleDigitsList.textContent = '-';
                     }
                     t9OneLieButtons.forEach(btn => {
                         btn.classList.remove('active');
@@ -4752,13 +5129,34 @@ function setupFeatureListeners(feature, callback) {
             let selectedDigits = [];
             const t9OneTruthButtons = document.querySelectorAll('.t9-one-truth-btn');
             const t9OneTruthDisplay = document.getElementById('t9OneTruthString');
+            const t9OneTruthPossibleDigitsList = document.getElementById('t9OneTruthPossibleDigitsList');
             const t9OneTruthSubmitButton = document.getElementById('t9OneTruthSubmitButton');
             const t9OneTruthResetButton = document.getElementById('t9OneTruthResetButton');
             const t9OneTruthSkipButton = document.getElementById('t9OneTruthSkipButton');
             
+            // Function to update the possible digits display
+            const updatePossibleDigits = () => {
+                if (t9OneTruthPossibleDigitsList) {
+                    const blankIndex = selectedDigits.indexOf('BLANK');
+                    if (blankIndex !== -1 && selectedDigits.length === 4) {
+                        const possibleDigits = calculatePossibleT9DigitsForBlankTruth(currentFilteredWords, selectedDigits);
+                        if (possibleDigits.length > 0) {
+                            t9OneTruthPossibleDigitsList.textContent = possibleDigits.join(', ');
+                        } else {
+                            t9OneTruthPossibleDigitsList.textContent = 'None found';
+                        }
+                    } else {
+                        t9OneTruthPossibleDigitsList.textContent = '-';
+                    }
+                }
+            };
+            
             // Initialize display
             if (t9OneTruthDisplay) {
                 t9OneTruthDisplay.textContent = '-';
+            }
+            if (t9OneTruthPossibleDigitsList) {
+                t9OneTruthPossibleDigitsList.textContent = '-';
             }
             
             // Number button handlers
@@ -4768,9 +5166,19 @@ function setupFeatureListeners(feature, callback) {
                         const digit = btn.dataset.digit;
                         selectedDigits.push(digit);
                         if (t9OneTruthDisplay) {
-                            t9OneTruthDisplay.textContent = selectedDigits.join('');
+                            // Build display with red "B" for BLANK
+                            const displayHTML = selectedDigits.map(d => {
+                                if (d === 'BLANK') {
+                                    return '<span style="color: #f44336; font-weight: bold;">B</span>';
+                                }
+                                return d;
+                            }).join('');
+                            t9OneTruthDisplay.innerHTML = displayHTML;
                         }
                         btn.classList.add('active');
+                        
+                        // Update possible digits display
+                        updatePossibleDigits();
                     }
                 };
                 
@@ -4780,9 +5188,19 @@ function setupFeatureListeners(feature, callback) {
                         const digit = btn.dataset.digit;
                         selectedDigits.push(digit);
                         if (t9OneTruthDisplay) {
-                            t9OneTruthDisplay.textContent = selectedDigits.join('');
+                            // Build display with red "B" for BLANK
+                            const displayHTML = selectedDigits.map(d => {
+                                if (d === 'BLANK') {
+                                    return '<span style="color: #f44336; font-weight: bold;">B</span>';
+                                }
+                                return d;
+                            }).join('');
+                            t9OneTruthDisplay.innerHTML = displayHTML;
                         }
                         btn.classList.add('active');
+                        
+                        // Update possible digits display
+                        updatePossibleDigits();
                     }
                 }, { passive: false });
             });
@@ -4791,16 +5209,14 @@ function setupFeatureListeners(feature, callback) {
             if (t9OneTruthSubmitButton) {
                 t9OneTruthSubmitButton.onclick = () => {
                     if (selectedDigits.length !== 4) {
-                        alert('Please select exactly 4 digits');
+                        alert('Please select exactly 4 digits (or use BLANK)');
                         return;
                     }
-                    
-                    const fourDigits = selectedDigits.join('');
                     
                     // Calculate T9 strings if not already done
                     calculateT9Strings(currentFilteredWords);
                     
-                    const filteredWords = filterWordsByT9OneTruth(currentFilteredWords, fourDigits);
+                    const filteredWords = filterWordsByT9OneTruth(currentFilteredWords, selectedDigits);
                     callback(filteredWords);
                     document.getElementById('t9OneTruthFeature').classList.add('completed');
                     document.getElementById('t9OneTruthFeature').dispatchEvent(new Event('completed'));
@@ -4818,6 +5234,9 @@ function setupFeatureListeners(feature, callback) {
                     selectedDigits = [];
                     if (t9OneTruthDisplay) {
                         t9OneTruthDisplay.textContent = '-';
+                    }
+                    if (t9OneTruthPossibleDigitsList) {
+                        t9OneTruthPossibleDigitsList.textContent = '-';
                     }
                     t9OneTruthButtons.forEach(btn => {
                         btn.classList.remove('active');
@@ -4841,6 +5260,54 @@ function setupFeatureListeners(feature, callback) {
                 t9OneTruthSkipButton.addEventListener('touchstart', (e) => {
                     e.preventDefault();
                     t9OneTruthSkipButton.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 't9B': {
+            // Validate that this follows 1 LIE (L4) with BLANK
+            if (t9OneLieBlankIndex === null || t9OneLiePossibleDigits.length === 0) {
+                alert('B feature must follow 1 LIE (L4) with a BLANK. Please use 1 LIE (L4) with BLANK first.');
+                callback(currentFilteredWords);
+                document.getElementById('t9BFeature').classList.add('completed');
+                document.getElementById('t9BFeature').dispatchEvent(new Event('completed'));
+                break;
+            }
+            
+            const t9BButtons = document.querySelectorAll('.t9-b-btn');
+            const t9BSkipButton = document.getElementById('t9BSkipButton');
+            
+            // Add click handlers for digit buttons
+            t9BButtons.forEach(btn => {
+                btn.onclick = () => {
+                    const digit = btn.dataset.digit;
+                    
+                    // Calculate T9 strings if not already done
+                    calculateT9Strings(currentFilteredWords);
+                    
+                    const filteredWords = filterWordsByT9B(currentFilteredWords, digit);
+                    callback(filteredWords);
+                    document.getElementById('t9BFeature').classList.add('completed');
+                    document.getElementById('t9BFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    btn.onclick();
+                }, { passive: false });
+            });
+            
+            // Skip button
+            if (t9BSkipButton) {
+                t9BSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('t9BFeature').classList.add('completed');
+                    document.getElementById('t9BFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                t9BSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9BSkipButton.onclick();
                 }, { passive: false });
             }
             break;
@@ -5549,6 +6016,12 @@ function displayResults(words) {
     updateWordCount(words.length);
     updateExportButtonState(words);
     
+    // Calculate T9 strings if needed (for click functionality when 20 or fewer words)
+    const shouldEnableClicks = words.length <= 20;
+    if (shouldEnableClicks) {
+        calculateT9Strings(words);
+    }
+    
     // For large lists, use virtual scrolling approach
     if (words.length > 1000) {
         // Show first 1000 words with a "show more" option
@@ -5584,12 +6057,49 @@ function displayResults(words) {
         }
     } else {
         // For smaller lists, show all words at once using innerHTML
-        const wordListHTML = words.map(word => `<li>${word}</li>`).join('');
+        const wordListHTML = words.map(word => {
+            if (shouldEnableClicks) {
+                // Make clickable with data attribute to store original word
+                return `<li class="word-clickable" data-word="${word}" style="cursor: pointer;">${word}</li>`;
+            } else {
+                return `<li>${word}</li>`;
+            }
+        }).join('');
+        
         resultsContainer.innerHTML = `
             <ul class="word-list">
                 ${wordListHTML}
             </ul>
         `;
+        
+        // Add click handlers for words if 20 or fewer
+        if (shouldEnableClicks) {
+            const wordElements = resultsContainer.querySelectorAll('.word-clickable');
+            wordElements.forEach(li => {
+                li.addEventListener('click', (e) => {
+                    const word = li.dataset.word;
+                    const t9String = t9StringsMap.get(word) || wordToT9(word);
+                    
+                    // Highlight first 4 digits in red
+                    const firstFour = t9String.substring(0, 4);
+                    const rest = t9String.substring(4);
+                    
+                    // Replace text with T9 string, highlighting first 4 in red
+                    li.innerHTML = `<span style="color: red; font-weight: bold;">${firstFour}</span>${rest}`;
+                    
+                    // Copy to clipboard
+                    navigator.clipboard.writeText(t9String).then(() => {
+                        // Optional: Show brief feedback
+                        li.style.backgroundColor = '#d4edda'; // Light green to indicate copied
+                        setTimeout(() => {
+                            li.style.backgroundColor = '';
+                        }, 300);
+                    }).catch(err => {
+                        console.error('Failed to copy to clipboard:', err);
+                    });
+                });
+            });
+        }
     }
     
     // Ensure the feature area is empty and visible
@@ -6927,6 +7437,10 @@ function showT9Features() {
         <div class="feature-group">
             <button class="feature-button t9-feature-button" data-feature="t9OneTruth" draggable="true">1 TRUTH (F4)</button>
             <button class="info-button" data-feature="t9OneTruth"><i class="fas fa-info-circle"></i></button>
+        </div>
+        <div class="feature-group">
+            <button class="feature-button t9-feature-button" data-feature="t9B" draggable="true">B-IDENTITY</button>
+            <button class="info-button" data-feature="t9B"><i class="fas fa-info-circle"></i></button>
         </div>
     `;
     

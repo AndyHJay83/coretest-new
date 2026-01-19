@@ -2121,6 +2121,44 @@ input:checked + .slider:before {
     }
 }
 
+/* T9 B Feature Styles */
+.t9-b-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+}
+
+.t9-b-btn {
+    padding: 15px 25px;
+    font-size: 18px;
+    font-weight: bold;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    min-width: 60px;
+    transition: all 0.2s ease;
+}
+
+.t9-b-btn:hover {
+    background-color: #45a049;
+    transform: scale(1.05);
+}
+
+@media (max-width: 600px) {
+    .t9-b-row {
+        gap: 6px;
+    }
+    .t9-b-btn {
+        padding: 12px 20px;
+        font-size: 16px;
+        min-width: 50px;
+    }
+}
+
 /* Animation for newly added features */
 .selected-feature-item {
     animation: slideInFromTop 0.3s ease-out;

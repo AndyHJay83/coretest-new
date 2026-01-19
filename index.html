@@ -119,6 +119,10 @@
                                 <button class="feature-button" data-feature="vowel" draggable="true">Vowel</button>
                                 <button class="info-button" data-feature="vowel"><i class="fas fa-info-circle"></i></button>
                             </div>
+                            <div class="feature-group" style="display: none;">
+                                <button class="feature-button" data-feature="vowel2" draggable="true">VOWEL2</button>
+                                <button class="info-button" data-feature="vowel2"><i class="fas fa-info-circle"></i></button>
+                            </div>
                             <div class="feature-group">
                                 <button class="feature-button" data-feature="vowelPos" draggable="true">VOWEL POS</button>
                                 <button class="info-button" data-feature="vowelPos"><i class="fas fa-info-circle"></i></button>
@@ -370,6 +374,21 @@
                         <button class="position-btn" data-position="6">6</button>
                         <button class="position-btn" data-position="7">7</button>
                         <button class="position-btn" data-position="8">8</button>
+                    </div>
+                </div>
+
+                <!-- Vowel2 feature -->
+                <div id="vowel2Feature" class="feature-section" style="display: none;">
+                    <div class="feature-title">VOWEL2</div>
+                    <div class="vowel-letter"></div>
+                    <div class="button-container">
+                        <button class="vowel-btn yes-btn">YES</button>
+                        <button class="vowel-btn no-btn">NO</button>
+                    </div>
+                    <div class="section-buttons">
+                        <button class="section-btn" data-section="start">START</button>
+                        <button class="section-btn" data-section="middle">MIDDLE</button>
+                        <button class="section-btn" data-section="end">END</button>
                     </div>
                 </div>
 
@@ -627,6 +646,9 @@
                         <button id="t9OneLieSubmitButton">SUBMIT</button>
                         <button id="t9OneLieResetButton" class="reset-button">RESET</button>
                         <button id="t9OneLieSkipButton" class="skip-button">SKIP</button>
+                        <div id="t9OneLiePossibleDigits" style="margin-top: 15px; padding: 10px; font-size: 14px; color: #666; text-align: center; min-height: 20px;">
+                            <span style="font-weight: bold;">Possible T9 digits for BLANK:</span> <span id="t9OneLiePossibleDigitsList">-</span>
+                        </div>
                     </div>
                 </div>
 
@@ -665,6 +687,7 @@
                         <button class="t9-one-truth-btn" data-digit="7">7</button>
                         <button class="t9-one-truth-btn" data-digit="8">8</button>
                         <button class="t9-one-truth-btn" data-digit="9">9</button>
+                        <button class="t9-one-truth-btn blank-btn" data-digit="BLANK" style="background-color: #f44336; color: white; font-weight: bold;">B</button>
                     </div>
                     <div id="t9OneTruthDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
                         <span id="t9OneTruthString">-</span>
@@ -673,6 +696,23 @@
                         <button id="t9OneTruthSubmitButton">SUBMIT</button>
                         <button id="t9OneTruthResetButton" class="reset-button">RESET</button>
                         <button id="t9OneTruthSkipButton" class="skip-button">SKIP</button>
+                        <div id="t9OneTruthPossibleDigits" style="margin-top: 15px; padding: 10px; font-size: 14px; color: #666; text-align: center; min-height: 20px;">
+                            <span style="font-weight: bold;">Possible T9 digits for BLANK:</span> <span id="t9OneTruthPossibleDigitsList">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- T9 B feature -->
+                <div id="t9BFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">B-IDENTITY</h2>
+                    <p style="text-align: center; margin: 20px 0; font-size: 16px; color: #666;">
+                        Select the T9 digit for the BLANK position from 1 LIE (L4)
+                    </p>
+                    <div class="t9-b-row" style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+                        <!-- Buttons will be dynamically generated -->
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
+                        <button id="t9BSkipButton" class="skip-button">SKIP</button>
                     </div>
                 </div>
 
@@ -776,6 +816,13 @@
             <div class="feature-info-content">
                 <h3>VOWEL</h3>
                 <p><strong>Vowel</strong><br>This MUST follow Short Word. Will cycle through vowels within Short Word.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="vowel2Info" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>VOWEL2</h3>
+                <p><strong>Vowel2</strong><br>This MUST follow Short Word. Will cycle through vowels within Short Word. Select START, MIDDLE, or END to specify which section of the word contains the vowel.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
@@ -958,6 +1005,13 @@
             <div class="feature-info-content">
                 <h3>1 TRUTH (F4)</h3>
                 <p><strong>T9 1 Truth (F4)</strong><br>Select 4 digits (2-9) representing the first 4 digits of the T9 string. The filter assumes exactly ONE of these digits is correct. Words will be kept if their T9 string's first 4 digits match any scenario where 1 digit is correct and 3 digits are different.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="t9BInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>B-IDENTITY</h3>
+                <p><strong>T9 B-IDENTITY</strong><br>This MUST follow 1 LIE (L4) with a BLANK. Select the correct T9 digit for the BLANK position from the possible options calculated in 1 LIE (L4). The wordlist will be filtered to only include words where the BLANK position matches the selected digit.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

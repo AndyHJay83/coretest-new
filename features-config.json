@@ -29,6 +29,13 @@
       "analyzeFunction": "const vowels = new Set('aeiou'); const results = []; vowels.forEach(v => { const yes = wordlist.filter(w => w.toLowerCase().includes(v)); const no = wordlist.filter(w => !w.toLowerCase().includes(v)); results.push({ param: v.toUpperCase() + ' - YES', wordsLeft: yes.length, percentFiltered: 100 * (1 - yes.length / totalWords) }); results.push({ param: v.toUpperCase() + ' - NO', wordsLeft: no.length, percentFiltered: 100 * (1 - no.length / totalWords) }); }); return results;"
     },
     {
+      "id": "vowel2",
+      "name": "VOWEL2",
+      "displayName": "VOWEL2",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires vowel and section input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
       "id": "vowelPos",
       "name": "VOWEL POS",
       "displayName": "VOWEL POS",
@@ -209,6 +216,13 @@
       "displayName": "1 TRUTH (F4)",
       "requiresParam": false,
       "analyzeFunction": "const results = []; const t9Map = new Map(); const t9Mapping = {'A':'2','B':'2','C':'2','D':'3','E':'3','F':'3','G':'4','H':'4','I':'4','J':'5','K':'5','L':'5','M':'6','N':'6','O':'6','P':'7','Q':'7','R':'7','S':'7','T':'8','U':'8','V':'8','W':'9','X':'9','Y':'9','Z':'9'}; wordlist.forEach(w => { const t9 = w.toUpperCase().split('').map(c => t9Mapping[c] || '').join(''); t9Map.set(w, t9); }); const patterns = {}; for (let d1 = 2; d1 <= 9; d1++) { for (let d2 = 2; d2 <= 9; d2++) { for (let d3 = 2; d3 <= 9; d3++) { for (let d4 = 2; d4 <= 9; d4++) { const pattern = d1 + '' + d2 + '' + d3 + '' + d4; const filtered = wordlist.filter(w => { const t9 = t9Map.get(w); if (t9.length < 4) return false; const firstFour = t9.slice(0, 4); const firstFourDigits = firstFour.split(''); const digits = pattern.split(''); if ((firstFourDigits[0] === digits[0] && firstFourDigits[1] !== digits[1] && firstFourDigits[2] !== digits[2] && firstFourDigits[3] !== digits[3]) || (firstFourDigits[0] !== digits[0] && firstFourDigits[1] === digits[1] && firstFourDigits[2] !== digits[2] && firstFourDigits[3] !== digits[3]) || (firstFourDigits[0] !== digits[0] && firstFourDigits[1] !== digits[1] && firstFourDigits[2] === digits[2] && firstFourDigits[3] !== digits[3]) || (firstFourDigits[0] !== digits[0] && firstFourDigits[1] !== digits[1] && firstFourDigits[2] !== digits[2] && firstFourDigits[3] === digits[3])) { return true; } return false; }); if (filtered.length > 0) { patterns[pattern] = filtered.length; } } } } } return Object.keys(patterns).sort().slice(0, 50).map(pattern => ({ param: pattern, wordsLeft: patterns[pattern], percentFiltered: 100 * (1 - patterns[pattern] / totalWords) }));"
+    },
+    {
+      "id": "t9B",
+      "name": "B-IDENTITY",
+      "displayName": "B-IDENTITY",
+      "requiresParam": false,
+      "analyzeFunction": "return [{ param: 'Requires 1 LIE (L4) with BLANK', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "alphaNumeric",
