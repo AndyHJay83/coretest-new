@@ -2083,7 +2083,7 @@ function createLengthFeature() {
     div.innerHTML = `
         <h2 class="feature-title">LENGTH</h2>
         <div class="length-input">
-            <input type="number" id="lengthInput" placeholder="Enter length (3+)" min="3">
+            <input type="text" id="lengthInput" placeholder="Enter length (3+)" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
             <button id="lengthButton">SUBMIT</button>
             <button id="lengthSkipButton" class="skip-button">SKIP</button>
         </div>

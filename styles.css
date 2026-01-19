@@ -2990,15 +2990,22 @@ input:checked + .slider:before {
     padding: 15px;
 }
 
-.length-input input[type="number"] {
+.length-input input[type="number"],
+.length-input input[type="text"] {
     padding: 10px;
     font-size: 16px;
     border: 2px solid #ddd;
     border-radius: 8px;
     width: 100%;
     text-align: center;
-    appearance: textfield;
-    -moz-appearance: textfield;
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    z-index: 10;
+    pointer-events: auto;
+    cursor: text;
+    min-height: 44px;
+    touch-action: manipulation;
 }
 
 .length-input input[type="number"]::-webkit-outer-spin-button,
@@ -3007,9 +3014,17 @@ input:checked + .slider:before {
     margin: 0;
 }
 
+.length-input input[type="text"]:focus,
+.length-input input[type="number"]:focus {
+    outline: none;
+    border-color: #2E7D32;
+    box-shadow: 0 0 0 2px rgba(27, 94, 32, 0.2);
+}
+
 /* Mobile Styles for Length Feature */
 @media (max-width: 600px) {
-    .length-input input[type="number"] {
+    .length-input input[type="number"],
+    .length-input input[type="text"] {
         padding: 15px;
         font-size: 16px !important;
         border-width: 2px;
