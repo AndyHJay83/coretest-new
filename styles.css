@@ -247,6 +247,8 @@ body {
     font-weight: bold;
     text-transform: uppercase;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    background-color: #e0e0e0;
+    color: #333;
 }
 
 .vowel-btn.yes-btn {
@@ -268,6 +270,36 @@ body {
 .vowel-btn:active {
     transform: translateY(0);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.vowel-btn.selected {
+    background-color: #007bff !important;
+    color: white !important;
+    font-weight: bold;
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.5) !important;
+    transform: scale(1.05);
+}
+
+.vowel-btn.selected:hover {
+    background-color: #0056b3 !important;
+    box-shadow: 0 6px 16px rgba(0, 123, 255, 0.6) !important;
+}
+
+.vowel-btn.active {
+    background-color: #007bff !important;
+    color: white !important;
+    font-weight: bold !important;
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.5) !important;
+    transform: scale(1.05) !important;
+    opacity: 1 !important;
+}
+
+.vowel-btn.active:hover {
+    background-color: #0056b3 !important;
+    color: white !important;
+    box-shadow: 0 6px 16px rgba(0, 123, 255, 0.6) !important;
+    transform: scale(1.05) !important;
+    opacity: 1 !important;
 }
 
 /* Shape Feature */
@@ -2801,6 +2833,19 @@ input:checked + .slider:before {
     color: #fff !important;
     box-shadow: 0 4px 8px rgba(0, 123, 255, 0.4) !important;
     transform: translateY(-2px) !important;
+}
+
+.section-btn.selected {
+    background-color: #007bff !important;
+    color: white !important;
+    font-weight: bold;
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.5) !important;
+    transform: scale(1.05);
+}
+
+.section-btn.selected:hover {
+    background-color: #0056b3 !important;
+    box-shadow: 0 6px 16px rgba(0, 123, 255, 0.6) !important;
 }
 
 @media (max-width: 600px) {

@@ -43,6 +43,13 @@
       "analyzeFunction": "return [{ param: 'Requires vowel and section input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
+      "id": "name",
+      "name": "NAME",
+      "displayName": "NAME",
+      "requiresParam": false,
+      "analyzeFunction": "return [{ param: 'Requires name input, vowel and position selection', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
       "id": "o",
       "name": "O?",
       "displayName": "O?",

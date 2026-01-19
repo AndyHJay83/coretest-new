@@ -1541,6 +1541,9 @@ async function executeWorkflow(steps) {
                 case 'vowelPos':
                     featureElement = createVowelPosFeature();
                     break;
+                case 'name':
+                    featureElement = createNameFeature();
+                    break;
                 case 'o':
                     featureElement = createOFeature();
                     break;
@@ -1894,6 +1897,36 @@ function createVowelPosFeature() {
         </div>
     `;
     console.log('VOWEL POS feature element created:', div);
+    return div;
+}
+
+function createNameFeature() {
+    const div = document.createElement('div');
+    div.id = 'nameFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">NAME</h2>
+        <div class="name-input-container" style="margin: 20px 0;">
+            <input type="text" id="nameInput" placeholder="Enter full name (e.g., John Smith)" style="padding: 10px; width: 100%; max-width: 300px; font-size: 16px;">
+        </div>
+        <div class="vowel-buttons" style="display: flex; justify-content: center; gap: 10px; margin: 20px 0; flex-wrap: wrap;">
+            <button class="vowel-btn" data-vowel="a">A</button>
+            <button class="vowel-btn" data-vowel="e">E</button>
+            <button class="vowel-btn" data-vowel="i">I</button>
+            <button class="vowel-btn" data-vowel="o">O</button>
+            <button class="vowel-btn" data-vowel="u">U</button>
+        </div>
+        <div class="section-buttons" style="display: flex; justify-content: center; gap: 10px; margin: 20px 0;">
+            <button class="section-btn" data-section="start">START</button>
+            <button class="section-btn" data-section="middle">MID</button>
+            <button class="section-btn" data-section="end">END</button>
+        </div>
+        <div style="display: flex; justify-content: center; margin-top: 20px;">
+            <button id="nameSubmitButton" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">SUBMIT</button>
+            <button id="nameNoVowelButton" style="padding: 10px 20px; background: #ff9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-left: 10px;">NO VOWEL</button>
+            <button id="nameSkipButton" class="skip-button" style="margin-left: 10px;">SKIP</button>
+        </div>
+    `;
     return div;
 }
 
@@ -3653,6 +3686,193 @@ function setupFeatureListeners(feature, callback) {
                 vowelPosNoBtn.addEventListener('touchstart', (e) => {
                     e.preventDefault();
                     vowelPosNoBtn.click();
+                }, { passive: false });
+            }
+            break;
+        }
+            
+        case 'name': {
+            const nameInput = document.getElementById('nameInput');
+            const nameSubmitButton = document.getElementById('nameSubmitButton');
+            const nameSkipButton = document.getElementById('nameSkipButton');
+            const vowelButtons = document.querySelectorAll('#nameFeature .vowel-btn');
+            const sectionButtons = document.querySelectorAll('#nameFeature .section-btn');
+            
+            let selectedVowel = null;
+            let selectedSection = null;
+            
+            // Vowel button handlers
+            vowelButtons.forEach(btn => {
+                btn.onclick = () => {
+                    // Remove previous selection
+                    vowelButtons.forEach(b => b.classList.remove('active'));
+                    // Add selection to clicked button
+                    btn.classList.add('active');
+                    selectedVowel = btn.dataset.vowel;
+                };
+                
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    btn.onclick();
+                }, { passive: false });
+            });
+            
+            // Section button handlers
+            sectionButtons.forEach(btn => {
+                btn.onclick = () => {
+                    // Remove previous selection
+                    sectionButtons.forEach(b => b.classList.remove('active'));
+                    // Add selection to clicked button
+                    btn.classList.add('active');
+                    selectedSection = btn.dataset.section;
+                };
+                
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    btn.onclick();
+                }, { passive: false });
+            });
+            
+            // Helper function to filter words by vowel section (same as VOWEL-POS)
+            function filterWordsByVowelSection(words, vowel, section) {
+                return words.filter(word => {
+                    const wordLower = word.toLowerCase();
+                    const vowelLower = vowel.toLowerCase();
+                    
+                    if (!wordLower.includes(vowelLower)) {
+                        return false; // Word doesn't contain the vowel
+                    }
+                    
+                    const wordLength = word.length;
+                    
+                    // Find all positions where the vowel appears
+                    const vowelPositions = [];
+                    for (let i = 0; i < wordLength; i++) {
+                        if (wordLower[i] === vowelLower) {
+                            vowelPositions.push(i);
+                        }
+                    }
+                    
+                    // Check if any vowel position is in the specified section
+                    return vowelPositions.some(pos => {
+                        if (section === 'start') {
+                            // First half: positions 0 to Math.floor(wordLength/2)
+                            return pos <= Math.floor(wordLength / 2);
+                        } else if (section === 'end') {
+                            // Last half: positions Math.ceil(wordLength/2) to end
+                            return pos >= Math.ceil(wordLength / 2);
+                        } else if (section === 'middle') {
+                            // Middle half: positions in the middle third
+                            const start = Math.floor(wordLength / 3);
+                            const end = Math.ceil((2 * wordLength) / 3);
+                            return pos >= start && pos < end;
+                        }
+                        return false;
+                    });
+                });
+            }
+            
+            if (nameSubmitButton) {
+                nameSubmitButton.onclick = () => {
+                    const nameInputValue = nameInput?.value.trim();
+                    
+                    if (!nameInputValue) {
+                        alert('Please enter a full name');
+                        return;
+                    }
+                    
+                    // Extract initials (first letter of first name and surname)
+                    const nameParts = nameInputValue.split(/\s+/).filter(part => part.length > 0);
+                    if (nameParts.length < 2) {
+                        alert('Please enter both first name and surname');
+                        return;
+                    }
+                    
+                    const initials = nameParts.map(part => part[0].toLowerCase()).join('');
+                    const consonants = getConsonantsInOrder(initials);
+                    
+                    if (consonants.length < 2) {
+                        alert('The initials must contain at least 2 consonants');
+                        return;
+                    }
+                    
+                    if (!selectedVowel) {
+                        alert('Please select a vowel');
+                        return;
+                    }
+                    
+                    if (!selectedSection) {
+                        alert('Please select a position (START/MID/END)');
+                        return;
+                    }
+                    
+                    // Filter by consonants (like Short Word)
+                    let filteredWords = filterWordsByPosition1(currentFilteredWords, consonants);
+                    
+                    // Filter by vowel position (like VOWEL-POS)
+                    filteredWords = filterWordsByVowelSection(filteredWords, selectedVowel, selectedSection);
+                    
+                    callback(filteredWords);
+                    document.getElementById('nameFeature').classList.add('completed');
+                    document.getElementById('nameFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                nameSubmitButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    nameSubmitButton.onclick();
+                }, { passive: false });
+            }
+            
+            if (nameSkipButton) {
+                nameSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('nameFeature').classList.add('completed');
+                    document.getElementById('nameFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                nameSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    nameSkipButton.onclick();
+                }, { passive: false });
+            }
+            
+            // No Vowel button handler
+            const nameNoVowelButton = document.getElementById('nameNoVowelButton');
+            if (nameNoVowelButton) {
+                nameNoVowelButton.onclick = () => {
+                    const nameInputValue = nameInput?.value.trim();
+                    
+                    if (!nameInputValue) {
+                        alert('Please enter a full name');
+                        return;
+                    }
+                    
+                    // Extract initials (first letter of first name and surname)
+                    const nameParts = nameInputValue.split(/\s+/).filter(part => part.length > 0);
+                    if (nameParts.length < 2) {
+                        alert('Please enter both first name and surname');
+                        return;
+                    }
+                    
+                    const initials = nameParts.map(part => part[0].toLowerCase()).join('');
+                    const consonants = getConsonantsInOrder(initials);
+                    
+                    if (consonants.length < 2) {
+                        alert('The initials must contain at least 2 consonants');
+                        return;
+                    }
+                    
+                    // Filter by consonants only (like Short Word) - bypass vowel selection
+                    const filteredWords = filterWordsByPosition1(currentFilteredWords, consonants);
+                    
+                    callback(filteredWords);
+                    document.getElementById('nameFeature').classList.add('completed');
+                    document.getElementById('nameFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                nameNoVowelButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    nameNoVowelButton.onclick();
                 }, { passive: false });
             }
             break;

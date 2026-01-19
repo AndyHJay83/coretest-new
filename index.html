@@ -128,6 +128,10 @@
                                 <button class="info-button" data-feature="vowelPos"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
+                                <button class="feature-button" data-feature="name" draggable="true">NAME</button>
+                                <button class="info-button" data-feature="name"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                            <div class="feature-group">
                                 <button class="feature-button" data-feature="o" draggable="true">O?</button>
                                 <button class="info-button" data-feature="o"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -404,6 +408,31 @@
                         <button class="section-btn" data-section="begin">BEGIN</button>
                         <button class="section-btn" data-section="mid">MID</button>
                         <button class="section-btn" data-section="end">END</button>
+                    </div>
+                </div>
+
+                <!-- NAME feature -->
+                <div id="nameFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">NAME</h2>
+                    <div class="name-input-container" style="margin: 20px 0;">
+                        <input type="text" id="nameInput" placeholder="Enter full name (e.g., John Smith)" style="padding: 10px; width: 100%; max-width: 300px; font-size: 16px;">
+                    </div>
+                    <div class="vowel-buttons" style="display: flex; justify-content: center; gap: 10px; margin: 20px 0; flex-wrap: wrap;">
+                        <button class="vowel-btn" data-vowel="a">A</button>
+                        <button class="vowel-btn" data-vowel="e">E</button>
+                        <button class="vowel-btn" data-vowel="i">I</button>
+                        <button class="vowel-btn" data-vowel="o">O</button>
+                        <button class="vowel-btn" data-vowel="u">U</button>
+                    </div>
+                    <div class="section-buttons" style="display: flex; justify-content: center; gap: 10px; margin: 20px 0;">
+                        <button class="section-btn" data-section="start">START</button>
+                        <button class="section-btn" data-section="middle">MID</button>
+                        <button class="section-btn" data-section="end">END</button>
+                    </div>
+                    <div style="display: flex; justify-content: center; margin-top: 20px;">
+                        <button id="nameSubmitButton" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">SUBMIT</button>
+                        <button id="nameNoVowelButton" style="padding: 10px 20px; background: #ff9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-left: 10px;">NO VOWEL</button>
+                        <button id="nameSkipButton" class="skip-button" style="margin-left: 10px;">SKIP</button>
                     </div>
                 </div>
 
@@ -830,6 +859,13 @@
             <div class="feature-info-content">
                 <h3>VOWEL POS</h3>
                 <p><strong>Vowel Position</strong><br>This MUST follow Short Word, 3 LETTER WORD, or CONS MID. Will cycle through vowels within Short Word. Select BEGIN, MID, or END to specify which section of the word MUST contain the vowel.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="nameInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>NAME</h3>
+                <p><strong>NAME</strong><br>Enter a full name (first and surname). The feature extracts the initials and uses them like Short Word to filter words containing those consonants. Then select a vowel and position (START/MID/END) to further filter words containing that vowel in the specified position.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
