@@ -2803,9 +2803,14 @@ function filterWordsByT9OneTruth(words, selectedDigits) {
     // Calculate T9 strings if not already done
     calculateT9Strings(words);
     
-    // Check if BLANK is used (marking a specific position as the truth)
-    const blankIndex = selectedDigits.indexOf('BLANK');
-    const hasBlank = blankIndex !== -1;
+    // Count BLANKs and find non-BLANK positions
+    const blankCount = selectedDigits.filter(d => d === 'BLANK').length;
+    const nonBlankIndices = [];
+    selectedDigits.forEach((digit, index) => {
+        if (digit !== 'BLANK') {
+            nonBlankIndices.push(index);
+        }
+    });
     
     return words.filter(word => {
         const t9String = t9StringsMap.get(word) || wordToT9(word);
@@ -2816,9 +2821,17 @@ function filterWordsByT9OneTruth(words, selectedDigits) {
         const firstFour = t9String.slice(0, 4);
         const firstFourDigits = firstFour.split('');
         
-        if (hasBlank) {
-            // BLANK is specified - only check that specific position as the truth
-            // All other positions must be incorrect (NOT match)
+        // New logic: 3 B's and 1 value - the 1 value is correct, B's are unknown
+        if (blankCount === 3 && nonBlankIndices.length === 1) {
+            const correctIndex = nonBlankIndices[0];
+            const correctDigit = selectedDigits[correctIndex];
+            
+            // Check that the known digit position matches
+            return firstFourDigits[correctIndex] === correctDigit;
+        }
+        // Original logic: 1 B and 3 values - B position is correct, others are wrong
+        else if (blankCount === 1 && nonBlankIndices.length === 3) {
+            const blankIndex = selectedDigits.indexOf('BLANK');
             
             // Check that all non-BLANK positions do NOT match (they are incorrect)
             for (let i = 0; i < 4; i++) {
@@ -2831,8 +2844,9 @@ function filterWordsByT9OneTruth(words, selectedDigits) {
             
             // The BLANK position is correct (we don't check what it is, just that others are wrong)
             return true; // All conditions met
-        } else {
-            // No BLANK - check all 4 scenarios where exactly one digit is correct
+        }
+        // No BLANK - check all 4 scenarios where exactly one digit is correct
+        else if (blankCount === 0) {
             // Convert selectedDigits array to string for backward compatibility
             const digits = Array.isArray(selectedDigits) ? selectedDigits : selectedDigits.split('');
             
