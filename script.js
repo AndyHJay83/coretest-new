@@ -7731,6 +7731,18 @@ function showT9Features() {
             backBtn.className = 'back-button';
             backBtn.textContent = 'BACK';
             backBtn.onclick = showNormalFeatures;
+            
+            // Add touch event handler for PWA/mobile
+            backBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showNormalFeatures();
+            }, { passive: false });
+            
+            // Ensure button is clickable
+            backBtn.style.pointerEvents = 'auto';
+            backBtn.style.zIndex = '100';
+            
             h3.parentElement.style.position = 'relative';
             h3.parentElement.insertBefore(backBtn, h3);
         }
@@ -7791,6 +7803,18 @@ function showAlphaNumericFeatures() {
             backBtn.className = 'back-button';
             backBtn.textContent = 'BACK';
             backBtn.onclick = showNormalFeatures;
+            
+            // Add touch event handler for PWA/mobile
+            backBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showNormalFeatures();
+            }, { passive: false });
+            
+            // Ensure button is clickable
+            backBtn.style.pointerEvents = 'auto';
+            backBtn.style.zIndex = '100';
+            
             h3.parentElement.style.position = 'relative';
             h3.parentElement.insertBefore(backBtn, h3);
         }

@@ -3355,13 +3355,38 @@ input:checked + .slider:before {
     border: none;
     border-radius: 5px;
     cursor: pointer;
-    z-index: 10;
+    z-index: 100; /* Increased from 10 to ensure it's above sticky h3 */
     font-weight: bold;
     font-size: 14px;
+    pointer-events: auto; /* Explicitly enable pointer events */
+    touch-action: manipulation; /* Better touch handling for PWA */
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1); /* Visual feedback on touch */
 }
 
 .back-button:hover {
     background: #2e7d32;
+}
+
+/* Ensure back button is clickable in mobile/PWA mode */
+@media (max-width: 768px) {
+    .back-button {
+        z-index: 100 !important; /* Higher than sticky h3 */
+        pointer-events: auto !important;
+        touch-action: manipulation !important;
+        min-height: 44px; /* Better touch target size */
+        min-width: 60px;
+    }
+}
+
+/* PWA standalone mode */
+@media (display-mode: standalone) {
+    .back-button {
+        z-index: 100 !important;
+        pointer-events: auto !important;
+        touch-action: manipulation !important;
+        min-height: 44px;
+        min-width: 60px;
+    }
 }
 
 .available-features {
