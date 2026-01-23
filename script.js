@@ -1477,6 +1477,7 @@ async function executeWorkflow(steps) {
             curvedFeature: createCurvedFeature(),
             lengthFeature: createLengthFeature(),
             scrabbleFeature: createScrabbleFeature(),
+            scrambleFeature: createScrambleFeature(),
             mostFrequentFeature: createMostFrequentFeature(),
             leastFrequentFeature: createLeastFrequentFeature(),
             notInFeature: createNotInFeature(),
@@ -1636,6 +1637,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 'scrabble':
                     featureElement = createScrabbleFeature();
+                    break;
+                case 'scramble':
+                    featureElement = createScrambleFeature();
                     break;
                 case 'pianoForte':
                     featureElement = createPianoForteFeature();
@@ -2149,6 +2153,26 @@ function createScrabbleFeature() {
             <input type="text" id="scrabbleInput" placeholder="Enter Scrabble score" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
             <button id="scrabbleButton">SUBMIT</button>
             <button id="scrabbleSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+function createScrambleFeature() {
+    const div = document.createElement('div');
+    div.id = 'scrambleFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">SCRAMBLE</h2>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+            <button id="scrambleTruthToggle" class="scramble-toggle-btn" style="padding: 10px 20px; background: #f0f0f0; border: 2px solid #1B5E20; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; color: #1B5E20;">
+                TRUTH ON ONE? <span id="scrambleTruthStatus">OFF</span>
+            </button>
+            <div class="length-input">
+                <input type="text" id="scrambleInput" placeholder="Enter letter string" autocomplete="off" style="text-transform: uppercase;">
+                <button id="scrambleButton">SUBMIT</button>
+                <button id="scrambleSkipButton" class="skip-button">SKIP</button>
+            </div>
         </div>
     `;
     return div;
@@ -4396,6 +4420,79 @@ function setupFeatureListeners(feature, callback) {
                 scrabbleSkipButton.addEventListener('touchstart', (e) => {
                     e.preventDefault();
                     scrabbleSkipButton.click();
+                }, { passive: false });
+            }
+            break;
+        }
+
+        case 'scramble': {
+            let truthOnOne = false;
+            const scrambleButton = document.getElementById('scrambleButton');
+            const scrambleSkipButton = document.getElementById('scrambleSkipButton');
+            const scrambleInput = document.getElementById('scrambleInput');
+            const scrambleTruthToggle = document.getElementById('scrambleTruthToggle');
+            const scrambleTruthStatus = document.getElementById('scrambleTruthStatus');
+            
+            // Toggle button handler
+            if (scrambleTruthToggle) {
+                scrambleTruthToggle.onclick = () => {
+                    truthOnOne = !truthOnOne;
+                    if (truthOnOne) {
+                        scrambleTruthStatus.textContent = 'ON';
+                        scrambleTruthToggle.style.background = '#1B5E20';
+                        scrambleTruthToggle.style.color = 'white';
+                    } else {
+                        scrambleTruthStatus.textContent = 'OFF';
+                        scrambleTruthToggle.style.background = '#f0f0f0';
+                        scrambleTruthToggle.style.color = '#1B5E20';
+                    }
+                };
+                
+                // Add touch event for mobile
+                scrambleTruthToggle.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    scrambleTruthToggle.click();
+                }, { passive: false });
+            }
+            
+            // Convert input to uppercase as user types
+            if (scrambleInput) {
+                scrambleInput.addEventListener('input', (e) => {
+                    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                });
+            }
+            
+            if (scrambleButton) {
+                scrambleButton.onclick = () => {
+                    const input = scrambleInput?.value.trim();
+                    if (input && input.length > 0) {
+                        const filteredWords = filterWordsByScramble(currentFilteredWords, input, truthOnOne);
+                        callback(filteredWords);
+                        document.getElementById('scrambleFeature').classList.add('completed');
+                        document.getElementById('scrambleFeature').dispatchEvent(new Event('completed'));
+                    } else {
+                        alert('Please enter a letter string');
+                    }
+                };
+                
+                // Add touch event for mobile
+                scrambleButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    scrambleButton.click();
+                }, { passive: false });
+            }
+            
+            if (scrambleSkipButton) {
+                scrambleSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('scrambleFeature').classList.add('completed');
+                    document.getElementById('scrambleFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                // Add touch event for mobile
+                scrambleSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    scrambleSkipButton.click();
                 }, { passive: false });
             }
             break;
@@ -8362,6 +8459,79 @@ function filterWordsByScrabble(words, targetScore) {
         const score = calculateScrabbleScore(word);
         return score === targetScore;
     });
+}
+
+// Filter words by SCRAMBLE feature
+// When truthOnOne is false: All letters are incorrect at their positions AND word cannot contain any of these letters
+// When truthOnOne is true: ANY one letter is correct at its position (others are wrong at their positions)
+// The word length must match the input string length
+function filterWordsByScramble(words, letterString, truthOnOne) {
+    if (!letterString || letterString.length === 0) return words;
+    
+    const letters = letterString.toUpperCase().split('');
+    const letterSet = new Set(letters);
+    const requiredLength = letters.length;
+    
+    if (!truthOnOne) {
+        // Mode 1: All letters are incorrect at their positions AND word cannot contain any of these letters
+        return words.filter(word => {
+            const upperWord = word.toUpperCase();
+            
+            // Word must be exactly the same length as the input string
+            if (upperWord.length !== requiredLength) {
+                return false;
+            }
+            
+            // Check that word doesn't contain ANY of the letters
+            for (let i = 0; i < upperWord.length; i++) {
+                if (letterSet.has(upperWord[i])) {
+                    return false; // Word contains one of the forbidden letters
+                }
+            }
+            
+            // Also check that positions don't match (redundant check, but ensures correctness)
+            for (let i = 0; i < letters.length; i++) {
+                if (upperWord[i] === letters[i]) {
+                    return false; // Position matches (shouldn't happen if letter not in word, but double-check)
+                }
+            }
+            
+            return true;
+        });
+    } else {
+        // Mode 2: ANY one letter is correct at its position, others are wrong at their positions
+        return words.filter(word => {
+            const upperWord = word.toUpperCase();
+            
+            // Word must be exactly the same length as the input string
+            if (upperWord.length !== requiredLength) {
+                return false;
+            }
+            
+            // Check each possible scenario where one letter is correct
+            for (let correctIndex = 0; correctIndex < letters.length; correctIndex++) {
+                const correctLetter = letters[correctIndex];
+                
+                // Check if this position has the correct letter
+                if (upperWord[correctIndex] === correctLetter) {
+                    // Check that all other positions don't match their corresponding letters
+                    let allOthersWrong = true;
+                    for (let i = 0; i < letters.length; i++) {
+                        if (i !== correctIndex && upperWord[i] === letters[i]) {
+                            allOthersWrong = false;
+                            break;
+                        }
+                    }
+                    
+                    if (allOthersWrong) {
+                        return true; // This scenario matches
+                    }
+                }
+            }
+            
+            return false; // No scenario matched
+        });
+    }
 }
 
 // Add helper function to find most frequent letter

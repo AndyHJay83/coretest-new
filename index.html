@@ -204,6 +204,10 @@
                                 <button class="info-button" data-feature="scrabble"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
+                                <button class="feature-button" data-feature="scramble" draggable="true">SCRAMBLE</button>
+                                <button class="info-button" data-feature="scramble"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                            <div class="feature-group">
                                 <button class="feature-button" data-feature="pianoForte" draggable="true">PIANO FORTE</button>
                                 <button class="info-button" data-feature="pianoForte"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -465,6 +469,21 @@
                         <input type="text" id="scrabbleInput" placeholder="Enter Scrabble score" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
                         <button id="scrabbleButton">SUBMIT</button>
                         <button id="scrabbleSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- Scramble feature -->
+                <div id="scrambleFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">SCRAMBLE</h2>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+                        <button id="scrambleTruthToggle" class="scramble-toggle-btn" style="padding: 10px 20px; background: #f0f0f0; border: 2px solid #1B5E20; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; color: #1B5E20;">
+                            TRUTH ON ONE? <span id="scrambleTruthStatus">OFF</span>
+                        </button>
+                        <div class="length-input">
+                            <input type="text" id="scrambleInput" placeholder="Enter letter string" autocomplete="off" style="text-transform: uppercase;">
+                            <button id="scrambleButton">SUBMIT</button>
+                            <button id="scrambleSkipButton" class="skip-button">SKIP</button>
+                        </div>
                     </div>
                 </div>
 
@@ -1006,6 +1025,13 @@
             <div class="feature-info-content">
                 <h3>SCRABBLE</h3>
                 <p><strong>SCRABBLE</strong><br>Enter a number representing the total Scrabble score of the word. The filter will keep only words whose letter values sum to the entered score. Letter values: A,E,I,O,U,L,N,S,T,R = 1; D,G = 2; B,C,M,P = 3; F,H,V,W,Y = 4; K = 5; J,X = 8; Q,Z = 10.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="scrambleInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>SCRAMBLE</h3>
+                <p><strong>SCRAMBLE</strong><br>Enter a string of letters. By default (TRUTH ON ONE? OFF), all letters are incorrect at their positions and the word cannot contain any of these letters. When TRUTH ON ONE? is ON, any one of the letters is correct at its position, while others are wrong at their positions.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
