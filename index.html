@@ -200,6 +200,10 @@
                                 <button class="info-button" data-feature="pin"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
+                                <button class="feature-button" data-feature="scrabble" draggable="true">SCRABBLE</button>
+                                <button class="info-button" data-feature="scrabble"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                            <div class="feature-group">
                                 <button class="feature-button" data-feature="pianoForte" draggable="true">PIANO FORTE</button>
                                 <button class="info-button" data-feature="pianoForte"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -451,6 +455,16 @@
                         <input type="text" id="lengthInput" placeholder="Enter length (3+)" inputmode="numeric" pattern="[0-9]*" autocomplete="off" min="3">
                         <button id="lengthButton">SUBMIT</button>
                         <button id="lengthSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- Scrabble feature -->
+                <div id="scrabbleFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">SCRABBLE</h2>
+                    <div class="length-input">
+                        <input type="text" id="scrabbleInput" placeholder="Enter Scrabble score" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                        <button id="scrabbleButton">SUBMIT</button>
+                        <button id="scrabbleSkipButton" class="skip-button">SKIP</button>
                     </div>
                 </div>
 
@@ -985,6 +999,13 @@
             <div class="feature-info-content">
                 <h3>PIN</h3>
                 <p><strong>PIN</strong><br>Enter up to 6 words and a corresponding code. Each digit in the code represents how many letters from the corresponding word appear in the target word. The feature filters words that match all code requirements.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="scrabbleInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>SCRABBLE</h3>
+                <p><strong>SCRABBLE</strong><br>Enter a number representing the total Scrabble score of the word. The filter will keep only words whose letter values sum to the entered score. Letter values: A,E,I,O,U,L,N,S,T,R = 1; D,G = 2; B,C,M,P = 3; F,H,V,W,Y = 4; K = 5; J,X = 8; Q,Z = 10.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

@@ -169,6 +169,13 @@
       "analyzeFunction": "return [{ param: 'Requires words and code input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
+      "id": "scrabble",
+      "name": "SCRABBLE",
+      "displayName": "SCRABBLE",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires Scrabble score input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
       "id": "pianoForte",
       "name": "PIANO FORTE",
       "displayName": "PIANO FORTE",

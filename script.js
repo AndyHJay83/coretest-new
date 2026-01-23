@@ -1476,6 +1476,7 @@ async function executeWorkflow(steps) {
             shapeFeature: createShapeFeature(),
             curvedFeature: createCurvedFeature(),
             lengthFeature: createLengthFeature(),
+            scrabbleFeature: createScrabbleFeature(),
             mostFrequentFeature: createMostFrequentFeature(),
             leastFrequentFeature: createLeastFrequentFeature(),
             notInFeature: createNotInFeature(),
@@ -1632,6 +1633,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 'pin':
                     featureElement = createPinFeature();
+                    break;
+                case 'scrabble':
+                    featureElement = createScrabbleFeature();
                     break;
                 case 'pianoForte':
                     featureElement = createPianoForteFeature();
@@ -2130,6 +2134,21 @@ function createLengthFeature() {
             <input type="text" id="lengthInput" placeholder="Enter length (3+)" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
             <button id="lengthButton">SUBMIT</button>
             <button id="lengthSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+function createScrabbleFeature() {
+    const div = document.createElement('div');
+    div.id = 'scrabbleFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">SCRABBLE</h2>
+        <div class="length-input">
+            <input type="text" id="scrabbleInput" placeholder="Enter Scrabble score" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+            <button id="scrabbleButton">SUBMIT</button>
+            <button id="scrabbleSkipButton" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
@@ -4331,6 +4350,52 @@ function setupFeatureListeners(feature, callback) {
                 lengthSkipButton.addEventListener('touchstart', (e) => {
                     e.preventDefault();
                     lengthSkipButton.click();
+                }, { passive: false });
+            }
+            break;
+        }
+
+        case 'scrabble': {
+            const scrabbleButton = document.getElementById('scrabbleButton');
+            const scrabbleSkipButton = document.getElementById('scrabbleSkipButton');
+            const scrabbleInput = document.getElementById('scrabbleInput');
+            
+            if (scrabbleButton) {
+                scrabbleButton.onclick = () => {
+                    const input = scrabbleInput?.value.trim();
+                    if (input) {
+                        const score = parseInt(input);
+                        if (!isNaN(score) && score > 0) {
+                            const filteredWords = filterWordsByScrabble(currentFilteredWords, score);
+                            callback(filteredWords);
+                            document.getElementById('scrabbleFeature').classList.add('completed');
+                            document.getElementById('scrabbleFeature').dispatchEvent(new Event('completed'));
+                        } else {
+                            alert('Please enter a valid positive number');
+                        }
+                    } else {
+                        alert('Please enter a Scrabble score');
+                    }
+                };
+                
+                // Add touch event for mobile
+                scrabbleButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    scrabbleButton.click();
+                }, { passive: false });
+            }
+            
+            if (scrabbleSkipButton) {
+                scrabbleSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('scrabbleFeature').classList.add('completed');
+                    document.getElementById('scrabbleFeature').dispatchEvent(new Event('completed'));
+                };
+                
+                // Add touch event for mobile
+                scrabbleSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    scrabbleSkipButton.click();
                 }, { passive: false });
             }
             break;
@@ -8267,6 +8332,36 @@ document.head.appendChild(workflowDropdownCSS);
 // Add filtering function
 function filterWordsByLength(words, length) {
     return words.filter(word => word.length === length);
+}
+
+// Scrabble letter values
+const SCRABBLE_VALUES = {
+    'A': 1, 'E': 1, 'I': 1, 'O': 1, 'U': 1, 'L': 1, 'N': 1, 'S': 1, 'T': 1, 'R': 1,
+    'D': 2, 'G': 2,
+    'B': 3, 'C': 3, 'M': 3, 'P': 3,
+    'F': 4, 'H': 4, 'V': 4, 'W': 4, 'Y': 4,
+    'K': 5,
+    'J': 8, 'X': 8,
+    'Q': 10, 'Z': 10
+};
+
+// Calculate Scrabble score for a word
+function calculateScrabbleScore(word) {
+    let score = 0;
+    const upperWord = word.toUpperCase();
+    for (let i = 0; i < upperWord.length; i++) {
+        const letter = upperWord[i];
+        score += SCRABBLE_VALUES[letter] || 0;
+    }
+    return score;
+}
+
+// Filter words by Scrabble score
+function filterWordsByScrabble(words, targetScore) {
+    return words.filter(word => {
+        const score = calculateScrabbleScore(word);
+        return score === targetScore;
+    });
 }
 
 // Add helper function to find most frequent letter
