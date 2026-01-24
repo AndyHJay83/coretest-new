@@ -1721,11 +1721,13 @@ async function executeWorkflow(steps) {
                 }
             }
             
-            // Set up event listeners for this feature
-            setupFeatureListeners(step.feature, (filteredWords) => {
-                currentFilteredWords = filteredWords;
-                displayResults(currentFilteredWords);
-            });
+            // Set up event listeners for this feature (use setTimeout to ensure DOM is ready)
+            setTimeout(() => {
+                setupFeatureListeners(step.feature, (filteredWords) => {
+                    currentFilteredWords = filteredWords;
+                    displayResults(currentFilteredWords);
+                });
+            }, 0);
             
             // Wait for user interaction
             await new Promise((resolve) => {
@@ -2175,6 +2177,9 @@ function createScrambleFeature() {
             <button id="scrambleTruthToggle" class="scramble-toggle-btn" style="padding: 10px 20px; background: #f0f0f0; border: 2px solid #1B5E20; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; color: #1B5E20;">
                 TRUTH ON ONE? <span id="scrambleTruthStatus">OFF</span>
             </button>
+            <div id="scramblePositionContainer" style="display: none !important; width: 100%; max-width: 300px;">
+                <input type="text" id="scramblePositionInput" placeholder="Position (optional)" inputmode="numeric" pattern="[0-9]*" autocomplete="off" style="width: 100%; padding: 8px; text-align: center; border: 2px solid #1B5E20; border-radius: 8px; font-size: 14px;">
+            </div>
             <div class="length-input">
                 <input type="text" id="scrambleInput" placeholder="Enter letter string" autocomplete="off" style="text-transform: uppercase;">
                 <button id="scrambleButton">SUBMIT</button>
@@ -4433,75 +4438,158 @@ function setupFeatureListeners(feature, callback) {
         }
 
         case 'scramble': {
-            let truthOnOne = false;
-            const scrambleButton = document.getElementById('scrambleButton');
-            const scrambleSkipButton = document.getElementById('scrambleSkipButton');
-            const scrambleInput = document.getElementById('scrambleInput');
-            const scrambleTruthToggle = document.getElementById('scrambleTruthToggle');
-            const scrambleTruthStatus = document.getElementById('scrambleTruthStatus');
+            console.log('Setting up scramble feature listeners');
+            // Use an object to store state that can be accessed by closures
+            const scrambleState = { truthOnOne: false };
             
-            // Toggle button handler
-            if (scrambleTruthToggle) {
-                scrambleTruthToggle.onclick = () => {
-                    truthOnOne = !truthOnOne;
-                    if (truthOnOne) {
-                        scrambleTruthStatus.textContent = 'ON';
-                        scrambleTruthToggle.style.background = '#1B5E20';
-                        scrambleTruthToggle.style.color = 'white';
-                    } else {
-                        scrambleTruthStatus.textContent = 'OFF';
-                        scrambleTruthToggle.style.background = '#f0f0f0';
-                        scrambleTruthToggle.style.color = '#1B5E20';
-                    }
-                };
+            // Wait a bit for DOM to be ready, then query elements
+            setTimeout(() => {
+                const scrambleFeatureEl = document.getElementById('scrambleFeature');
+                console.log('Scramble feature element found:', !!scrambleFeatureEl);
                 
-                // Add touch event for mobile
-                scrambleTruthToggle.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    scrambleTruthToggle.click();
-                }, { passive: false });
-            }
-            
-            // Convert input to uppercase as user types
-            if (scrambleInput) {
-                scrambleInput.addEventListener('input', (e) => {
-                    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                if (!scrambleFeatureEl) {
+                    console.error('scrambleFeature element not found!');
+                    return;
+                }
+                
+                const scrambleButton = scrambleFeatureEl.querySelector('#scrambleButton');
+                const scrambleSkipButton = scrambleFeatureEl.querySelector('#scrambleSkipButton');
+                const scrambleInput = scrambleFeatureEl.querySelector('#scrambleInput');
+                const scrambleTruthToggle = scrambleFeatureEl.querySelector('#scrambleTruthToggle');
+                const scrambleTruthStatus = scrambleFeatureEl.querySelector('#scrambleTruthStatus');
+                const scramblePositionContainer = scrambleFeatureEl.querySelector('#scramblePositionContainer');
+                const scramblePositionInput = scrambleFeatureEl.querySelector('#scramblePositionInput');
+                
+                console.log('Scramble elements found:', {
+                    button: !!scrambleButton,
+                    skipButton: !!scrambleSkipButton,
+                    input: !!scrambleInput,
+                    toggle: !!scrambleTruthToggle,
+                    status: !!scrambleTruthStatus,
+                    container: !!scramblePositionContainer,
+                    positionInput: !!scramblePositionInput
                 });
-            }
-            
-            if (scrambleButton) {
-                scrambleButton.onclick = () => {
-                    const input = scrambleInput?.value.trim();
-                    if (input && input.length > 0) {
-                        const filteredWords = filterWordsByScramble(currentFilteredWords, input, truthOnOne);
-                        callback(filteredWords);
+                
+                // Toggle button handler
+                if (scrambleTruthToggle) {
+                    scrambleTruthToggle.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        scrambleState.truthOnOne = !scrambleState.truthOnOne;
+                        console.log('Toggle clicked, truthOnOne:', scrambleState.truthOnOne);
+                        
+                        // Re-query elements from the feature element
+                        const featureEl = document.getElementById('scrambleFeature');
+                        const container = featureEl?.querySelector('#scramblePositionContainer');
+                        const positionInput = featureEl?.querySelector('#scramblePositionInput');
+                        const status = featureEl?.querySelector('#scrambleTruthStatus');
+                        
+                        console.log('After toggle - Elements found:', {
+                            container: !!container,
+                            input: !!positionInput,
+                            status: !!status
+                        });
+                        
+                        if (scrambleState.truthOnOne) {
+                            if (status) status.textContent = 'ON';
+                            scrambleTruthToggle.style.background = '#1B5E20';
+                            scrambleTruthToggle.style.color = 'white';
+                            // Show position input when toggle is ON
+                            if (container) {
+                                container.style.display = 'block';
+                                container.style.visibility = 'visible';
+                                container.style.width = '100%';
+                                container.style.maxWidth = '300px';
+                                console.log('Container shown, computed display:', window.getComputedStyle(container).display);
+                                console.log('Container element:', container);
+                            } else {
+                                console.error('scramblePositionContainer not found after toggle');
+                            }
+                        } else {
+                            if (status) status.textContent = 'OFF';
+                            scrambleTruthToggle.style.background = '#f0f0f0';
+                            scrambleTruthToggle.style.color = '#1B5E20';
+                            // Hide position input when toggle is OFF
+                            if (container) {
+                                container.style.display = 'none';
+                                container.style.visibility = 'hidden';
+                            }
+                            // Clear position input
+                            if (positionInput) {
+                                positionInput.value = '';
+                            }
+                        }
+                    });
+                    
+                    // Add touch event for mobile
+                    scrambleTruthToggle.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        scrambleTruthToggle.click();
+                    }, { passive: false });
+                } else {
+                    console.error('scrambleTruthToggle not found!');
+                }
+                
+                // Convert input to uppercase as user types
+                if (scrambleInput) {
+                    scrambleInput.addEventListener('input', (e) => {
+                        e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                    });
+                }
+                
+                // Restrict position input to numbers only
+                if (scramblePositionInput) {
+                    scramblePositionInput.addEventListener('input', (e) => {
+                        e.target.value = e.target.value.replace(/[^0-9]/g, '');
+                    });
+                }
+                
+                if (scrambleButton) {
+                    scrambleButton.addEventListener('click', () => {
+                        const input = scrambleInput?.value.trim();
+                        if (input && input.length > 0) {
+                            // Get optional position (1-based, convert to 0-based for internal use)
+                            const positionInput = scramblePositionInput?.value.trim();
+                            const specifiedPosition = positionInput ? parseInt(positionInput) : null;
+                            
+                            // Validate position if provided
+                            if (specifiedPosition !== null) {
+                                if (isNaN(specifiedPosition) || specifiedPosition < 1 || specifiedPosition > input.length) {
+                                    alert(`Position must be between 1 and ${input.length}`);
+                                    return;
+                                }
+                            }
+                            
+                            const filteredWords = filterWordsByScramble(currentFilteredWords, input, scrambleState.truthOnOne, specifiedPosition);
+                            callback(filteredWords);
+                            document.getElementById('scrambleFeature').classList.add('completed');
+                            document.getElementById('scrambleFeature').dispatchEvent(new Event('completed'));
+                        } else {
+                            alert('Please enter a letter string');
+                        }
+                    });
+                    
+                    // Add touch event for mobile
+                    scrambleButton.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        scrambleButton.click();
+                    }, { passive: false });
+                }
+                
+                if (scrambleSkipButton) {
+                    scrambleSkipButton.addEventListener('click', () => {
+                        callback(currentFilteredWords);
                         document.getElementById('scrambleFeature').classList.add('completed');
                         document.getElementById('scrambleFeature').dispatchEvent(new Event('completed'));
-                    } else {
-                        alert('Please enter a letter string');
-                    }
-                };
-                
-                // Add touch event for mobile
-                scrambleButton.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    scrambleButton.click();
-                }, { passive: false });
-            }
-            
-            if (scrambleSkipButton) {
-                scrambleSkipButton.onclick = () => {
-                    callback(currentFilteredWords);
-                    document.getElementById('scrambleFeature').classList.add('completed');
-                    document.getElementById('scrambleFeature').dispatchEvent(new Event('completed'));
-                };
-                
-                // Add touch event for mobile
-                scrambleSkipButton.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    scrambleSkipButton.click();
-                }, { passive: false });
-            }
+                    });
+                    
+                    // Add touch event for mobile
+                    scrambleSkipButton.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        scrambleSkipButton.click();
+                    }, { passive: false });
+                }
+            }, 100);
             break;
         }
 
@@ -8536,8 +8624,9 @@ function filterWordsByScrabble(words, targetScore) {
 // Filter words by SCRAMBLE feature
 // When truthOnOne is false: All letters are incorrect at their positions AND word cannot contain any of these letters
 // When truthOnOne is true: ANY one letter is correct at its position (others are wrong at their positions)
+// If specifiedPosition is provided (1-based), only that position is correct, all others are wrong
 // The word length must match the input string length
-function filterWordsByScramble(words, letterString, truthOnOne) {
+function filterWordsByScramble(words, letterString, truthOnOne, specifiedPosition = null) {
     if (!letterString || letterString.length === 0) return words;
     
     const letters = letterString.toUpperCase().split('');
@@ -8571,38 +8660,68 @@ function filterWordsByScramble(words, letterString, truthOnOne) {
             return true;
         });
     } else {
-        // Mode 2: ANY one letter is correct at its position, others are wrong at their positions
-        return words.filter(word => {
-            const upperWord = word.toUpperCase();
+        // Mode 2: Truth on one position
+        if (specifiedPosition !== null) {
+            // Specific position is correct (1-based input, convert to 0-based)
+            const correctIndex = specifiedPosition - 1;
+            const correctLetter = letters[correctIndex];
             
-            // Word must be exactly the same length as the input string
-            if (upperWord.length !== requiredLength) {
-                return false;
-            }
-            
-            // Check each possible scenario where one letter is correct
-            for (let correctIndex = 0; correctIndex < letters.length; correctIndex++) {
-                const correctLetter = letters[correctIndex];
+            return words.filter(word => {
+                const upperWord = word.toUpperCase();
                 
-                // Check if this position has the correct letter
-                if (upperWord[correctIndex] === correctLetter) {
-                    // Check that all other positions don't match their corresponding letters
-                    let allOthersWrong = true;
-                    for (let i = 0; i < letters.length; i++) {
-                        if (i !== correctIndex && upperWord[i] === letters[i]) {
-                            allOthersWrong = false;
-                            break;
-                        }
-                    }
-                    
-                    if (allOthersWrong) {
-                        return true; // This scenario matches
+                // Word must be exactly the same length as the input string
+                if (upperWord.length !== requiredLength) {
+                    return false;
+                }
+                
+                // Check that the specified position has the correct letter
+                if (upperWord[correctIndex] !== correctLetter) {
+                    return false;
+                }
+                
+                // Check that all other positions don't match their corresponding letters
+                for (let i = 0; i < letters.length; i++) {
+                    if (i !== correctIndex && upperWord[i] === letters[i]) {
+                        return false; // This position should be wrong but it matches
                     }
                 }
-            }
-            
-            return false; // No scenario matched
-        });
+                
+                return true;
+            });
+        } else {
+            // ANY one letter is correct at its position, others are wrong at their positions
+            return words.filter(word => {
+                const upperWord = word.toUpperCase();
+                
+                // Word must be exactly the same length as the input string
+                if (upperWord.length !== requiredLength) {
+                    return false;
+                }
+                
+                // Check each possible scenario where one letter is correct
+                for (let correctIndex = 0; correctIndex < letters.length; correctIndex++) {
+                    const correctLetter = letters[correctIndex];
+                    
+                    // Check if this position has the correct letter
+                    if (upperWord[correctIndex] === correctLetter) {
+                        // Check that all other positions don't match their corresponding letters
+                        let allOthersWrong = true;
+                        for (let i = 0; i < letters.length; i++) {
+                            if (i !== correctIndex && upperWord[i] === letters[i]) {
+                                allOthersWrong = false;
+                                break;
+                            }
+                        }
+                        
+                        if (allOthersWrong) {
+                            return true; // This scenario matches
+                        }
+                    }
+                }
+                
+                return false; // No scenario matched
+            });
+        }
     }
 }
 
