@@ -34,6 +34,9 @@ let t9OneLieBlankIndex = null;  // Position of BLANK (0-3)
 let t9OneLiePossibleDigits = []; // Array of possible digits for BLANK
 let t9OneLieSelectedDigits = []; // The full 4-digit selection from 1 LIE
 
+// Track if current workflow contains any T9 features
+let workflowHasT9Feature = false;
+
 // POSITION-CONS Constants
 const ALPHABET_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 const VOWEL_SET = new Set(['A', 'E', 'I', 'O', 'U']);
@@ -1372,6 +1375,10 @@ async function executeWorkflow(steps) {
         t9OneLieBlankIndex = null;
         t9OneLiePossibleDigits = [];
         t9OneLieSelectedDigits = [];
+        
+        // Check if workflow contains any T9 features
+        workflowHasT9Feature = steps.some(step => step.feature.startsWith('t9'));
+        console.log('Workflow has T9 feature:', workflowHasT9Feature);
         
         console.log('Starting workflow with steps:', steps);
         console.log('Using wordlist:', selectedWordlist);
@@ -6456,9 +6463,10 @@ function displayResults(words) {
     updateWordCount(words.length);
     updateExportButtonState(words);
     
-    // Calculate T9 strings if needed (for click functionality when 20 or fewer words)
-    const shouldEnableClicks = words.length <= 20;
-    if (shouldEnableClicks) {
+    // Calculate T9 strings if needed (only if workflow has T9 features)
+    const shouldShowT9 = workflowHasT9Feature && words.length <= 20;
+    const shouldAutoShowT9 = workflowHasT9Feature && words.length <= 10; // Auto-display for 10 or fewer
+    if (shouldShowT9) {
         calculateT9Strings(words);
     }
     
@@ -6498,10 +6506,23 @@ function displayResults(words) {
     } else {
         // For smaller lists, show all words at once using innerHTML
         const wordListHTML = words.map(word => {
-            if (shouldEnableClicks) {
-                // Make clickable with data attribute to store original word
+            if (shouldAutoShowT9) {
+                // Auto-display both word and T9 string for 10 or fewer words
+                const t9String = t9StringsMap.get(word) || wordToT9(word);
+                const firstFour = t9String.substring(0, 4);
+                const rest = t9String.substring(4);
+                
+                return `<li class="word-with-t9" data-word="${word}" style="cursor: pointer;">
+                    <div style="font-weight: bold; margin-bottom: 8px;">${word}</div>
+                    <div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;">
+                        <span style="color: red; font-weight: bold;">${firstFour}</span>${rest}
+                    </div>
+                </li>`;
+            } else if (shouldShowT9) {
+                // Make clickable for 11-20 words (click to reveal T9)
                 return `<li class="word-clickable" data-word="${word}" style="cursor: pointer;">${word}</li>`;
             } else {
+                // Just show word for 21+ words or no T9 features
                 return `<li>${word}</li>`;
             }
         }).join('');
@@ -6512,33 +6533,68 @@ function displayResults(words) {
             </ul>
         `;
         
-        // Add click handlers for words if 20 or fewer
-        if (shouldEnableClicks) {
-            const wordElements = resultsContainer.querySelectorAll('.word-clickable');
-            wordElements.forEach(li => {
-                li.addEventListener('click', (e) => {
-                    const word = li.dataset.word;
-                    const t9String = t9StringsMap.get(word) || wordToT9(word);
+        // Add click handlers for words if T9 features are enabled
+        if (shouldShowT9) {
+            if (shouldAutoShowT9) {
+                // For 10 or fewer: clicking copies T9 string to clipboard
+                const wordElements = resultsContainer.querySelectorAll('.word-with-t9');
+                wordElements.forEach(li => {
+                    const handleWordClick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const word = li.dataset.word;
+                        const t9String = t9StringsMap.get(word) || wordToT9(word);
+                        
+                        // Copy to clipboard
+                        navigator.clipboard.writeText(t9String).then(() => {
+                            // Show brief feedback
+                            li.style.backgroundColor = '#d4edda'; // Light green to indicate copied
+                            setTimeout(() => {
+                                li.style.backgroundColor = '';
+                            }, 300);
+                        }).catch(err => {
+                            console.error('Failed to copy to clipboard:', err);
+                        });
+                    };
                     
-                    // Highlight first 4 digits in red
-                    const firstFour = t9String.substring(0, 4);
-                    const rest = t9String.substring(4);
-                    
-                    // Replace text with T9 string, highlighting first 4 in red
-                    li.innerHTML = `<span style="color: red; font-weight: bold;">${firstFour}</span>${rest}`;
-                    
-                    // Copy to clipboard
-                    navigator.clipboard.writeText(t9String).then(() => {
-                        // Optional: Show brief feedback
-                        li.style.backgroundColor = '#d4edda'; // Light green to indicate copied
-                        setTimeout(() => {
-                            li.style.backgroundColor = '';
-                        }, 300);
-                    }).catch(err => {
-                        console.error('Failed to copy to clipboard:', err);
-                    });
+                    // Add both click and touch events for mobile/PWA support
+                    li.addEventListener('click', handleWordClick);
+                    li.addEventListener('touchstart', handleWordClick, { passive: false });
                 });
-            });
+            } else {
+                // For 11-20: clicking reveals T9 string (replaces word text)
+                const wordElements = resultsContainer.querySelectorAll('.word-clickable');
+                wordElements.forEach(li => {
+                    const handleWordClick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const word = li.dataset.word;
+                        const t9String = t9StringsMap.get(word) || wordToT9(word);
+                        
+                        // Highlight first 4 digits in red
+                        const firstFour = t9String.substring(0, 4);
+                        const rest = t9String.substring(4);
+                        
+                        // Replace text with T9 string, highlighting first 4 in red
+                        li.innerHTML = `<span style="color: red; font-weight: bold;">${firstFour}</span>${rest}`;
+                        
+                        // Copy to clipboard
+                        navigator.clipboard.writeText(t9String).then(() => {
+                            // Optional: Show brief feedback
+                            li.style.backgroundColor = '#d4edda'; // Light green to indicate copied
+                            setTimeout(() => {
+                                li.style.backgroundColor = '';
+                            }, 300);
+                        }).catch(err => {
+                            console.error('Failed to copy to clipboard:', err);
+                        });
+                    };
+                    
+                    // Add both click and touch events for mobile/PWA support
+                    li.addEventListener('click', handleWordClick);
+                    li.addEventListener('touchstart', handleWordClick, { passive: false });
+                });
+            }
         }
     }
     
@@ -7912,6 +7968,9 @@ function showT9Features() {
     
     // Reinitialize feature selection
     initializeFeatureSelection();
+    
+    // Reinitialize info buttons for dynamically added features
+    initializeInfoButtons();
 }
 
 function showNormalFeatures() {
@@ -7932,6 +7991,9 @@ function showNormalFeatures() {
     
     // Reinitialize feature selection
     initializeFeatureSelection();
+    
+    // Reinitialize info buttons for dynamically added features
+    initializeInfoButtons();
 }
 
 function showAlphaNumericFeatures() {
@@ -7984,6 +8046,9 @@ function showAlphaNumericFeatures() {
     
     // Reinitialize feature selection
     initializeFeatureSelection();
+    
+    // Reinitialize info buttons for dynamically added features
+    initializeInfoButtons();
 }
 
 // Initialize feature selection when the DOM is loaded
@@ -8296,33 +8361,36 @@ function initializeInfoButtons() {
         console.log('Adding listeners to button:', button);
         // Remove any existing listeners
         button.removeEventListener('click', handleInfoClick);
+        button.removeEventListener('touchstart', handleInfoClick);
         button.removeEventListener('touchend', handleInfoClick);
         
-        // Add both click and touch events
+        // Add both click and touch events (use touchstart for better mobile/PWA support)
         button.addEventListener('click', handleInfoClick);
-        button.addEventListener('touchend', handleInfoClick);
+        button.addEventListener('touchstart', handleInfoClick, { passive: false });
     });
 
     // Close button click handlers
     document.querySelectorAll('.close-info-button').forEach(button => {
         // Remove any existing listeners
         button.removeEventListener('click', handleCloseClick);
+        button.removeEventListener('touchstart', handleCloseClick);
         button.removeEventListener('touchend', handleCloseClick);
         
-        // Add both click and touch events
+        // Add both click and touch events (use touchstart for better mobile/PWA support)
         button.addEventListener('click', handleCloseClick);
-        button.addEventListener('touchend', handleCloseClick);
+        button.addEventListener('touchstart', handleCloseClick, { passive: false });
     });
 
     // Close modal when clicking outside
     document.querySelectorAll('.feature-info-modal').forEach(modal => {
         // Remove any existing listeners
         modal.removeEventListener('click', handleOutsideClick);
+        modal.removeEventListener('touchstart', handleOutsideClick);
         modal.removeEventListener('touchend', handleOutsideClick);
         
-        // Add both click and touch events
+        // Add both click and touch events (use touchstart for better mobile/PWA support)
         modal.addEventListener('click', handleOutsideClick);
-        modal.addEventListener('touchend', handleOutsideClick);
+        modal.addEventListener('touchstart', handleOutsideClick, { passive: false });
     });
 }
 
@@ -8332,7 +8400,11 @@ function handleInfoClick(e) {
     e.stopPropagation(); // Prevent drag start
     const featureId = this.getAttribute('data-feature');
     console.log('Feature ID:', featureId);
-    showFeatureInfo(featureId);
+    if (featureId) {
+        showFeatureInfo(featureId);
+    } else {
+        console.error('No feature ID found on info button');
+    }
 }
 
 function handleCloseClick(e) {
