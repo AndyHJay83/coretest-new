@@ -39,6 +39,8 @@ let t9OneLieBlankIndex = null;  // Position of BLANK (0-3)
 let t9LastGuessDigits = [];    // GUESS digits from LAST (1 or 2 digits 2-9), used by GUESS filter
 let t9OneLiePossibleDigits = []; // Array of possible digits for BLANK
 let t9OneLieSelectedDigits = []; // The full 4-digit selection from 1 LIE
+let t9LastActual = '';           // ACTUAL from LAST (1 or 2 digits), used when 1 LIE follows LAST
+let t9OneLieLastActualLength = 0; // When 1 LIE follows LAST: length of t9LastActual so B uses same slice
 
 // Track if current workflow contains any T9 features
 let workflowHasT9Feature = false;
@@ -1409,6 +1411,8 @@ async function executeWorkflow(steps) {
         t9OneLiePossibleDigits = [];
         t9OneLieSelectedDigits = [];
         t9LastGuessDigits = [];
+        t9LastActual = '';
+        t9OneLieLastActualLength = 0;
         
         // Check if workflow contains any T9 features
         workflowHasT9Feature = steps.some(step => step.feature.startsWith('t9'));
@@ -1596,7 +1600,9 @@ async function executeWorkflow(steps) {
         let mostFrequentRank = 1;
         
         // Execute each step in sequence
-        for (const step of steps) {
+        for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+            const step = steps[stepIndex];
+            const previousStepFeature = stepIndex > 0 ? steps[stepIndex - 1].feature : null;
             console.log('Executing step:', step);
             
             let featureId = step.feature + 'Feature';
@@ -1781,7 +1787,7 @@ async function executeWorkflow(steps) {
                 setupFeatureListeners(step.feature, (filteredWords) => {
                     currentFilteredWords = filteredWords;
                     displayResults(currentFilteredWords);
-                });
+                }, { previousStepFeature });
             }, 0);
             
             // Wait for user interaction
@@ -3100,7 +3106,9 @@ function filterWordsByT9OneTruth(words, selectedDigits) {
 }
 
 // Helper function to calculate possible T9 digits for BLANK position, ordered by likelihood (most frequent first)
-function calculatePossibleT9DigitsForBlank(words, selectedDigits) {
+// When lastActualLen > 0 (1 LIE follows LAST), use the 4 digits before the last lastActualLen digits
+function calculatePossibleT9DigitsForBlank(words, selectedDigits, lastActualLen) {
+    lastActualLen = lastActualLen || 0;
     // Check if BLANK is used
     const blankIndex = selectedDigits.indexOf('BLANK');
     if (blankIndex === -1 || selectedDigits.length !== 4) {
@@ -3111,14 +3119,16 @@ function calculatePossibleT9DigitsForBlank(words, selectedDigits) {
     calculateT9Strings(words);
     
     const digitCounts = new Map();
+    const minLen = 4 + lastActualLen;
     
     words.forEach(word => {
         const t9String = t9StringsMap.get(word) || wordToT9(word);
         
-        // Must have at least 4 digits
-        if (t9String.length < 4) return;
+        if (t9String.length < minLen) return;
         
-        const lastFour = t9String.slice(-4);
+        const lastFour = lastActualLen > 0
+            ? t9String.slice(-4 - lastActualLen, -lastActualLen)
+            : t9String.slice(-4);
         const lastFourDigits = lastFour.split('');
         
         // Check if this word matches the pattern (non-BLANK positions must match)
@@ -3230,13 +3240,15 @@ function filterWordsByT9B(words, selectedDigit) {
         return words; // Return unfiltered if no data
     }
     
+    const n = t9OneLieLastActualLength || 0;
+    const minLen = 4 + n;
+    
     return words.filter(word => {
         const t9String = t9StringsMap.get(word) || wordToT9(word);
         
-        // Must have at least 4 digits
-        if (t9String.length < 4) return false;
+        if (t9String.length < minLen) return false;
         
-        const lastFour = t9String.slice(-4);
+        const lastFour = n > 0 ? t9String.slice(-4 - n, -n) : t9String.slice(-4);
         const lastFourDigits = lastFour.split('');
         
         // Check that all non-BLANK positions match
@@ -3254,7 +3266,9 @@ function filterWordsByT9B(words, selectedDigit) {
 }
 
 // Filtering logic for T9 1 LIE (4) feature
-function filterWordsByT9OneLie(words, selectedDigits) {
+// When lastActualLen > 0 (LAST immediately before), use the 4 digits before the last lastActualLen digits
+function filterWordsByT9OneLie(words, selectedDigits, lastActualLen) {
+    lastActualLen = lastActualLen || 0;
     // Calculate T9 strings if not already done
     calculateT9Strings(words);
     
@@ -3265,10 +3279,12 @@ function filterWordsByT9OneLie(words, selectedDigits) {
     return words.filter(word => {
         const t9String = t9StringsMap.get(word) || wordToT9(word);
         
-        // Must have at least 4 digits
-        if (t9String.length < 4) return false;
+        const minLen = 4 + lastActualLen;
+        if (t9String.length < minLen) return false;
         
-        const lastFour = t9String.slice(-4);
+        const lastFour = lastActualLen > 0
+            ? t9String.slice(-4 - lastActualLen, -lastActualLen)
+            : t9String.slice(-4);
         const lastFourDigits = lastFour.split('');
         
         if (hasBlank) {
@@ -3522,7 +3538,8 @@ function filterWordsByFindEee(words, selectedLetter, selectedPosition) {
 }
 
 // Function to setup feature listeners
-function setupFeatureListeners(feature, callback) {
+function setupFeatureListeners(feature, callback, options) {
+    options = options || {};
     switch (feature) {
         case 'position1': {
             const position1Button = document.getElementById('position1Button');
@@ -5748,6 +5765,7 @@ function setupFeatureListeners(feature, callback) {
                     // Store GUESS digits for GUESS filter (only digits 2-9, max 2)
                     const guessRaw = (t9LastGuessInput?.value || '').trim();
                     t9LastGuessDigits = guessRaw.replace(/[^2-9]/g, '').slice(0, 2).split('');
+                    t9LastActual = actual;
                     const filteredWords = filterWordsByT9Last(currentFilteredWords, actual);
                     callback(filteredWords);
                     document.getElementById('t9LastFeature').classList.add('completed');
@@ -5860,6 +5878,7 @@ function setupFeatureListeners(feature, callback) {
         }
         case 't9OneLie': {
             let selectedDigits = [];
+            const lastActualLen = (options.previousStepFeature === 't9Last' && t9LastActual) ? t9LastActual.length : 0;
             const t9OneLieButtons = document.querySelectorAll('.t9-one-lie-btn');
             const t9OneLieDisplay = document.getElementById('t9OneLieString');
             const t9OneLiePossibleDigitsList = document.getElementById('t9OneLiePossibleDigitsList');
@@ -5872,7 +5891,7 @@ function setupFeatureListeners(feature, callback) {
                 if (t9OneLiePossibleDigitsList) {
                     const blankIndex = selectedDigits.indexOf('BLANK');
                     if (blankIndex !== -1 && selectedDigits.length === 4) {
-                        const possibleDigits = calculatePossibleT9DigitsForBlank(currentFilteredWords, selectedDigits);
+                        const possibleDigits = calculatePossibleT9DigitsForBlank(currentFilteredWords, selectedDigits, lastActualLen);
                         if (possibleDigits.length > 0) {
                             t9OneLiePossibleDigitsList.textContent = possibleDigits.join(', ');
                         } else {
@@ -5971,11 +5990,12 @@ function setupFeatureListeners(feature, callback) {
                     calculateT9Strings(currentFilteredWords);
                     
                     // Store data for "B" feature if BLANK is used
+                    t9OneLieLastActualLength = lastActualLen;
                     const blankIndex = selectedDigits.indexOf('BLANK');
                     if (blankIndex !== -1) {
                         t9OneLieBlankIndex = blankIndex;
                         t9OneLieSelectedDigits = [...selectedDigits];
-                        t9OneLiePossibleDigits = calculatePossibleT9DigitsForBlank(currentFilteredWords, selectedDigits);
+                        t9OneLiePossibleDigits = calculatePossibleT9DigitsForBlank(currentFilteredWords, selectedDigits, lastActualLen);
                     } else {
                         // Clear if no BLANK
                         t9OneLieBlankIndex = null;
@@ -5983,7 +6003,7 @@ function setupFeatureListeners(feature, callback) {
                         t9OneLiePossibleDigits = [];
                     }
                     
-                    const filteredWords = filterWordsByT9OneLie(currentFilteredWords, selectedDigits);
+                    const filteredWords = filterWordsByT9OneLie(currentFilteredWords, selectedDigits, lastActualLen);
                     callback(filteredWords);
                     document.getElementById('t9OneLieFeature').classList.add('completed');
                     document.getElementById('t9OneLieFeature').dispatchEvent(new Event('completed'));
