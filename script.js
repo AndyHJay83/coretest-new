@@ -52,6 +52,21 @@ const SOLOGRAM_SECONDARY_WORDS = [
     'ABSENTMINDEDLY', 'LIGHTHEARTEDLY', 'RECOMMENDATION',
     'HEARTBREAKINGLY', 'STRAIGHTFORWARD'
 ];
+
+// SOLOGRAM: word groups for pointed-to words. Default is "all" (button shows "DEFAULT").
+let sologramSelectedGroupId = 'all';
+const SOLOGRAM_WORD_GROUPS = {
+    all: { label: 'DEFAULT', words: SOLOGRAM_SECONDARY_WORDS },
+    moabt: { label: 'MOABT', words: [] },
+    brushwood: { label: 'BRUSHWOOD', words: [] },
+    glance: { label: 'GLANCE', words: [] },
+    other: { label: 'OTHER', words: [] }
+};
+function getSologramSecondaryWords() {
+    const group = SOLOGRAM_WORD_GROUPS[sologramSelectedGroupId] || SOLOGRAM_WORD_GROUPS.all;
+    return group.words;
+}
+
 const ALPHABET_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 const VOWEL_SET = new Set(['A', 'E', 'I', 'O', 'U']);
 const CONSONANT_LETTERS = ALPHABET_LETTERS.filter(letter => !VOWEL_SET.has(letter));
@@ -1396,6 +1411,7 @@ async function executeWorkflow(steps) {
         // SOLOGRAM: clear last Y/N and set flag if this workflow includes SOLOGRAM
         lastSologramYnString = null;
         workflowHasSologram = steps.some(step => step.feature === 'sologram');
+        sologramSelectedGroupId = 'all';
         
         console.log('Starting workflow with steps:', steps);
         console.log('Using wordlist:', selectedWordlist);
@@ -2214,6 +2230,16 @@ function createSologramFeature() {
     div.dataset.sologramYn = '';
     div.innerHTML = `
         <h2 class="feature-title">SOLOGRAM</h2>
+        <div class="sologram-group-wrap">
+            <button type="button" id="sologramGroupBtn" class="sologram-group-btn">DEFAULT</button>
+            <div id="sologramGroupDropdown" class="sologram-group-dropdown" style="display: none;">
+                <button type="button" class="sologram-group-option" data-group="all">DEFAULT</button>
+                <button type="button" class="sologram-group-option" data-group="moabt">MOABT</button>
+                <button type="button" class="sologram-group-option" data-group="brushwood">BRUSHWOOD</button>
+                <button type="button" class="sologram-group-option" data-group="glance">GLANCE</button>
+                <button type="button" class="sologram-group-option" data-group="other">OTHER</button>
+            </div>
+        </div>
         <div class="sologram-yn-area">
             <div class="sologram-display-label">Y/N string:</div>
             <div id="sologramDisplay" class="sologram-display">(empty)</div>
@@ -4549,6 +4575,8 @@ function setupFeatureListeners(feature, callback) {
         case 'sologram': {
             const sologramFeature = document.getElementById('sologramFeature');
             const sologramDisplay = document.getElementById('sologramDisplay');
+            const sologramGroupBtn = document.getElementById('sologramGroupBtn');
+            const sologramGroupDropdown = document.getElementById('sologramGroupDropdown');
             const sologramYBtn = document.getElementById('sologramYBtn');
             const sologramNBtn = document.getElementById('sologramNBtn');
             const sologramBackspaceBtn = document.getElementById('sologramBackspaceBtn');
@@ -4559,6 +4587,53 @@ function setupFeatureListeners(feature, callback) {
                 if (sologramFeature) sologramFeature.dataset.sologramYn = s;
                 if (sologramDisplay) sologramDisplay.textContent = s || '(empty)';
             };
+            const updateGroupButtonLabel = () => {
+                const group = SOLOGRAM_WORD_GROUPS[sologramSelectedGroupId] || SOLOGRAM_WORD_GROUPS.all;
+                if (sologramGroupBtn) sologramGroupBtn.textContent = group.label;
+            };
+            let outsideClickHandler = null;
+            const closeGroupDropdown = () => {
+                if (sologramGroupDropdown) sologramGroupDropdown.style.display = 'none';
+                if (outsideClickHandler) {
+                    document.removeEventListener('click', outsideClickHandler);
+                    document.removeEventListener('touchstart', outsideClickHandler);
+                    outsideClickHandler = null;
+                }
+            };
+            if (sologramGroupBtn && sologramGroupDropdown) {
+                updateGroupButtonLabel();
+                sologramGroupBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const isOpen = sologramGroupDropdown.style.display === 'block';
+                    sologramGroupDropdown.style.display = isOpen ? 'none' : 'block';
+                    if (!isOpen) {
+                        outsideClickHandler = (ev) => {
+                            if (!sologramGroupBtn.contains(ev.target) && !sologramGroupDropdown.contains(ev.target)) {
+                                closeGroupDropdown();
+                            }
+                        };
+                        document.addEventListener('click', outsideClickHandler);
+                        document.addEventListener('touchstart', outsideClickHandler, { passive: false });
+                    } else if (outsideClickHandler) {
+                        document.removeEventListener('click', outsideClickHandler);
+                        document.removeEventListener('touchstart', outsideClickHandler);
+                        outsideClickHandler = null;
+                    }
+                };
+                sologramGroupBtn.addEventListener('touchstart', (e) => { e.preventDefault(); sologramGroupBtn.click(); }, { passive: false });
+                sologramGroupDropdown.querySelectorAll('.sologram-group-option').forEach(opt => {
+                    opt.onclick = (e) => {
+                        e.stopPropagation();
+                        const id = opt.getAttribute('data-group');
+                        if (id && SOLOGRAM_WORD_GROUPS[id]) {
+                            sologramSelectedGroupId = id;
+                            updateGroupButtonLabel();
+                            closeGroupDropdown();
+                        }
+                    };
+                    opt.addEventListener('touchstart', (e) => { e.preventDefault(); opt.click(); }, { passive: false });
+                });
+            }
             if (sologramYBtn) {
                 sologramYBtn.onclick = () => setSologramString(getSologramString() + 'Y');
                 sologramYBtn.addEventListener('touchstart', (e) => { e.preventDefault(); sologramYBtn.click(); }, { passive: false });
@@ -4595,6 +4670,7 @@ function setupFeatureListeners(feature, callback) {
                 sologramSkipButton.addEventListener('touchstart', (e) => { e.preventDefault(); sologramSkipButton.click(); }, { passive: false });
             }
             setSologramString(''); // reset when step is shown
+            updateGroupButtonLabel();
             break;
         }
 
@@ -8825,7 +8901,8 @@ function filterWordsBySologram(words, ynString) {
     const raw = (ynString || '').toUpperCase().replace(/[^YN]/g, '');
     if (raw.length === 0) return words;
     const L = raw.length;
-    const secondaryOfLength = SOLOGRAM_SECONDARY_WORDS.filter(w => w.length === L);
+    const secondaryWords = getSologramSecondaryWords();
+    const secondaryOfLength = secondaryWords.filter(w => w.length === L);
     const consistentP = secondaryOfLength.filter(P => {
         const letterToVerdict = new Map();
         for (let i = 0; i < L; i++) {
@@ -8859,7 +8936,8 @@ function getPossibleSologramPointedToWords(words, ynString) {
     const raw = (ynString || '').toUpperCase().replace(/[^YN]/g, '');
     if (raw.length === 0) return [];
     const L = raw.length;
-    const secondaryOfLength = SOLOGRAM_SECONDARY_WORDS.filter(w => w.length === L);
+    const secondaryWords = getSologramSecondaryWords();
+    const secondaryOfLength = secondaryWords.filter(w => w.length === L);
     const consistentP = secondaryOfLength.filter(P => {
         const letterToVerdict = new Map();
         for (let i = 0; i < L; i++) {
