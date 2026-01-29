@@ -5957,10 +5957,13 @@ function setupFeatureListeners(feature, callback, options) {
                 }, { passive: false });
             });
             
-            // Backspace button
+            // Backspace button (guard so touch + click don't both run and remove two digits)
             const t9OneLieBackspaceButton = document.getElementById('t9OneLieBackspaceButton');
             if (t9OneLieBackspaceButton) {
+                let lastBackspaceAt = 0;
                 const handleBackspace = () => {
+                    if (Date.now() - lastBackspaceAt < 400) return;
+                    lastBackspaceAt = Date.now();
                     if (selectedDigits.length === 0) return;
                     const popped = selectedDigits.pop();
                     if (t9OneLieDisplay) {
@@ -5974,7 +5977,7 @@ function setupFeatureListeners(feature, callback, options) {
                     const btnForPopped = document.querySelector(`.t9-one-lie-btn[data-digit="${popped}"]`);
                     if (btnForPopped && !selectedDigits.includes(popped)) btnForPopped.classList.remove('active');
                 };
-                t9OneLieBackspaceButton.onclick = handleBackspace;
+                t9OneLieBackspaceButton.onclick = (e) => { e.preventDefault(); handleBackspace(); };
                 t9OneLieBackspaceButton.addEventListener('touchstart', (e) => { e.preventDefault(); handleBackspace(); }, { passive: false });
             }
             
@@ -6245,10 +6248,13 @@ function setupFeatureListeners(feature, callback, options) {
                 }, { passive: false });
             });
             
-            // Backspace button
+            // Backspace button (guard so touch + click don't both run and remove two digits)
             const t9OneTruthBackspaceButton = document.getElementById('t9OneTruthBackspaceButton');
             if (t9OneTruthBackspaceButton) {
+                let lastBackspaceAt = 0;
                 const handleBackspace = () => {
+                    if (Date.now() - lastBackspaceAt < 400) return;
+                    lastBackspaceAt = Date.now();
                     if (selectedDigits.length === 0) return;
                     const popped = selectedDigits.pop();
                     if (t9OneTruthDisplay) {
@@ -6262,7 +6268,7 @@ function setupFeatureListeners(feature, callback, options) {
                     const btnForPopped = document.querySelector(`.t9-one-truth-btn[data-digit="${popped}"]`);
                     if (btnForPopped && !selectedDigits.includes(popped)) btnForPopped.classList.remove('active');
                 };
-                t9OneTruthBackspaceButton.onclick = handleBackspace;
+                t9OneTruthBackspaceButton.onclick = (e) => { e.preventDefault(); handleBackspace(); };
                 t9OneTruthBackspaceButton.addEventListener('touchstart', (e) => { e.preventDefault(); handleBackspace(); }, { passive: false });
             }
             
