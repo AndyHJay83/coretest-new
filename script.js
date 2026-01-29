@@ -36,11 +36,15 @@ const APP_VERSION = '12.0';
 
 // Store T9 1 LIE (L4) data for "B" feature
 let t9OneLieBlankIndex = null;  // Position of BLANK (0-3)
+let t9LastGuessDigits = [];    // GUESS digits from LAST (1 or 2 digits 2-9), used by GUESS filter
 let t9OneLiePossibleDigits = []; // Array of possible digits for BLANK
 let t9OneLieSelectedDigits = []; // The full 4-digit selection from 1 LIE
 
 // Track if current workflow contains any T9 features
 let workflowHasT9Feature = false;
+// T9 B-IDENTITY definites overlay: only show after B-IDENTITY has been submitted
+let workflowHasT9B = false;
+let t9BSubmitted = false;
 
 // SOLOGRAM: secondary wordlist (pointed-to words). One entry per word, uppercase.
 const SOLOGRAM_SECONDARY_WORDS = [
@@ -1404,10 +1408,14 @@ async function executeWorkflow(steps) {
         t9OneLieBlankIndex = null;
         t9OneLiePossibleDigits = [];
         t9OneLieSelectedDigits = [];
+        t9LastGuessDigits = [];
         
         // Check if workflow contains any T9 features
         workflowHasT9Feature = steps.some(step => step.feature.startsWith('t9'));
         console.log('Workflow has T9 feature:', workflowHasT9Feature);
+        // T9 B-IDENTITY definites overlay: only after B-IDENTITY has been submitted
+        workflowHasT9B = steps.some(step => step.feature === 't9B');
+        t9BSubmitted = false;
         // SOLOGRAM: clear last Y/N and set flag if this workflow includes SOLOGRAM
         lastSologramYnString = null;
         workflowHasSologram = steps.some(step => step.feature === 'sologram');
@@ -1700,6 +1708,12 @@ async function executeWorkflow(steps) {
                     break;
                 case 't9LastTwo':
                     featureElement = createT9LastTwoFeature();
+                    break;
+                case 't9Last':
+                    featureElement = createT9LastFeature();
+                    break;
+                case 't9Guess':
+                    featureElement = createT9GuessFeature();
                     break;
                 case 't9OneLie':
                     featureElement = createT9OneLieFeature();
@@ -2476,6 +2490,49 @@ function createT9LastTwoFeature() {
     return div;
 }
 
+// --- T9 LAST Feature Logic ---
+function createT9LastFeature() {
+    const div = document.createElement('div');
+    div.id = 't9LastFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">LAST</h2>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Last digit(s) of T9 string. GUESS optional; ACTUAL required (1 or 2 digits, 2-9).</p>
+        <div class="length-input" style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label for="t9LastGuessInput">GUESS</label>
+                <input type="text" id="t9LastGuessInput" placeholder="Optional" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="2" style="width: 80px;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label for="t9LastActualInput">ACTUAL</label>
+                <input type="text" id="t9LastActualInput" placeholder="1 or 2 digits (2-9)" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="2" style="width: 80px;">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button id="t9LastButton">SUBMIT</button>
+                <button id="t9LastSkipButton" class="skip-button">SKIP</button>
+            </div>
+        </div>
+    `;
+    return div;
+}
+
+// --- T9 GUESS Feature Logic (uses GUESS digits from LAST; only works after LAST in workflow) ---
+function createT9GuessFeature() {
+    const div = document.createElement('div');
+    div.id = 't9GuessFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">GUESS</h2>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Is the GUESS number in the first 4 digits of your T9 string?</p>
+        <div id="t9GuessQuestions" style="display: flex; flex-direction: column; gap: 16px; align-items: center; margin: 16px 0;"></div>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+            <button id="t9GuessSubmitButton" disabled style="opacity: 0.6;">SUBMIT</button>
+            <button id="t9GuessSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
 // --- T9 1 LIE (4) Feature Logic ---
 function createT9OneLieFeature() {
     const div = document.createElement('div');
@@ -2494,13 +2551,18 @@ function createT9OneLieFeature() {
             <button class="t9-one-lie-btn" data-digit="9">9</button>
             <button class="t9-one-lie-btn blank-btn" data-digit="BLANK" style="background-color: #f44336; color: white; font-weight: bold;">B</button>
         </div>
-        <div id="t9OneLieDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
-            <span id="t9OneLieString">-</span>
+        <div class="t9-one-lie-display-row" style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 12px;">
+            <div id="t9OneLieDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 44px; min-width: 120px; padding: 0 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+                <span id="t9OneLieString">-</span>
+            </div>
+            <button id="t9OneLieBackspaceButton" class="t9-one-lie-btn t9-backspace-btn" title="Remove last digit">⌫</button>
         </div>
         <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
-            <button id="t9OneLieSubmitButton">SUBMIT</button>
-            <button id="t9OneLieResetButton" class="reset-button">RESET</button>
-            <button id="t9OneLieSkipButton" class="skip-button">SKIP</button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                <button id="t9OneLieSubmitButton">SUBMIT</button>
+                <button id="t9OneLieResetButton" class="reset-button">RESET</button>
+                <button id="t9OneLieSkipButton" class="skip-button">SKIP</button>
+            </div>
             <div id="t9OneLiePossibleDigits" style="margin-top: 15px; padding: 10px; font-size: 14px; color: #666; text-align: center; min-height: 20px;">
                 <span style="font-weight: bold;">Possible T9 digits for BLANK:</span> <span id="t9OneLiePossibleDigitsList">-</span>
             </div>
@@ -2562,13 +2624,18 @@ function createT9OneTruthFeature() {
             <button class="t9-one-truth-btn" data-digit="9">9</button>
             <button class="t9-one-truth-btn blank-btn" data-digit="BLANK" style="background-color: #f44336; color: white; font-weight: bold;">B</button>
         </div>
-        <div id="t9OneTruthDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
-            <span id="t9OneTruthString">-</span>
+        <div class="t9-one-truth-display-row" style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 12px;">
+            <div id="t9OneTruthDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 44px; min-width: 120px; padding: 0 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+                <span id="t9OneTruthString">-</span>
+            </div>
+            <button id="t9OneTruthBackspaceButton" class="t9-one-truth-btn t9-backspace-btn" title="Remove last digit">⌫</button>
         </div>
         <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
-            <button id="t9OneTruthSubmitButton">SUBMIT</button>
-            <button id="t9OneTruthResetButton" class="reset-button">RESET</button>
-            <button id="t9OneTruthSkipButton" class="skip-button">SKIP</button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                <button id="t9OneTruthSubmitButton">SUBMIT</button>
+                <button id="t9OneTruthResetButton" class="reset-button">RESET</button>
+                <button id="t9OneTruthSkipButton" class="skip-button">SKIP</button>
+            </div>
             <div id="t9OneTruthPossibleDigits" style="margin-top: 15px; padding: 10px; font-size: 14px; color: #666; text-align: center; min-height: 20px;">
                 <span style="font-weight: bold;">Possible T9 digits for BLANK:</span> <span id="t9OneTruthPossibleDigitsList">-</span>
             </div>
@@ -3032,7 +3099,7 @@ function filterWordsByT9OneTruth(words, selectedDigits) {
     });
 }
 
-// Helper function to calculate possible T9 digits for BLANK position
+// Helper function to calculate possible T9 digits for BLANK position, ordered by likelihood (most frequent first)
 function calculatePossibleT9DigitsForBlank(words, selectedDigits) {
     // Check if BLANK is used
     const blankIndex = selectedDigits.indexOf('BLANK');
@@ -3043,7 +3110,7 @@ function calculatePossibleT9DigitsForBlank(words, selectedDigits) {
     // Calculate T9 strings if not already done
     calculateT9Strings(words);
     
-    const possibleDigits = new Set();
+    const digitCounts = new Map();
     
     words.forEach(word => {
         const t9String = t9StringsMap.get(word) || wordToT9(word);
@@ -3066,15 +3133,16 @@ function calculatePossibleT9DigitsForBlank(words, selectedDigits) {
         }
         
         if (matches) {
-            // This word matches the pattern, add its T9 digit at the BLANK position
-            possibleDigits.add(lastFourDigits[blankIndex]);
+            const digit = lastFourDigits[blankIndex];
+            digitCounts.set(digit, (digitCounts.get(digit) || 0) + 1);
         }
     });
     
-    return Array.from(possibleDigits).sort();
+    // Return digits ordered by count descending (most likely first)
+    return Array.from(digitCounts.entries()).sort((a, b) => b[1] - a[1]).map(([digit]) => digit);
 }
 
-// Helper function to calculate possible T9 digits for BLANK position in 1 TRUTH (F4)
+// Helper function to calculate possible T9 digits for BLANK position in 1 TRUTH (F4), ordered by likelihood (most frequent first)
 function calculatePossibleT9DigitsForBlankTruth(words, selectedDigits) {
     // Check if BLANK is used
     const blankIndex = selectedDigits.indexOf('BLANK');
@@ -3085,7 +3153,7 @@ function calculatePossibleT9DigitsForBlankTruth(words, selectedDigits) {
     // Calculate T9 strings if not already done
     calculateT9Strings(words);
     
-    const possibleDigits = new Set();
+    const digitCounts = new Map();
     
     words.forEach(word => {
         const t9String = t9StringsMap.get(word) || wordToT9(word);
@@ -3114,13 +3182,42 @@ function calculatePossibleT9DigitsForBlankTruth(words, selectedDigits) {
         }
         
         if (matches) {
-            // This word matches the pattern (BLANK position is correct, others are wrong)
-            // Add its T9 digit at the BLANK position
-            possibleDigits.add(firstFourDigits[blankIndex]);
+            const digit = firstFourDigits[blankIndex];
+            digitCounts.set(digit, (digitCounts.get(digit) || 0) + 1);
         }
     });
     
-    return Array.from(possibleDigits).sort();
+    // Return digits ordered by count descending (most likely first)
+    return Array.from(digitCounts.entries()).sort((a, b) => b[1] - a[1]).map(([digit]) => digit);
+}
+
+// Filtering logic for T9 LAST: filter by last 1 or 2 digits of T9 string (actualString must be 1 or 2 digits, each 2-9)
+function filterWordsByT9Last(words, actualString) {
+    const actual = (actualString || '').trim();
+    if (!/^[2-9]{1,2}$/.test(actual)) return words;
+    calculateT9Strings(words);
+    const n = actual.length;
+    return words.filter(word => {
+        const t9 = t9StringsMap.get(word) || wordToT9(word);
+        if (t9.length < n) return false;
+        return t9.slice(-n) === actual;
+    });
+}
+
+// Filtering logic for T9 GUESS: filter by whether each GUESS digit is in the first 4 digits of T9 string
+// guessDigits: array of 1 or 2 digit strings e.g. ['6','7']; answers: array of booleans (true = in first 4, false = not)
+function filterWordsByT9Guess(words, guessDigits, answers) {
+    if (!guessDigits || !answers || guessDigits.length !== answers.length || guessDigits.length === 0) return words;
+    calculateT9Strings(words);
+    return words.filter(word => {
+        const t9 = t9StringsMap.get(word) || wordToT9(word);
+        const first4 = t9.slice(0, 4);
+        for (let i = 0; i < guessDigits.length; i++) {
+            const inFirst4 = first4.includes(guessDigits[i]);
+            if (inFirst4 !== answers[i]) return false;
+        }
+        return true;
+    });
 }
 
 // Filtering logic for T9 B feature
@@ -5631,6 +5728,136 @@ function setupFeatureListeners(feature, callback) {
             }
             break;
         }
+        case 't9Last': {
+            const t9LastButton = document.getElementById('t9LastButton');
+            const t9LastGuessInput = document.getElementById('t9LastGuessInput');
+            const t9LastActualInput = document.getElementById('t9LastActualInput');
+            const t9LastSkipButton = document.getElementById('t9LastSkipButton');
+            if (t9LastButton && t9LastActualInput) {
+                t9LastButton.onclick = () => {
+                    const actualRaw = (t9LastActualInput?.value || '').trim();
+                    const actual = actualRaw.replace(/[^2-9]/g, '').slice(0, 2);
+                    if (!actual) {
+                        alert('Enter ACTUAL: 1 or 2 digits (2-9).');
+                        return;
+                    }
+                    if (!/^[2-9]{1,2}$/.test(actual)) {
+                        alert('ACTUAL must be digits 2-9 only (1 or 2 digits).');
+                        return;
+                    }
+                    // Store GUESS digits for GUESS filter (only digits 2-9, max 2)
+                    const guessRaw = (t9LastGuessInput?.value || '').trim();
+                    t9LastGuessDigits = guessRaw.replace(/[^2-9]/g, '').slice(0, 2).split('');
+                    const filteredWords = filterWordsByT9Last(currentFilteredWords, actual);
+                    callback(filteredWords);
+                    document.getElementById('t9LastFeature').classList.add('completed');
+                    document.getElementById('t9LastFeature').dispatchEvent(new Event('completed'));
+                };
+                t9LastButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9LastButton.onclick();
+                }, { passive: false });
+            }
+            if (t9LastSkipButton) {
+                t9LastSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('t9LastFeature').classList.add('completed');
+                    document.getElementById('t9LastFeature').dispatchEvent(new Event('completed'));
+                };
+                t9LastSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9LastSkipButton.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
+        case 't9Guess': {
+            const t9GuessQuestions = document.getElementById('t9GuessQuestions');
+            const t9GuessSubmitButton = document.getElementById('t9GuessSubmitButton');
+            const t9GuessSkipButton = document.getElementById('t9GuessSkipButton');
+            if (t9LastGuessDigits.length === 0) {
+                if (t9GuessQuestions) {
+                    t9GuessQuestions.innerHTML = '<p style="color: #666; text-align: center;">GUESS only works after LAST when a GUESS value was entered. Use SKIP to continue.</p>';
+                }
+                if (t9GuessSubmitButton) t9GuessSubmitButton.style.display = 'none';
+            } else {
+                const answers = t9LastGuessDigits.map(() => null);
+                t9GuessQuestions.innerHTML = '';
+                t9LastGuessDigits.forEach((digit, i) => {
+                    const row = document.createElement('div');
+                    row.style.display = 'flex';
+                    row.style.flexWrap = 'wrap';
+                    row.style.alignItems = 'center';
+                    row.style.gap = '10px';
+                    row.style.justifyContent = 'center';
+                    const label = document.createElement('span');
+                    label.textContent = `Is there a ${digit} in the first 4 digits of your T9 string?`;
+                    label.style.fontWeight = 'bold';
+                    const yesBtn = document.createElement('button');
+                    yesBtn.className = 'yes-btn';
+                    yesBtn.textContent = 'YES';
+                    const noBtn = document.createElement('button');
+                    noBtn.className = 'no-btn';
+                    noBtn.textContent = 'NO';
+                    const setAnswer = (val) => {
+                        answers[i] = val;
+                        yesBtn.style.opacity = val === true ? '1' : '0.5';
+                        noBtn.style.opacity = val === false ? '1' : '0.5';
+                        if (t9GuessSubmitButton) {
+                            t9GuessSubmitButton.disabled = answers.some(a => a === null);
+                            t9GuessSubmitButton.style.opacity = t9GuessSubmitButton.disabled ? '0.6' : '1';
+                        }
+                        // Auto-confirm when all answers are set (one question = on first answer; two = on second)
+                        if (!answers.some(a => a === null)) {
+                            const filteredWords = filterWordsByT9Guess(currentFilteredWords, t9LastGuessDigits, answers);
+                            callback(filteredWords);
+                            document.getElementById('t9GuessFeature').classList.add('completed');
+                            document.getElementById('t9GuessFeature').dispatchEvent(new Event('completed'));
+                        }
+                    };
+                    yesBtn.onclick = () => setAnswer(true);
+                    noBtn.onclick = () => setAnswer(false);
+                    yesBtn.addEventListener('touchstart', (e) => { e.preventDefault(); setAnswer(true); }, { passive: false });
+                    noBtn.addEventListener('touchstart', (e) => { e.preventDefault(); setAnswer(false); }, { passive: false });
+                    row.appendChild(label);
+                    row.appendChild(yesBtn);
+                    row.appendChild(noBtn);
+                    t9GuessQuestions.appendChild(row);
+                });
+                const updateSubmitState = () => {
+                    if (t9GuessSubmitButton) {
+                        t9GuessSubmitButton.disabled = answers.some(a => a === null);
+                        t9GuessSubmitButton.style.opacity = t9GuessSubmitButton.disabled ? '0.6' : '1';
+                    }
+                };
+                updateSubmitState();
+                if (t9GuessSubmitButton) {
+                    t9GuessSubmitButton.onclick = () => {
+                        if (answers.some(a => a === null)) return;
+                        const filteredWords = filterWordsByT9Guess(currentFilteredWords, t9LastGuessDigits, answers);
+                        callback(filteredWords);
+                        document.getElementById('t9GuessFeature').classList.add('completed');
+                        document.getElementById('t9GuessFeature').dispatchEvent(new Event('completed'));
+                    };
+                    t9GuessSubmitButton.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        t9GuessSubmitButton.onclick();
+                    }, { passive: false });
+                }
+            }
+            if (t9GuessSkipButton) {
+                t9GuessSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('t9GuessFeature').classList.add('completed');
+                    document.getElementById('t9GuessFeature').dispatchEvent(new Event('completed'));
+                };
+                t9GuessSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    t9GuessSkipButton.onclick();
+                }, { passive: false });
+            }
+            break;
+        }
         case 't9OneLie': {
             let selectedDigits = [];
             const t9OneLieButtons = document.querySelectorAll('.t9-one-lie-btn');
@@ -5710,6 +5937,27 @@ function setupFeatureListeners(feature, callback) {
                     }
                 }, { passive: false });
             });
+            
+            // Backspace button
+            const t9OneLieBackspaceButton = document.getElementById('t9OneLieBackspaceButton');
+            if (t9OneLieBackspaceButton) {
+                const handleBackspace = () => {
+                    if (selectedDigits.length === 0) return;
+                    const popped = selectedDigits.pop();
+                    if (t9OneLieDisplay) {
+                        if (selectedDigits.length === 0) {
+                            t9OneLieDisplay.textContent = '-';
+                        } else {
+                            t9OneLieDisplay.innerHTML = selectedDigits.map(d => d === 'BLANK' ? '<span style="color: #f44336; font-weight: bold;">B</span>' : d).join('');
+                        }
+                    }
+                    updatePossibleDigits();
+                    const btnForPopped = document.querySelector(`.t9-one-lie-btn[data-digit="${popped}"]`);
+                    if (btnForPopped && !selectedDigits.includes(popped)) btnForPopped.classList.remove('active');
+                };
+                t9OneLieBackspaceButton.onclick = handleBackspace;
+                t9OneLieBackspaceButton.addEventListener('touchstart', (e) => { e.preventDefault(); handleBackspace(); }, { passive: false });
+            }
             
             // Submit button
             if (t9OneLieSubmitButton) {
@@ -5977,6 +6225,27 @@ function setupFeatureListeners(feature, callback) {
                 }, { passive: false });
             });
             
+            // Backspace button
+            const t9OneTruthBackspaceButton = document.getElementById('t9OneTruthBackspaceButton');
+            if (t9OneTruthBackspaceButton) {
+                const handleBackspace = () => {
+                    if (selectedDigits.length === 0) return;
+                    const popped = selectedDigits.pop();
+                    if (t9OneTruthDisplay) {
+                        if (selectedDigits.length === 0) {
+                            t9OneTruthDisplay.textContent = '-';
+                        } else {
+                            t9OneTruthDisplay.innerHTML = selectedDigits.map(d => d === 'BLANK' ? '<span style="color: #f44336; font-weight: bold;">B</span>' : d).join('');
+                        }
+                    }
+                    updatePossibleDigits();
+                    const btnForPopped = document.querySelector(`.t9-one-truth-btn[data-digit="${popped}"]`);
+                    if (btnForPopped && !selectedDigits.includes(popped)) btnForPopped.classList.remove('active');
+                };
+                t9OneTruthBackspaceButton.onclick = handleBackspace;
+                t9OneTruthBackspaceButton.addEventListener('touchstart', (e) => { e.preventDefault(); handleBackspace(); }, { passive: false });
+            }
+            
             // Submit button
             if (t9OneTruthSubmitButton) {
                 t9OneTruthSubmitButton.onclick = () => {
@@ -6053,7 +6322,7 @@ function setupFeatureListeners(feature, callback) {
             t9BButtons.forEach(btn => {
                 btn.onclick = () => {
                     const digit = btn.dataset.digit;
-                    
+                    t9BSubmitted = true; // Show definites overlay after B-IDENTITY submitted
                     // Calculate T9 strings if not already done
                     calculateT9Strings(currentFilteredWords);
                     
@@ -6072,6 +6341,7 @@ function setupFeatureListeners(feature, callback) {
             // Skip button
             if (t9BSkipButton) {
                 t9BSkipButton.onclick = () => {
+                    t9BSubmitted = true; // Show definites overlay after B-IDENTITY step completed
                     callback(currentFilteredWords);
                     document.getElementById('t9BFeature').classList.add('completed');
                     document.getElementById('t9BFeature').dispatchEvent(new Event('completed'));
@@ -6785,6 +7055,7 @@ function displayResults(words) {
         resultsContainer.innerHTML = '<p>No words match the current criteria.</p>';
         updateWordCount(0);
         updateSologramOverlay([]);
+        updateT9DefinitesOverlay([]);
         return;
     }
     
@@ -6837,6 +7108,7 @@ function displayResults(words) {
                     </ul>
                 `;
                 updateSologramOverlay(words);
+                updateT9DefinitesOverlay(words);
             });
         }
     } else {
@@ -6941,6 +7213,8 @@ function displayResults(words) {
     
     // SOLOGRAM: show possible pointed-to words at bottom of results when workflow has SOLOGRAM
     updateSologramOverlay(words);
+    // T9 B-IDENTITY: show definites (first 4 digits/letters) at bottom of results after B-IDENTITY submitted
+    updateT9DefinitesOverlay(words);
     
     // Ensure the feature area is empty and visible
     const featureArea = document.getElementById('featureArea');
@@ -8263,6 +8537,14 @@ function showT9Features() {
             <button class="info-button" data-feature="t9LastTwo"><i class="fas fa-info-circle"></i></button>
         </div>
         <div class="feature-group">
+            <button class="feature-button t9-feature-button" data-feature="t9Last" draggable="true">LAST</button>
+            <button class="info-button" data-feature="t9Last"><i class="fas fa-info-circle"></i></button>
+        </div>
+        <div class="feature-group">
+            <button class="feature-button t9-feature-button" data-feature="t9Guess" draggable="true">GUESS</button>
+            <button class="info-button" data-feature="t9Guess"><i class="fas fa-info-circle"></i></button>
+        </div>
+        <div class="feature-group">
             <button class="feature-button t9-feature-button" data-feature="t9OneLie" draggable="true">1 LIE (L4)</button>
             <button class="info-button" data-feature="t9OneLie"><i class="fas fa-info-circle"></i></button>
         </div>
@@ -8983,6 +9265,57 @@ function updateSologramOverlay(words) {
         <div class="sologram-overlay-title">Possible pointed-to words</div>
         <div class="sologram-overlay-list">${possibleP.length ? possibleP.map(p => `<span class="sologram-overlay-word">${p}</span>`).join(' ') : '<span class="sologram-overlay-empty">None</span>'}</div>
     `;
+    if (!overlay.parentNode || overlay.parentNode !== resultsContainer) {
+        resultsContainer.appendChild(overlay);
+    }
+}
+
+// T9 B-IDENTITY definites: first 4 digits/letters of T9 string. Returns [{ position, digit, letter }] for positions with numerical definite.
+function getT9Definites(words) {
+    if (!words || words.length === 0) return [];
+    const withLength4 = words.filter(w => w.length >= 4);
+    if (withLength4.length === 0) return [];
+    calculateT9Strings(withLength4);
+    const definites = [];
+    for (let p = 1; p <= 4; p++) {
+        const i = p - 1;
+        const digits = withLength4.map(w => {
+            const t9 = t9StringsMap.get(w) || wordToT9(w);
+            return t9.length > i ? t9[i] : null;
+        }).filter(Boolean);
+        if (digits.length !== withLength4.length) continue;
+        const firstDigit = digits[0];
+        if (!digits.every(d => d === firstDigit)) continue; // no numerical definite
+        const letters = withLength4.map(w => w.toUpperCase()[i]);
+        const firstLetter = letters[0];
+        const sameLetter = letters.every(l => l === firstLetter);
+        definites.push({ position: p, digit: firstDigit, letter: sameLetter ? firstLetter : null });
+    }
+    return definites;
+}
+
+// Show or update T9 definites overlay at bottom of results (only after B-IDENTITY submitted; does not block touch).
+function updateT9DefinitesOverlay(words) {
+    const resultsContainer = document.getElementById('results');
+    if (!resultsContainer) return;
+    let overlay = document.getElementById('t9DefinitesOverlay');
+    if (!workflowHasT9B || !t9BSubmitted) {
+        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        return;
+    }
+    const definites = getT9Definites(words);
+    if (definites.length === 0) {
+        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        return;
+    }
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 't9DefinitesOverlay';
+        overlay.className = 't9-definites-overlay';
+    }
+    overlay.innerHTML = definites.map(d =>
+        d.letter ? `${d.position} = ${d.digit} (${d.letter})` : `${d.position} = ${d.digit}`
+    ).join('<br>');
     if (!overlay.parentNode || overlay.parentNode !== resultsContainer) {
         resultsContainer.appendChild(overlay);
     }

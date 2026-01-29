@@ -225,6 +225,20 @@
       "analyzeFunction": "const results = []; const t9Map = new Map(); const t9Mapping = {'A':'2','B':'2','C':'2','D':'3','E':'3','F':'3','G':'4','H':'4','I':'4','J':'5','K':'5','L':'5','M':'6','N':'6','O':'6','P':'7','Q':'7','R':'7','S':'7','T':'8','U':'8','V':'8','W':'9','X':'9','Y':'9','Z':'9'}; wordlist.forEach(w => { const t9 = w.toUpperCase().split('').map(c => t9Mapping[c] || '').join(''); t9Map.set(w, t9); }); const lastTwoMap = {}; wordlist.forEach(w => { const t9 = t9Map.get(w); if (t9.length >= 2) { const lastTwo = t9.slice(-2); lastTwoMap[lastTwo] = (lastTwoMap[lastTwo] || 0) + 1; } }); return Object.keys(lastTwoMap).sort().map(lastTwo => { const filtered = wordlist.filter(w => { const t9 = t9Map.get(w); return t9.length >= 2 && t9.slice(-2) === lastTwo; }); return { param: lastTwo, wordsLeft: filtered.length, percentFiltered: 100 * (1 - filtered.length / totalWords) }; });"
     },
     {
+      "id": "t9Last",
+      "name": "LAST",
+      "displayName": "LAST",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires ACTUAL (1-2 digits 2-9)', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
+      "id": "t9Guess",
+      "name": "GUESS",
+      "displayName": "GUESS",
+      "requiresParam": false,
+      "analyzeFunction": "return [{ param: 'Requires LAST with GUESS value first', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
       "id": "t9OneLie",
       "name": "1 LIE (L4)",
       "displayName": "1 LIE (L4)",

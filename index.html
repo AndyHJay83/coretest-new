@@ -736,6 +736,26 @@
                     </div>
                 </div>
 
+                <!-- T9 LAST feature -->
+                <div id="t9LastFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">LAST</h2>
+                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Last digit(s) of T9 string. GUESS optional; ACTUAL required (1 or 2 digits, 2-9).</p>
+                    <div class="length-input" style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label for="t9LastGuessInput">GUESS</label>
+                            <input type="text" id="t9LastGuessInput" placeholder="Optional" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="2" style="width: 80px;">
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label for="t9LastActualInput">ACTUAL</label>
+                            <input type="text" id="t9LastActualInput" placeholder="1 or 2 digits (2-9)" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="2" style="width: 80px;">
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="t9LastButton">SUBMIT</button>
+                            <button id="t9LastSkipButton" class="skip-button">SKIP</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- T9 1 LIE (L4) feature -->
                 <div id="t9OneLieFeature" class="feature-section" style="display: none;">
                     <h2 class="feature-title">1 LIE (L4)</h2>
@@ -750,13 +770,18 @@
                         <button class="t9-one-lie-btn" data-digit="9">9</button>
                         <button class="t9-one-lie-btn blank-btn" data-digit="BLANK" style="background-color: #f44336; color: white; font-weight: bold;">B</button>
                     </div>
-                    <div id="t9OneLieDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
-                        <span id="t9OneLieString">-</span>
+                    <div class="t9-one-lie-display-row" style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 12px;">
+                        <div id="t9OneLieDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 44px; min-width: 120px; padding: 0 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+                            <span id="t9OneLieString">-</span>
+                        </div>
+                        <button id="t9OneLieBackspaceButton" class="t9-one-lie-btn t9-backspace-btn" title="Remove last digit">⌫</button>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
-                        <button id="t9OneLieSubmitButton">SUBMIT</button>
-                        <button id="t9OneLieResetButton" class="reset-button">RESET</button>
-                        <button id="t9OneLieSkipButton" class="skip-button">SKIP</button>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                            <button id="t9OneLieSubmitButton">SUBMIT</button>
+                            <button id="t9OneLieResetButton" class="reset-button">RESET</button>
+                            <button id="t9OneLieSkipButton" class="skip-button">SKIP</button>
+                        </div>
                         <div id="t9OneLiePossibleDigits" style="margin-top: 15px; padding: 10px; font-size: 14px; color: #666; text-align: center; min-height: 20px;">
                             <span style="font-weight: bold;">Possible T9 digits for BLANK:</span> <span id="t9OneLiePossibleDigitsList">-</span>
                         </div>
@@ -800,13 +825,18 @@
                         <button class="t9-one-truth-btn" data-digit="9">9</button>
                         <button class="t9-one-truth-btn blank-btn" data-digit="BLANK" style="background-color: #f44336; color: white; font-weight: bold;">B</button>
                     </div>
-                    <div id="t9OneTruthDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
-                        <span id="t9OneTruthString">-</span>
+                    <div class="t9-one-truth-display-row" style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 12px;">
+                        <div id="t9OneTruthDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 44px; min-width: 120px; padding: 0 10px; font-size: 24px; font-weight: bold; color: #1B5E20;">
+                            <span id="t9OneTruthString">-</span>
+                        </div>
+                        <button id="t9OneTruthBackspaceButton" class="t9-one-truth-btn t9-backspace-btn" title="Remove last digit">⌫</button>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
-                        <button id="t9OneTruthSubmitButton">SUBMIT</button>
-                        <button id="t9OneTruthResetButton" class="reset-button">RESET</button>
-                        <button id="t9OneTruthSkipButton" class="skip-button">SKIP</button>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                            <button id="t9OneTruthSubmitButton">SUBMIT</button>
+                            <button id="t9OneTruthResetButton" class="reset-button">RESET</button>
+                            <button id="t9OneTruthSkipButton" class="skip-button">SKIP</button>
+                        </div>
                         <div id="t9OneTruthPossibleDigits" style="margin-top: 15px; padding: 10px; font-size: 14px; color: #666; text-align: center; min-height: 20px;">
                             <span style="font-weight: bold;">Possible T9 digits for BLANK:</span> <span id="t9OneTruthPossibleDigitsList">-</span>
                         </div>
@@ -1123,6 +1153,20 @@
             <div class="feature-info-content">
                 <h3>LAST TWO</h3>
                 <p><strong>T9 Last Two</strong><br>Select 2 digits (2-9) to check if the T9 string ends with those digits. Only words whose T9 representation ends with the selected digits will be kept.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="t9LastInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>LAST</h3>
+                <p><strong>T9 LAST</strong><br>GUESS (optional) and ACTUAL (required). Enter ACTUAL as 1 or 2 digits (2-9). Words are filtered so the last 1 or 2 digits of their T9 string match ACTUAL. If GUESS is empty, only ACTUAL is used.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="t9GuessInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>GUESS</h3>
+                <p><strong>T9 GUESS</strong><br>Only works after LAST in a workflow when a GUESS value was entered. For each GUESS digit (1 or 2 digits from LAST), you answer YES or NO: &ldquo;Is this digit in the first 4 digits of your T9 string?&rdquo; Words are filtered accordingly.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
