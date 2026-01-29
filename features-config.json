@@ -183,6 +183,13 @@
       "analyzeFunction": "return [{ param: 'Requires score input (±1)', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
+      "id": "sologram",
+      "name": "SOLOGRAM",
+      "displayName": "SOLOGRAM",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires Y/N string', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
       "id": "scramble",
       "name": "SCRAMBLE",
       "displayName": "SCRAMBLE",

@@ -208,6 +208,10 @@
                                 <button class="info-button" data-feature="scrabble1"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
+                                <button class="feature-button" data-feature="sologram" draggable="true">SOLOGRAM</button>
+                                <button class="info-button" data-feature="sologram"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                            <div class="feature-group">
                                 <button class="feature-button" data-feature="scramble" draggable="true">SCRAMBLE</button>
                                 <button class="info-button" data-feature="scramble"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -483,6 +487,24 @@
                         <input type="text" id="scrabble1Input" placeholder="Enter score (±1)" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
                         <button id="scrabble1Button">SUBMIT</button>
                         <button id="scrabble1SkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- Sologram feature -->
+                <div id="sologramFeature" class="feature-section" style="display: none;" data-sologram-yn="">
+                    <h2 class="feature-title">SOLOGRAM</h2>
+                    <div class="sologram-yn-area">
+                        <div class="sologram-display-label">Y/N string:</div>
+                        <div id="sologramDisplay" class="sologram-display">(empty)</div>
+                        <div class="sologram-buttons">
+                            <button type="button" id="sologramYBtn" class="sologram-yn-btn sologram-y-btn">Y</button>
+                            <button type="button" id="sologramNBtn" class="sologram-yn-btn sologram-n-btn">N</button>
+                            <button type="button" id="sologramBackspaceBtn" class="sologram-backspace-btn">Backspace</button>
+                        </div>
+                    </div>
+                    <div class="length-input">
+                        <button id="sologramButton">SUBMIT</button>
+                        <button id="sologramSkipButton" class="skip-button">SKIP</button>
                     </div>
                 </div>
 
@@ -1049,6 +1071,13 @@
             <div class="feature-info-content">
                 <h3>SCRABBLE1</h3>
                 <p><strong>SCRABBLE1</strong><br>Enter a score. The filter keeps words whose Scrabble score is within ±1 of that number (e.g. 8 keeps 7, 8, and 9). Words that match the exact score you entered are highlighted in <span style="color: #0066ff; font-weight: bold;">blue</span>. Same letter values as SCRABBLE.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="sologramInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>SOLOGRAM</h3>
+                <p><strong>SOLOGRAM</strong><br>Uses a secondary wordlist (pointed-to words). Enter a string of Y and N: one character per letter of the word the spectator is pointing at. Y = that letter is in their thought word; N = that letter is not. The string length gives the pointed-to word length. Words where the same letter has both Y and N are excluded. The main list is filtered to words consistent with at least one remaining pointed-to word.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

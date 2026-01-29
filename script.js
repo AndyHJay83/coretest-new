@@ -27,6 +27,10 @@ let usedLettersInWorkflow = [];  // Track letters used in current workflow
 let letterFrequencyMap = new Map();  // Store frequency of all letters
 let scrabble1ExactMatchSet = new Set();  // Words with exact SCRABBLE1 score (highlighted blue)
 
+// SOLOGRAM: last submitted Y/N string and whether current workflow includes SOLOGRAM (for overlay)
+let lastSologramYnString = null;
+let workflowHasSologram = false;
+
 // Version constant - increment .1 for each push update, major version when specified
 const APP_VERSION = '12.0';
 
@@ -38,7 +42,16 @@ let t9OneLieSelectedDigits = []; // The full 4-digit selection from 1 LIE
 // Track if current workflow contains any T9 features
 let workflowHasT9Feature = false;
 
-// POSITION-CONS Constants
+// SOLOGRAM: secondary wordlist (pointed-to words). One entry per word, uppercase.
+const SOLOGRAM_SECONDARY_WORDS = [
+    'HEADSCARF', 'POTPOURRI', 'SUPERHERO', 'TOSHIHARU', 'UNDERWEAR', 'NEWSPAPER', 'BARTENDER', 'DRUGSTORE', 'GRAVEYARD', 'APARTMENT',
+    'ECONOMISTS', 'CANDELABRA', 'WILLOWHERB', 'SCHOOLWORK', 'SCHOOLGIRL', 'PEPPERCORN', 'SWEETHEART', 'FLATLINERZ', 'SUPERSHARP', 'TELEVISION', 'SNOWFLAKES', 'EYEGLASSES', 'JACKHAMMER',
+    'TEMPERATURE', 'ANNIVERSARY', 'BRILLIANTLY', 'CANDLELIGHT', 'DISQUIETING', 'ZESTFULNESS', 'FIRECRACKER', 'CANDLESTICK',
+    'INDEPENDENCE', 'JOHANNESBURG', 'THUNDERSTORM', 'HEADQUARTERS', 'JUDGMENTALLY', 'TROUBLEMAKER', 'ILLUSTRATION', 'PHOTOGRAPHER', 'HANDKERCHIEF', 'RECEPTIONIST', 'MOUNTAINSIDE', 'OPTOMETRIST', 'WEIGHTLIFTER',
+    'GRANDCHILDREN', 'POSSIBILITIES', 'SPORTSMANSHIP', 'THOUGHTLESSLY', 'UNCOMFORTABLY', 'EMBARRASSMENT', 'FLABBERGASTED', 'GRANDFATHERLY', 'HALFHEARTEDLY', 'KNOWLEDGEABLE', 'PREDETERMINED', 'THUNDERSTRUCK', 'VIDEOCASSETTE',
+    'ABSENTMINDEDLY', 'LIGHTHEARTEDLY', 'RECOMMENDATION',
+    'HEARTBREAKINGLY', 'STRAIGHTFORWARD'
+];
 const ALPHABET_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 const VOWEL_SET = new Set(['A', 'E', 'I', 'O', 'U']);
 const CONSONANT_LETTERS = ALPHABET_LETTERS.filter(letter => !VOWEL_SET.has(letter));
@@ -1380,6 +1393,9 @@ async function executeWorkflow(steps) {
         // Check if workflow contains any T9 features
         workflowHasT9Feature = steps.some(step => step.feature.startsWith('t9'));
         console.log('Workflow has T9 feature:', workflowHasT9Feature);
+        // SOLOGRAM: clear last Y/N and set flag if this workflow includes SOLOGRAM
+        lastSologramYnString = null;
+        workflowHasSologram = steps.some(step => step.feature === 'sologram');
         
         console.log('Starting workflow with steps:', steps);
         console.log('Using wordlist:', selectedWordlist);
@@ -1486,6 +1502,7 @@ async function executeWorkflow(steps) {
             lengthFeature: createLengthFeature(),
             scrabbleFeature: createScrabbleFeature(),
             scrabble1Feature: createScrabble1Feature(),
+            sologramFeature: createSologramFeature(),
             scrambleFeature: createScrambleFeature(),
             mostFrequentFeature: createMostFrequentFeature(),
             leastFrequentFeature: createLeastFrequentFeature(),
@@ -1649,6 +1666,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 'scrabble1':
                     featureElement = createScrabble1Feature();
+                    break;
+                case 'sologram':
+                    featureElement = createSologramFeature();
                     break;
                 case 'scramble':
                     featureElement = createScrambleFeature();
@@ -2182,6 +2202,30 @@ function createScrabble1Feature() {
             <input type="text" id="scrabble1Input" placeholder="Enter score (±1)" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
             <button id="scrabble1Button">SUBMIT</button>
             <button id="scrabble1SkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+function createSologramFeature() {
+    const div = document.createElement('div');
+    div.id = 'sologramFeature';
+    div.className = 'feature-section';
+    div.dataset.sologramYn = '';
+    div.innerHTML = `
+        <h2 class="feature-title">SOLOGRAM</h2>
+        <div class="sologram-yn-area">
+            <div class="sologram-display-label">Y/N string:</div>
+            <div id="sologramDisplay" class="sologram-display">(empty)</div>
+            <div class="sologram-buttons">
+                <button type="button" id="sologramYBtn" class="sologram-yn-btn sologram-y-btn">Y</button>
+                <button type="button" id="sologramNBtn" class="sologram-yn-btn sologram-n-btn">N</button>
+                <button type="button" id="sologramBackspaceBtn" class="sologram-backspace-btn">Backspace</button>
+            </div>
+        </div>
+        <div class="length-input">
+            <button id="sologramButton">SUBMIT</button>
+            <button id="sologramSkipButton" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
@@ -4502,6 +4546,58 @@ function setupFeatureListeners(feature, callback) {
             break;
         }
 
+        case 'sologram': {
+            const sologramFeature = document.getElementById('sologramFeature');
+            const sologramDisplay = document.getElementById('sologramDisplay');
+            const sologramYBtn = document.getElementById('sologramYBtn');
+            const sologramNBtn = document.getElementById('sologramNBtn');
+            const sologramBackspaceBtn = document.getElementById('sologramBackspaceBtn');
+            const sologramButton = document.getElementById('sologramButton');
+            const sologramSkipButton = document.getElementById('sologramSkipButton');
+            const getSologramString = () => (sologramFeature?.dataset?.sologramYn || '');
+            const setSologramString = (s) => {
+                if (sologramFeature) sologramFeature.dataset.sologramYn = s;
+                if (sologramDisplay) sologramDisplay.textContent = s || '(empty)';
+            };
+            if (sologramYBtn) {
+                sologramYBtn.onclick = () => setSologramString(getSologramString() + 'Y');
+                sologramYBtn.addEventListener('touchstart', (e) => { e.preventDefault(); sologramYBtn.click(); }, { passive: false });
+            }
+            if (sologramNBtn) {
+                sologramNBtn.onclick = () => setSologramString(getSologramString() + 'N');
+                sologramNBtn.addEventListener('touchstart', (e) => { e.preventDefault(); sologramNBtn.click(); }, { passive: false });
+            }
+            if (sologramBackspaceBtn) {
+                sologramBackspaceBtn.onclick = () => setSologramString(getSologramString().slice(0, -1));
+                sologramBackspaceBtn.addEventListener('touchstart', (e) => { e.preventDefault(); sologramBackspaceBtn.click(); }, { passive: false });
+            }
+            if (sologramButton) {
+                sologramButton.onclick = () => {
+                    const ynOnly = getSologramString();
+                    if (ynOnly.length > 0) {
+                        lastSologramYnString = ynOnly;
+                        const filteredWords = filterWordsBySologram(currentFilteredWords, ynOnly);
+                        callback(filteredWords);
+                        document.getElementById('sologramFeature').classList.add('completed');
+                        document.getElementById('sologramFeature').dispatchEvent(new Event('completed'));
+                    } else {
+                        alert('Add at least one Y or N (use the Y and N buttons).');
+                    }
+                };
+                sologramButton.addEventListener('touchstart', (e) => { e.preventDefault(); sologramButton.click(); }, { passive: false });
+            }
+            if (sologramSkipButton) {
+                sologramSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('sologramFeature').classList.add('completed');
+                    document.getElementById('sologramFeature').dispatchEvent(new Event('completed'));
+                };
+                sologramSkipButton.addEventListener('touchstart', (e) => { e.preventDefault(); sologramSkipButton.click(); }, { passive: false });
+            }
+            setSologramString(''); // reset when step is shown
+            break;
+        }
+
         case 'scramble': {
             console.log('Setting up scramble feature listeners');
             // Use an object to store state that can be accessed by closures
@@ -6612,6 +6708,7 @@ function displayResults(words) {
     if (words.length === 0) {
         resultsContainer.innerHTML = '<p>No words match the current criteria.</p>';
         updateWordCount(0);
+        updateSologramOverlay([]);
         return;
     }
     
@@ -6663,6 +6760,7 @@ function displayResults(words) {
                         ${allWordsHTML}
                     </ul>
                 `;
+                updateSologramOverlay(words);
             });
         }
     } else {
@@ -6764,6 +6862,9 @@ function displayResults(words) {
     
     // Clear SCRABBLE1 highlight set so next display doesn't reuse it
     scrabble1ExactMatchSet = new Set();
+    
+    // SOLOGRAM: show possible pointed-to words at bottom of results when workflow has SOLOGRAM
+    updateSologramOverlay(words);
     
     // Ensure the feature area is empty and visible
     const featureArea = document.getElementById('featureArea');
@@ -8715,6 +8816,98 @@ function filterWordsByScrabble1(words, targetScore) {
     }
     scrabble1ExactMatchSet = new Set(exact);
     return within;
+}
+
+// Filter words by SOLOGRAM: Y/N string defines length of pointed-to word P; keep main-list W if
+// there exists some secondary word P (of that length) with no letter having both Y and N, such that
+// W contains all letters at Y positions and contains none of the letters at N positions.
+function filterWordsBySologram(words, ynString) {
+    const raw = (ynString || '').toUpperCase().replace(/[^YN]/g, '');
+    if (raw.length === 0) return words;
+    const L = raw.length;
+    const secondaryOfLength = SOLOGRAM_SECONDARY_WORDS.filter(w => w.length === L);
+    const consistentP = secondaryOfLength.filter(P => {
+        const letterToVerdict = new Map();
+        for (let i = 0; i < L; i++) {
+            const letter = P[i];
+            const verdict = raw[i];
+            if (!letterToVerdict.has(letter)) letterToVerdict.set(letter, verdict);
+            else if (letterToVerdict.get(letter) !== verdict) return false; // contradiction
+        }
+        return true;
+    });
+    if (consistentP.length === 0) return [];
+    return words.filter(W => {
+        const wUpper = W.toUpperCase();
+        for (const P of consistentP) {
+            let ok = true;
+            for (let i = 0; i < L; i++) {
+                const letter = P[i];
+                const inW = wUpper.includes(letter);
+                if (raw[i] === 'Y' && !inW) { ok = false; break; }
+                if (raw[i] === 'N' && inW) { ok = false; break; }
+            }
+            if (ok) return true;
+        }
+        return false;
+    });
+}
+
+// Return list of pointed-to words P (from secondary list) that are consistent with ynString and
+// have at least one word in words matching (for SOLOGRAM overlay).
+function getPossibleSologramPointedToWords(words, ynString) {
+    const raw = (ynString || '').toUpperCase().replace(/[^YN]/g, '');
+    if (raw.length === 0) return [];
+    const L = raw.length;
+    const secondaryOfLength = SOLOGRAM_SECONDARY_WORDS.filter(w => w.length === L);
+    const consistentP = secondaryOfLength.filter(P => {
+        const letterToVerdict = new Map();
+        for (let i = 0; i < L; i++) {
+            const letter = P[i];
+            const verdict = raw[i];
+            if (!letterToVerdict.has(letter)) letterToVerdict.set(letter, verdict);
+            else if (letterToVerdict.get(letter) !== verdict) return false;
+        }
+        return true;
+    });
+    return consistentP.filter(P => {
+        for (const W of words) {
+            const wUpper = W.toUpperCase();
+            let ok = true;
+            for (let i = 0; i < L; i++) {
+                const letter = P[i];
+                const inW = wUpper.includes(letter);
+                if (raw[i] === 'Y' && !inW) { ok = false; break; }
+                if (raw[i] === 'N' && inW) { ok = false; break; }
+            }
+            if (ok) return true;
+        }
+        return false;
+    });
+}
+
+// Show or update SOLOGRAM overlay at bottom of results container (only when workflow has SOLOGRAM and we have a Y/N string).
+function updateSologramOverlay(words) {
+    const resultsContainer = document.getElementById('results');
+    if (!resultsContainer) return;
+    let overlay = document.getElementById('sologramOverlay');
+    if (!workflowHasSologram || !lastSologramYnString) {
+        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        return;
+    }
+    const possibleP = getPossibleSologramPointedToWords(words, lastSologramYnString);
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'sologramOverlay';
+        overlay.className = 'sologram-overlay';
+    }
+    overlay.innerHTML = `
+        <div class="sologram-overlay-title">Possible pointed-to words</div>
+        <div class="sologram-overlay-list">${possibleP.length ? possibleP.map(p => `<span class="sologram-overlay-word">${p}</span>`).join(' ') : '<span class="sologram-overlay-empty">None</span>'}</div>
+    `;
+    if (!overlay.parentNode || overlay.parentNode !== resultsContainer) {
+        resultsContainer.appendChild(overlay);
+    }
 }
 
 // Filter words by SCRAMBLE feature

@@ -158,6 +158,92 @@ body {
     font-weight: bold;
 }
 
+/* SOLOGRAM overlay at bottom of results */
+.sologram-overlay {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: #e8f4f8;
+    border: 1px solid #1B5E20;
+    border-radius: 8px;
+    font-size: 14px;
+}
+.sologram-overlay-title {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #1B5E20;
+}
+.sologram-overlay-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.sologram-overlay-word {
+    background: #fff;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #1B5E20;
+}
+.sologram-overlay-empty {
+    color: #666;
+    font-style: italic;
+}
+
+/* SOLOGRAM Y/N buttons and display */
+.sologram-yn-area {
+    margin-bottom: 12px;
+}
+.sologram-display-label {
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+.sologram-display {
+    min-height: 28px;
+    padding: 8px;
+    background: #fff;
+    border: 2px solid #1B5E20;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    font-family: monospace;
+    font-size: 16px;
+    letter-spacing: 2px;
+}
+.sologram-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.sologram-yn-btn {
+    padding: 12px 24px;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px;
+    border: 2px solid;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+.sologram-y-btn {
+    background: #c8e6c9;
+    border-color: #2e7d32;
+    color: #1B5E20;
+}
+.sologram-n-btn {
+    background: #ffcdd2;
+    border-color: #c62828;
+    color: #b71c1c;
+}
+.sologram-backspace-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+    background: #f5f5f5;
+    border: 2px solid #666;
+    border-radius: 8px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
 /* Feature Area Styling */
 .feature-area {
     padding: 20px;
