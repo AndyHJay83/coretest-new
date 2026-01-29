@@ -152,6 +152,12 @@ body {
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
+/* SCRABBLE1: exact-score words highlighted in blue */
+.word-list li.scrabble1-exact {
+    color: #0066ff;
+    font-weight: bold;
+}
+
 /* Feature Area Styling */
 .feature-area {
     padding: 20px;

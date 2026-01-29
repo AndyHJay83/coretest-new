@@ -204,6 +204,10 @@
                                 <button class="info-button" data-feature="scrabble"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
+                                <button class="feature-button" data-feature="scrabble1" draggable="true">SCRABBLE1</button>
+                                <button class="info-button" data-feature="scrabble1"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                            <div class="feature-group">
                                 <button class="feature-button" data-feature="scramble" draggable="true">SCRAMBLE</button>
                                 <button class="info-button" data-feature="scramble"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -469,6 +473,16 @@
                         <input type="text" id="scrabbleInput" placeholder="Enter Scrabble score" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
                         <button id="scrabbleButton">SUBMIT</button>
                         <button id="scrabbleSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- Scrabble1 feature -->
+                <div id="scrabble1Feature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">SCRABBLE1</h2>
+                    <div class="length-input">
+                        <input type="text" id="scrabble1Input" placeholder="Enter score (±1)" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+                        <button id="scrabble1Button">SUBMIT</button>
+                        <button id="scrabble1SkipButton" class="skip-button">SKIP</button>
                     </div>
                 </div>
 
@@ -1028,6 +1042,13 @@
             <div class="feature-info-content">
                 <h3>SCRABBLE</h3>
                 <p><strong>SCRABBLE</strong><br>Enter a number representing the total Scrabble score of the word. The filter will keep only words whose letter values sum to the entered score. Letter values: A,E,I,O,U,L,N,S,T,R = 1; D,G = 2; B,C,M,P = 3; F,H,V,W,Y = 4; K = 5; J,X = 8; Q,Z = 10.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="scrabble1Info" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>SCRABBLE1</h3>
+                <p><strong>SCRABBLE1</strong><br>Enter a score. The filter keeps words whose Scrabble score is within ±1 of that number (e.g. 8 keeps 7, 8, and 9). Words that match the exact score you entered are highlighted in <span style="color: #0066ff; font-weight: bold;">blue</span>. Same letter values as SCRABBLE.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

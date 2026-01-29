@@ -25,6 +25,7 @@ let mostFrequentLetter = null;
 let leastFrequentLetter = null;
 let usedLettersInWorkflow = [];  // Track letters used in current workflow
 let letterFrequencyMap = new Map();  // Store frequency of all letters
+let scrabble1ExactMatchSet = new Set();  // Words with exact SCRABBLE1 score (highlighted blue)
 
 // Version constant - increment .1 for each push update, major version when specified
 const APP_VERSION = '12.0';
@@ -1484,6 +1485,7 @@ async function executeWorkflow(steps) {
             curvedFeature: createCurvedFeature(),
             lengthFeature: createLengthFeature(),
             scrabbleFeature: createScrabbleFeature(),
+            scrabble1Feature: createScrabble1Feature(),
             scrambleFeature: createScrambleFeature(),
             mostFrequentFeature: createMostFrequentFeature(),
             leastFrequentFeature: createLeastFrequentFeature(),
@@ -1644,6 +1646,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 'scrabble':
                     featureElement = createScrabbleFeature();
+                    break;
+                case 'scrabble1':
+                    featureElement = createScrabble1Feature();
                     break;
                 case 'scramble':
                     featureElement = createScrambleFeature();
@@ -2162,6 +2167,21 @@ function createScrabbleFeature() {
             <input type="text" id="scrabbleInput" placeholder="Enter Scrabble score" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
             <button id="scrabbleButton">SUBMIT</button>
             <button id="scrabbleSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+function createScrabble1Feature() {
+    const div = document.createElement('div');
+    div.id = 'scrabble1Feature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">SCRABBLE1</h2>
+        <div class="length-input">
+            <input type="text" id="scrabble1Input" placeholder="Enter score (±1)" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+            <button id="scrabble1Button">SUBMIT</button>
+            <button id="scrabble1SkipButton" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
@@ -4437,6 +4457,51 @@ function setupFeatureListeners(feature, callback) {
             break;
         }
 
+        case 'scrabble1': {
+            const scrabble1Button = document.getElementById('scrabble1Button');
+            const scrabble1SkipButton = document.getElementById('scrabble1SkipButton');
+            const scrabble1Input = document.getElementById('scrabble1Input');
+            
+            if (scrabble1Button) {
+                scrabble1Button.onclick = () => {
+                    const input = scrabble1Input?.value.trim();
+                    if (input) {
+                        const score = parseInt(input);
+                        if (!isNaN(score) && score > 0) {
+                            const filteredWords = filterWordsByScrabble1(currentFilteredWords, score);
+                            callback(filteredWords);
+                            document.getElementById('scrabble1Feature').classList.add('completed');
+                            document.getElementById('scrabble1Feature').dispatchEvent(new Event('completed'));
+                        } else {
+                            alert('Please enter a valid positive number');
+                        }
+                    } else {
+                        alert('Please enter a score');
+                    }
+                };
+                
+                scrabble1Button.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    scrabble1Button.click();
+                }, { passive: false });
+            }
+            
+            if (scrabble1SkipButton) {
+                scrabble1SkipButton.onclick = () => {
+                    scrabble1ExactMatchSet = new Set();
+                    callback(currentFilteredWords);
+                    document.getElementById('scrabble1Feature').classList.add('completed');
+                    document.getElementById('scrabble1Feature').dispatchEvent(new Event('completed'));
+                };
+                
+                scrabble1SkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    scrabble1SkipButton.click();
+                }, { passive: false });
+            }
+            break;
+        }
+
         case 'scramble': {
             console.log('Setting up scramble feature listeners');
             // Use an object to store state that can be accessed by closures
@@ -6541,6 +6606,9 @@ function displayResults(words) {
     // Clear the results container
     resultsContainer.innerHTML = '';
     
+    // Capture SCRABBLE1 exact-match set for highlighting (used in list build and load-more)
+    const exactHighlightSet = new Set(scrabble1ExactMatchSet);
+    
     if (words.length === 0) {
         resultsContainer.innerHTML = '<p>No words match the current criteria.</p>';
         updateWordCount(0);
@@ -6564,8 +6632,11 @@ function displayResults(words) {
         const initialWords = words.slice(0, 1000);
         const remainingCount = words.length - 1000;
         
-        // Create HTML string for initial words (much faster than individual DOM elements)
-        const wordListHTML = initialWords.map(word => `<li>${word}</li>`).join('');
+        // Create HTML string for initial words (SCRABBLE1 exact-match highlight)
+        const wordListHTML = initialWords.map(word => {
+            const cls = exactHighlightSet.has(word) ? ' class="scrabble1-exact"' : '';
+            return `<li${cls}>${word}</li>`;
+        }).join('');
         
         resultsContainer.innerHTML = `
             <ul class="word-list">
@@ -6582,8 +6653,11 @@ function displayResults(words) {
         const loadMoreBtn = document.getElementById('loadMoreBtn');
         if (loadMoreBtn) {
             loadMoreBtn.addEventListener('click', () => {
-                // Show all words
-                const allWordsHTML = words.map(word => `<li>${word}</li>`).join('');
+                // Show all words (preserve SCRABBLE1 highlight)
+                const allWordsHTML = words.map(word => {
+                    const cls = exactHighlightSet.has(word) ? ' class="scrabble1-exact"' : '';
+                    return `<li${cls}>${word}</li>`;
+                }).join('');
                 resultsContainer.innerHTML = `
                     <ul class="word-list">
                         ${allWordsHTML}
@@ -6594,13 +6668,14 @@ function displayResults(words) {
     } else {
         // For smaller lists, show all words at once using innerHTML
         const wordListHTML = words.map(word => {
+            const scrabble1Cls = exactHighlightSet.has(word) ? ' scrabble1-exact' : '';
             if (shouldAutoShowT9) {
                 // Auto-display both word and T9 string for 10 or fewer words
                 const t9String = t9StringsMap.get(word) || wordToT9(word);
                 const firstFour = t9String.substring(0, 4);
                 const rest = t9String.substring(4);
                 
-                return `<li class="word-with-t9" data-word="${word}" style="cursor: pointer;">
+                return `<li class="word-with-t9${scrabble1Cls}" data-word="${word}" style="cursor: pointer;">
                     <div style="font-weight: bold; margin-bottom: 8px;">${word}</div>
                     <div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;">
                         <span style="color: red; font-weight: bold;">${firstFour}</span>${rest}
@@ -6608,10 +6683,11 @@ function displayResults(words) {
                 </li>`;
             } else if (shouldShowT9) {
                 // Make clickable for 11-20 words (click to reveal T9)
-                return `<li class="word-clickable" data-word="${word}" style="cursor: pointer;">${word}</li>`;
+                return `<li class="word-clickable${scrabble1Cls}" data-word="${word}" style="cursor: pointer;">${word}</li>`;
             } else {
                 // Just show word for 21+ words or no T9 features
-                return `<li>${word}</li>`;
+                const cls = scrabble1Cls ? ` class="${scrabble1Cls.trim()}"` : '';
+                return `<li${cls}>${word}</li>`;
             }
         }).join('');
         
@@ -6685,6 +6761,9 @@ function displayResults(words) {
             }
         }
     }
+    
+    // Clear SCRABBLE1 highlight set so next display doesn't reuse it
+    scrabble1ExactMatchSet = new Set();
     
     // Ensure the feature area is empty and visible
     const featureArea = document.getElementById('featureArea');
@@ -8619,6 +8698,23 @@ function filterWordsByScrabble(words, targetScore) {
         const score = calculateScrabbleScore(word);
         return score === targetScore;
     });
+}
+
+// Filter words by SCRABBLE1: score within target ± 1; exact-match words are stored for blue highlight
+function filterWordsByScrabble1(words, targetScore) {
+    const exact = [];
+    const within = [];
+    for (const word of words) {
+        const score = calculateScrabbleScore(word);
+        if (score === targetScore) {
+            exact.push(word);
+            within.push(word);
+        } else if (score === targetScore - 1 || score === targetScore + 1) {
+            within.push(word);
+        }
+    }
+    scrabble1ExactMatchSet = new Set(exact);
+    return within;
 }
 
 // Filter words by SCRAMBLE feature

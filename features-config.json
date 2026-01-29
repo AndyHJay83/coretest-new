@@ -176,6 +176,13 @@
       "analyzeFunction": "return [{ param: 'Requires Scrabble score input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
+      "id": "scrabble1",
+      "name": "SCRABBLE1",
+      "displayName": "SCRABBLE1",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Requires score input (±1)', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
       "id": "scramble",
       "name": "SCRAMBLE",
       "displayName": "SCRAMBLE",
