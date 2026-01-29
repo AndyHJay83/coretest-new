@@ -8626,7 +8626,7 @@ function filterWordsByScrabble(words, targetScore) {
 }
 
 // Filter words by SCRAMBLE feature
-// When truthOnOne is false: All letters are incorrect at their positions AND word cannot contain any of these letters
+// When truthOnOne is false: Each position is a "lie" - the letter at that position is different from the user's input
 // When truthOnOne is true: ANY one letter is correct at its position (others are wrong at their positions)
 // If specifiedPosition is provided (1-based), only that position is correct, all others are wrong
 // The word length must match the input string length
@@ -8634,11 +8634,10 @@ function filterWordsByScramble(words, letterString, truthOnOne, specifiedPositio
     if (!letterString || letterString.length === 0) return words;
     
     const letters = letterString.toUpperCase().split('');
-    const letterSet = new Set(letters);
     const requiredLength = letters.length;
     
     if (!truthOnOne) {
-        // Mode 1: All letters are incorrect at their positions AND word cannot contain any of these letters
+        // Mode 1: Each position is a "lie" - the letter at that position must be different from the user's input
         return words.filter(word => {
             const upperWord = word.toUpperCase();
             
@@ -8647,17 +8646,10 @@ function filterWordsByScramble(words, letterString, truthOnOne, specifiedPositio
                 return false;
             }
             
-            // Check that word doesn't contain ANY of the letters
-            for (let i = 0; i < upperWord.length; i++) {
-                if (letterSet.has(upperWord[i])) {
-                    return false; // Word contains one of the forbidden letters
-                }
-            }
-            
-            // Also check that positions don't match (redundant check, but ensures correctness)
+            // Each position is incorrect: the letter at that position must differ from the user's input
             for (let i = 0; i < letters.length; i++) {
                 if (upperWord[i] === letters[i]) {
-                    return false; // Position matches (shouldn't happen if letter not in word, but double-check)
+                    return false; // Position matches - not a lie at this position
                 }
             }
             
@@ -9823,28 +9815,83 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminCancelButton = document.getElementById('adminCancelButton');
     const adminPasswordInput = document.getElementById('adminPasswordInput');
     
-    if (adminLoginButton) {
-        adminLoginButton.addEventListener('click', () => {
-            if (adminPasswordInput && adminPasswordInput.value === ADMIN_PASSWORD) {
-                hideAdminLogin();
-                showVoiceMode();
-            } else {
-                alert('Incorrect password');
-            }
-        });
+    // Admin login button handler
+    function handleAdminLogin() {
+        if (adminPasswordInput && adminPasswordInput.value === ADMIN_PASSWORD) {
+            hideAdminLogin();
+            showVoiceMode();
+        } else {
+            alert('Incorrect password');
+        }
     }
     
+    if (adminLoginButton) {
+        // Click handler
+        adminLoginButton.addEventListener('click', handleAdminLogin);
+        
+        // Mobile touch handlers
+        adminLoginButton.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.style.opacity = '0.8';
+        }, { passive: false });
+        
+        adminLoginButton.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.style.opacity = '1';
+            handleAdminLogin();
+        }, { passive: false });
+        
+        adminLoginButton.addEventListener('touchcancel', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.style.opacity = '1';
+        }, { passive: false });
+    }
+    
+    // Admin cancel button handler
     if (adminCancelButton) {
+        // Click handler
         adminCancelButton.addEventListener('click', hideAdminLogin);
+        
+        // Mobile touch handlers
+        adminCancelButton.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.style.opacity = '0.8';
+        }, { passive: false });
+        
+        adminCancelButton.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.style.opacity = '1';
+            hideAdminLogin();
+        }, { passive: false });
+        
+        adminCancelButton.addEventListener('touchcancel', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.style.opacity = '1';
+        }, { passive: false });
     }
     
     if (adminPasswordInput) {
         adminPasswordInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 if (adminLoginButton) {
-                    adminLoginButton.click();
+                    handleAdminLogin();
                 }
             }
         });
+        
+        // Ensure mobile keyboard works
+        adminPasswordInput.addEventListener('touchstart', function(e) {
+            e.stopPropagation();
+        }, { passive: false });
+        
+        adminPasswordInput.addEventListener('touchend', function(e) {
+            e.stopPropagation();
+        }, { passive: false });
     }
 });

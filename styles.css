@@ -3977,7 +3977,7 @@ input:checked + .slider:before {
     z-index: 9999;
     pointer-events: none;
     user-select: none;
-}
+} 
 
 /* Secret Admin Modal */
 .admin-modal {
@@ -3991,6 +3991,8 @@ input:checked + .slider:before {
     display: flex;
     align-items: center;
     justify-content: center;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .admin-modal-content {
@@ -4024,6 +4026,10 @@ input:checked + .slider:before {
     border-radius: 5px;
     cursor: pointer;
     font-size: 16px;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 #adminLoginButton {
