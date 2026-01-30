@@ -50,7 +50,7 @@ let t9BSubmitted = false;
 
 // SOLOGRAM: secondary wordlist (pointed-to words). One entry per word, uppercase.
 const SOLOGRAM_SECONDARY_WORDS = [
-    'HEADSCARF', 'POTPOURRI', 'SUPERHERO', 'TOSHIHARU', 'UNDERWEAR', 'NEWSPAPER', 'BARTENDER', 'DRUGSTORE', 'GRAVEYARD', 'APARTMENT',
+    'HEADSCARF', 'POTPOURRI', 'SUPERHERO', 'TOSHIHARU', 'UNDERWEAR', 'NEWSPAPER', 'BARTENDER', 'DRUGSTORE', 'GRAVEYARD', 'APARTMENT', 'LOUDSPEAKER',
     'ECONOMISTS', 'CANDELABRA', 'WILLOWHERB', 'SCHOOLWORK', 'SCHOOLGIRL', 'PEPPERCORN', 'SWEETHEART', 'FLATLINERZ', 'SUPERSHARP', 'TELEVISION', 'SNOWFLAKES', 'EYEGLASSES', 'JACKHAMMER',
     'TEMPERATURE', 'ANNIVERSARY', 'BRILLIANTLY', 'CANDLELIGHT', 'DISQUIETING', 'ZESTFULNESS', 'FIRECRACKER', 'CANDLESTICK',
     'INDEPENDENCE', 'JOHANNESBURG', 'THUNDERSTORM', 'HEADQUARTERS', 'JUDGMENTALLY', 'TROUBLEMAKER', 'ILLUSTRATION', 'PHOTOGRAPHER', 'HANDKERCHIEF', 'RECEPTIONIST', 'MOUNTAINSIDE', 'OPTOMETRIST', 'WEIGHTLIFTER',
@@ -63,10 +63,10 @@ const SOLOGRAM_SECONDARY_WORDS = [
 let sologramSelectedGroupId = 'all';
 const SOLOGRAM_WORD_GROUPS = {
     all: { label: 'DEFAULT', words: SOLOGRAM_SECONDARY_WORDS },
-    moabt: { label: 'MOABT', words: [] },
-    brushwood: { label: 'BRUSHWOOD', words: [] },
-    glance: { label: 'GLANCE', words: [] },
-    other: { label: 'OTHER', words: [] }
+    moabt: { label: 'MOABT', words: ['LOUDSPEAKER', 'KITCHENWARE', 'UNDERWEAR', 'ILLUSTRATION', 'RECEPTIONIST', 'FIRECRACKER', 'MOUNTAINSIDE', 'NEWSPAPER', 'EYEGLASSES', 'TELEVISION', 'BARTENDER', 'DRUGSTORE', 'OPTOMETRIST', 'VIDEOCASSETTE', 'WEIGHTLIFTER', 'HANDKERCHIEF', 'SNOWFLAKES', 'GRAVEYARD', 'APARTMENT', 'PHOTOGRAPHER', 'CANDLESTICK', 'JACKHAMMER'] },
+    brushwood: { label: 'BRUSHWOOD', words: ['ABSENTMINDEDLY', 'BRILLIANTLY', 'CANDLELIGHT', 'DISQUIETING', 'EMBARRASSMENT', 'FLABBERGASTED', 'GRANDFATHERLY', 'HALFHEARTEDLY', 'JUDGMENTALLY', 'KNOWLEDGEABLE', 'LIGHTHEARTEDLY', 'PREDETERMINED', 'RECOMMENDATION', 'THUNDERSTRUCK', 'ZESTFULNESS'] },
+    glance: { label: 'GLANCE', words: ['ECONOMISTS', 'GRANDCHILDREN', 'HEARTBREAKINGLY', 'INDEPENDENCE', 'POSSIBILITIES', 'SPORTSMANSHIP', 'THOUGHTLESSLY', 'UNCOMFORTABLY'] },
+    other: { label: 'OTHER', words: ['CANDELABRA', 'WILLOWHERB', 'STRAIGHTFORWARD', 'TEMPERATURE', 'HEADSCARF', 'JOHANNESBURG', 'POTPOURRI', 'SCHOOLWORK', 'SCHOOLGIRL', 'THUNDERSTORM', 'PEPPERCORN', 'SUPERHERO', 'SUPERSHARP', 'TROUBLEMAKER', 'HEADQUARTERS', 'SWEETHEART', 'TOSHIHARU', 'ANNIVERSARY', 'FLATLINERZ'] }
 };
 function getSologramSecondaryWords() {
     const group = SOLOGRAM_WORD_GROUPS[sologramSelectedGroupId] || SOLOGRAM_WORD_GROUPS.all;
@@ -502,7 +502,7 @@ function initializeDropdowns() {
     wordlistCustomSelect.className = 'custom-select';
     wordlistCustomSelect.id = 'wordlistCustomSelect';
     wordlistCustomSelect.innerHTML = `
-        <div class="selected-text">${wordlistSelect.options[wordlistSelect.selectedIndex]?.textContent || 'ENUK Wordlist'}</div>
+        <div class="selected-text">${wordlistSelect.options[wordlistSelect.selectedIndex]?.textContent || '4000 Wordlist'}</div>
         <div class="options-list"></div>
     `;
     wordlistSelect.insertAdjacentElement('afterend', wordlistCustomSelect);
@@ -1216,6 +1216,10 @@ async function loadWordList() {
         let gzippedPath;
         
         switch(selectedWordlist) {
+            case '4000':
+                wordlistPath = 'words/4000.txt';
+                gzippedPath = 'words/4000.txt.gz';
+                break;
             case '19127':
                 wordlistPath = 'words/19127.txt';
                 gzippedPath = 'words/19127.txt.gz';
@@ -1245,9 +1249,12 @@ async function loadWordList() {
                 gzippedPath = 'words/ColourItems.txt.gz';
                 break;
             case 'enuk':
-            default:
                 wordlistPath = 'words/ENUK-Long words Noun.txt';
                 gzippedPath = 'words/ENUK-Long words Noun.txt.gz';
+                break;
+            default:
+                wordlistPath = 'words/4000.txt';
+                gzippedPath = 'words/4000.txt.gz';
                 break;
             case 'months_starsigns':
                 wordlistPath = 'words/MONTHS_STARSIGNS.txt';
