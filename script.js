@@ -1542,6 +1542,7 @@ async function executeWorkflow(steps) {
             mostFrequentFeature: createMostFrequentFeature(),
             leastFrequentFeature: createLeastFrequentFeature(),
             notInFeature: createNotInFeature(),
+            whatItsNot1Feature: createWhatItsNot1Feature(),
             abcde: createAbcdeFeature(),
             abc: createAbcFeature(),
             findEee: createFindEeeFeature(),
@@ -1631,6 +1632,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 'notIn':
                     featureElement = createNotInFeature();
+                    break;
+                case 'whatItsNot1':
+                    featureElement = createWhatItsNot1Feature();
                     break;
                 case 'position1':
                     featureElement = createPosition1Feature();
@@ -2353,6 +2357,23 @@ function createNotInFeature() {
             <input type="text" id="notInInput" placeholder="Enter letters...">
             <button id="notInButton">SUBMIT</button>
             <button id="notInSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- What It's Not - 1 Feature Logic (letters NOT in position 1) ---
+function createWhatItsNot1Feature() {
+    const div = document.createElement('div');
+    div.id = 'whatItsNot1Feature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">What It's Not - 1</h2>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the first position of the word.</p>
+        <div class="input-group">
+            <input type="text" id="whatItsNot1Input" placeholder="Enter letters (e.g. GTURE)...">
+            <button id="whatItsNot1Button">SUBMIT</button>
+            <button id="whatItsNot1SkipButton" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
@@ -5179,6 +5200,55 @@ function setupFeatureListeners(feature, callback, options) {
             break;
         }
 
+        case 'whatItsNot1': {
+            const whatItsNot1Button = document.getElementById('whatItsNot1Button');
+            const whatItsNot1SkipButton = document.getElementById('whatItsNot1SkipButton');
+            const whatItsNot1Input = document.getElementById('whatItsNot1Input');
+
+            if (whatItsNot1Button && whatItsNot1Input && whatItsNot1SkipButton) {
+                const newWhatItsNot1Button = whatItsNot1Button.cloneNode(true);
+                const newWhatItsNot1SkipButton = whatItsNot1SkipButton.cloneNode(true);
+                const newWhatItsNot1Input = whatItsNot1Input.cloneNode(true);
+
+                whatItsNot1Button.parentNode.replaceChild(newWhatItsNot1Button, whatItsNot1Button);
+                whatItsNot1SkipButton.parentNode.replaceChild(newWhatItsNot1SkipButton, whatItsNot1SkipButton);
+                whatItsNot1Input.parentNode.replaceChild(newWhatItsNot1Input, whatItsNot1Input);
+
+                newWhatItsNot1Button.addEventListener('click', () => {
+                    const letters = newWhatItsNot1Input.value;
+                    const filtered = filterWordsByNotInPosition1(currentFilteredWords, letters);
+                    currentFilteredWords = filtered;
+                    displayResults(currentFilteredWords);
+                    callback(currentFilteredWords);
+                    document.getElementById('whatItsNot1Feature').classList.add('completed');
+                    document.getElementById('whatItsNot1Feature').dispatchEvent(new Event('completed'));
+                });
+
+                newWhatItsNot1SkipButton.addEventListener('click', () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('whatItsNot1Feature').classList.add('completed');
+                    document.getElementById('whatItsNot1Feature').dispatchEvent(new Event('completed'));
+                });
+
+                newWhatItsNot1Input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        newWhatItsNot1Button.click();
+                    }
+                });
+
+                newWhatItsNot1Button.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    newWhatItsNot1Button.click();
+                }, { passive: false });
+
+                newWhatItsNot1SkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    newWhatItsNot1SkipButton.click();
+                }, { passive: false });
+            }
+            break;
+        }
+
         case 'abcde': {
             const yesBtns = Array.from(document.querySelectorAll('.abcde-btn'));
             const doneBtn = document.getElementById('abcdeDoneButton');
@@ -7385,6 +7455,7 @@ function showNextFeature() {
         'mostFrequentFeature',
         'leastFrequentFeature',
         'notInFeature',
+        'whatItsNot1Feature',
         'abcdeFeature',
         'abcFeature',
     ];
@@ -7427,6 +7498,9 @@ function showNextFeature() {
     }
     else if (!document.getElementById('notInFeature').classList.contains('completed')) {
         document.getElementById('notInFeature').style.display = 'block';
+    }
+    else if (!document.getElementById('whatItsNot1Feature').classList.contains('completed')) {
+        document.getElementById('whatItsNot1Feature').style.display = 'block';
     }
     else if (!document.getElementById('abcdeFeature').classList.contains('completed')) {
         document.getElementById('abcdeFeature').style.display = 'block';
@@ -7480,6 +7554,7 @@ function resetApp() {
         'mostFrequentFeature',
         'leastFrequentFeature',
         'notInFeature',
+        'whatItsNot1Feature',
         'abcdeFeature',
         'abcFeature',
     ];
@@ -7497,6 +7572,7 @@ function resetApp() {
     document.getElementById('originalLexInput').value = '';
     document.getElementById('lexiconInput').value = '';
     document.getElementById('notInInput').value = '';
+    document.getElementById('whatItsNot1Input').value = '';
     
     // Show the first feature (consonant question)
     document.getElementById('consonantQuestion').style.display = 'block';
@@ -9736,6 +9812,13 @@ function filterWordsByNotIn(letters) {
         return !Array.from(letterSet).some(letter => word.toLowerCase().includes(letter));
     });
     displayResults(currentFilteredWords);
+}
+
+/** Pure filter: keep words whose first letter is NOT in the given letter set. */
+function filterWordsByNotInPosition1(words, letters) {
+    const letterSet = new Set(sanitizeLetterString(letters));
+    if (letterSet.size === 0) return words;
+    return words.filter(word => word.length >= 1 && !letterSet.has(word[0].toUpperCase()));
 }
 
 // ========== POSITION-CONS Helper Functions ==========

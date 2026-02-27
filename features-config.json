@@ -127,6 +127,13 @@
       "analyzeFunction": "return [{ param: 'Requires letters input', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
+      "id": "whatItsNot1",
+      "name": "What It's Not - 1",
+      "displayName": "What It's Not - 1",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Letters not in position 1', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
       "id": "abcde",
       "name": "ABCDE",
       "displayName": "ABCDE",

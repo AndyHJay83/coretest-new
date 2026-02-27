@@ -177,6 +177,10 @@
                                 <button class="info-button" data-feature="notIn"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
+                                <button class="feature-button" data-feature="whatItsNot1" draggable="true">What It's Not - 1</button>
+                                <button class="info-button" data-feature="whatItsNot1"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                            <div class="feature-group">
                                 <button class="feature-button" data-feature="abcde" draggable="true">ABCDE</button>
                                 <button class="info-button" data-feature="abcde"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -568,6 +572,17 @@
                         <input type="text" id="notInInput" placeholder="Enter letters...">
                         <button id="notInButton">SUBMIT</button>
                         <button id="notInSkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- What It's Not - 1 feature -->
+                <div id="whatItsNot1Feature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">What It's Not - 1</h2>
+                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the first position of the word.</p>
+                    <div class="input-group">
+                        <input type="text" id="whatItsNot1Input" placeholder="Enter letters (e.g. GTURE)...">
+                        <button id="whatItsNot1Button">SUBMIT</button>
+                        <button id="whatItsNot1SkipButton" class="skip-button">SKIP</button>
                     </div>
                 </div>
 
@@ -1056,6 +1071,13 @@
             <div class="feature-info-content">
                 <h3>NOT IN</h3>
                 <p><strong>Letters Not In Word</strong><br>Type in a string of letters. If all these letters are in the word, it will be removed from the wordlist.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="whatItsNot1Info" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>What It's Not - 1</h3>
+                <p><strong>Letters Not in Position 1</strong><br>Enter a string of letters (e.g. GTURE). Any word whose <em>first</em> letter is in that set will be removed. Words whose first letter is not in the set are kept.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
