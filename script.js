@@ -2013,15 +2013,11 @@ function createVowel2Feature() {
     div.className = 'feature-section';
     div.innerHTML = `
         <h2 class="feature-title">VOWEL2</h2>
-        <div class="vowel-letter"></div>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Is there a vowel (A, E, I, O, U) in the second position?</p>
         <div class="button-container">
             <button class="vowel-btn yes-btn">YES</button>
             <button class="vowel-btn no-btn">NO</button>
-        </div>
-        <div class="section-buttons">
-            <button class="section-btn" data-section="start">START</button>
-            <button class="section-btn" data-section="middle">MIDDLE</button>
-            <button class="section-btn" data-section="end">END</button>
+            <button id="vowel2SkipButton" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
@@ -3877,123 +3873,44 @@ function setupFeatureListeners(feature, callback, options) {
         }
             
         case 'vowel2': {
-            const vowelYesBtn = document.querySelector('#vowel2Feature .yes-btn');
-            const vowelNoBtn = document.querySelector('#vowel2Feature .no-btn');
-            const sectionBtns = document.querySelectorAll('#vowel2Feature .section-btn');
-            
-            // Initialize vowel processing with current words
-            currentFilteredWordsForVowels = [...currentFilteredWords];
-            originalFilteredWords = [...currentFilteredWords];
-            currentVowelIndex = 0;
-            
-            // Get vowels from Position 1 word in order
-            const vowels = new Set(['a', 'e', 'i', 'o', 'u']);
-            uniqueVowels = [];
-            if (currentPosition1Word) {
-                for (const char of currentPosition1Word.toLowerCase()) {
-                    if (vowels.has(char)) {
-                        uniqueVowels.push(char);
-                    }
-                }
-            }
-            
-            // Set up the vowel display
-            const vowelFeature = document.getElementById('vowel2Feature');
-            const vowelLetter = vowelFeature.querySelector('.vowel-letter');
-            if (uniqueVowels.length > 0) {
-                vowelLetter.textContent = uniqueVowels[0].toUpperCase();
-                vowelLetter.style.display = 'inline-block';
-            }
-
-            // Function to filter words by vowel section (start, middle, end)
-            function filterWordsByVowelSection(words, vowel, section) {
-                return words.filter(word => {
-                    const wordLower = word.toLowerCase();
-                    const vowelLower = vowel.toLowerCase();
-                    
-                    if (!wordLower.includes(vowelLower)) {
-                        return false; // Word doesn't contain the vowel
-                    }
-                    
-                    const wordLength = word.length;
-                    
-                    // Find all positions where the vowel appears
-                    const vowelPositions = [];
-                    for (let i = 0; i < wordLength; i++) {
-                        if (wordLower[i] === vowelLower) {
-                            vowelPositions.push(i);
-                        }
-                    }
-                    
-                    // Check if any vowel position is in the specified section
-                    return vowelPositions.some(pos => {
-                        if (section === 'start') {
-                            // First half: positions 0 to Math.floor(wordLength/2)
-                            return pos <= Math.floor(wordLength / 2);
-                        } else if (section === 'end') {
-                            // Last half: positions Math.ceil(wordLength/2) to end
-                            return pos >= Math.ceil(wordLength / 2);
-                        } else if (section === 'middle') {
-                            // Middle half: positions in the middle third
-                            const start = Math.floor(wordLength / 3);
-                            const end = Math.ceil((2 * wordLength) / 3);
-                            return pos >= start && pos < end;
-                        }
-                        return false;
-                    });
+            const vowel2YesBtn = document.querySelector('#vowel2Feature .yes-btn');
+            const vowel2NoBtn = document.querySelector('#vowel2Feature .no-btn');
+            const vowel2SkipButton = document.getElementById('vowel2SkipButton');
+            if (vowel2YesBtn && vowel2NoBtn && vowel2SkipButton) {
+                const newYes = vowel2YesBtn.cloneNode(true);
+                const newNo = vowel2NoBtn.cloneNode(true);
+                const newSkip = vowel2SkipButton.cloneNode(true);
+                vowel2YesBtn.parentNode.replaceChild(newYes, vowel2YesBtn);
+                vowel2NoBtn.parentNode.replaceChild(newNo, vowel2NoBtn);
+                vowel2SkipButton.parentNode.replaceChild(newSkip, vowel2SkipButton);
+                const complete = () => {
+                    document.getElementById('vowel2Feature').classList.add('completed');
+                    document.getElementById('vowel2Feature').dispatchEvent(new Event('completed'));
+                };
+                newYes.addEventListener('click', () => {
+                    const filtered = filterWordsByVowel2(currentFilteredWords, 'yes');
+                    currentFilteredWords = filtered;
+                    displayResults(currentFilteredWords);
+                    callback(currentFilteredWords);
+                    complete();
                 });
-            }
-
-            // Add click handlers for section buttons
-            sectionBtns.forEach(btn => {
-                btn.onclick = () => {
-                    const section = btn.dataset.section;
-                    const currentVowel = uniqueVowels[currentVowelIndex];
-                    if (currentVowel) {
-                        const filteredWords = filterWordsByVowelSection(currentFilteredWords, currentVowel, section);
-                        callback(filteredWords);
-                        document.getElementById('vowel2Feature').dispatchEvent(new Event('completed'));
-                    }
-                };
-                
-                // Add touch event for mobile
-                btn.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    btn.click();
-                }, { passive: false });
-            });
-
-            // YES/NO button handlers
-            if (vowelYesBtn) {
-                vowelYesBtn.onclick = () => {
-                    const currentVowel = uniqueVowels[currentVowelIndex];
-                    if (currentVowel) {
-                        const filteredWords = currentFilteredWords.filter(word => word.toLowerCase().includes(currentVowel.toLowerCase()));
-                        callback(filteredWords);
-                        document.getElementById('vowel2Feature').dispatchEvent(new Event('completed'));
-                    }
-                };
-                // Add touch event for mobile
-                vowelYesBtn.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    vowelYesBtn.click();
-                }, { passive: false });
-            }
-            
-            if (vowelNoBtn) {
-                vowelNoBtn.onclick = () => {
-                    const currentVowel = uniqueVowels[currentVowelIndex];
-                    if (currentVowel) {
-                        const filteredWords = currentFilteredWords.filter(word => !word.toLowerCase().includes(currentVowel.toLowerCase()));
-                        callback(filteredWords);
-                        document.getElementById('vowel2Feature').dispatchEvent(new Event('completed'));
-                    }
-                };
-                // Add touch event for mobile
-                vowelNoBtn.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    vowelNoBtn.click();
-                }, { passive: false });
+                newNo.addEventListener('click', () => {
+                    const filtered = filterWordsByVowel2(currentFilteredWords, 'no');
+                    currentFilteredWords = filtered;
+                    displayResults(currentFilteredWords);
+                    callback(currentFilteredWords);
+                    complete();
+                });
+                newSkip.addEventListener('click', () => {
+                    callback(currentFilteredWords);
+                    complete();
+                });
+                [newYes, newNo, newSkip].forEach(btn => {
+                    btn.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        btn.click();
+                    }, { passive: false });
+                });
             }
             break;
         }
@@ -7668,6 +7585,18 @@ function filterWordsByAtlas(words, count) {
         }
         return c === n;
     });
+}
+
+const VOWEL2_VOWELS = new Set(['a', 'e', 'i', 'o', 'u']);
+/** Pure filter: answer 'yes' = keep words with vowel in position 2; 'no' = keep words without vowel in position 2. */
+function filterWordsByVowel2(words, answer) {
+    if (answer === 'yes') {
+        return words.filter(word => word.length >= 2 && VOWEL2_VOWELS.has(word[1].toLowerCase()));
+    }
+    if (answer === 'no') {
+        return words.filter(word => word.length < 2 || !VOWEL2_VOWELS.has(word[1].toLowerCase()));
+    }
+    return words;
 }
 
 // Function to show next feature

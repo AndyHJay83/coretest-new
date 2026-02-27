@@ -120,7 +120,7 @@
                                 <button class="feature-button" data-feature="vowel" draggable="true">Vowel</button>
                                 <button class="info-button" data-feature="vowel"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group" style="display: none;">
+                            <div class="feature-group">
                                 <button class="feature-button" data-feature="vowel2" draggable="true">VOWEL2</button>
                                 <button class="info-button" data-feature="vowel2"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -431,16 +431,12 @@
 
                 <!-- Vowel2 feature -->
                 <div id="vowel2Feature" class="feature-section" style="display: none;">
-                    <div class="feature-title">VOWEL2</div>
-                    <div class="vowel-letter"></div>
+                    <h2 class="feature-title">VOWEL2</h2>
+                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Is there a vowel (A, E, I, O, U) in the second position?</p>
                     <div class="button-container">
                         <button class="vowel-btn yes-btn">YES</button>
                         <button class="vowel-btn no-btn">NO</button>
-                    </div>
-                    <div class="section-buttons">
-                        <button class="section-btn" data-section="start">START</button>
-                        <button class="section-btn" data-section="middle">MIDDLE</button>
-                        <button class="section-btn" data-section="end">END</button>
+                        <button id="vowel2SkipButton" class="skip-button">SKIP</button>
                     </div>
                 </div>
 
@@ -1039,7 +1035,7 @@
         <div id="vowel2Info" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>VOWEL2</h3>
-                <p><strong>Vowel2</strong><br>This MUST follow Short Word. Will cycle through vowels within Short Word. Select START, MIDDLE, or END to specify which section of the word contains the vowel.</p>
+                <p><strong>Vowel in position 2</strong><br>YES: keep only words whose second letter is a vowel (A, E, I, O, U). NO: remove all words with a vowel in the second position. SKIP: leave the wordlist unchanged.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
