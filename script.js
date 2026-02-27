@@ -2391,14 +2391,14 @@ function createNotInFeature() {
     return div;
 }
 
-// --- WIN-1 Feature Logic (letters NOT in position 1) ---
+// --- WIN-1 Feature Logic (one of these letters IS in position 1) ---
 function createWhatItsNot1Feature() {
     const div = document.createElement('div');
     div.id = 'whatItsNot1Feature';
     div.className = 'feature-section';
     div.innerHTML = `
         <h2 class="feature-title">WIN-1</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the first position of the word.</p>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the first position. Enter the possible letters.</p>
         <div class="input-group">
             <input type="text" id="whatItsNot1Input" placeholder="Enter letters (e.g. GTURE)...">
             <button id="whatItsNot1Button">SUBMIT</button>
@@ -2408,14 +2408,14 @@ function createWhatItsNot1Feature() {
     return div;
 }
 
-// --- WIN-2 (second position) ---
+// --- WIN-2 (one of these letters IS in position 2) ---
 function createWhatItsNot2Feature() {
     const div = document.createElement('div');
     div.id = 'whatItsNot2Feature';
     div.className = 'feature-section';
     div.innerHTML = `
         <h2 class="feature-title">WIN-2</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the second position of the word.</p>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the second position. Enter the possible letters.</p>
         <div class="input-group">
             <input type="text" id="whatItsNot2Input" placeholder="Enter letters...">
             <button id="whatItsNot2Button">SUBMIT</button>
@@ -2425,14 +2425,14 @@ function createWhatItsNot2Feature() {
     return div;
 }
 
-// --- WIN-3 (third position) ---
+// --- WIN-3 (one of these letters IS in position 3) ---
 function createWhatItsNot3Feature() {
     const div = document.createElement('div');
     div.id = 'whatItsNot3Feature';
     div.className = 'feature-section';
     div.innerHTML = `
         <h2 class="feature-title">WIN-3</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the third position of the word.</p>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the third position. Enter the possible letters.</p>
         <div class="input-group">
             <input type="text" id="whatItsNot3Input" placeholder="Enter letters...">
             <button id="whatItsNot3Button">SUBMIT</button>
@@ -2442,14 +2442,14 @@ function createWhatItsNot3Feature() {
     return div;
 }
 
-// --- WIN-L (last position) ---
+// --- WIN-L (one of these letters IS in last position) ---
 function createWhatItsNotLFeature() {
     const div = document.createElement('div');
     div.id = 'whatItsNotLFeature';
     div.className = 'feature-section';
     div.innerHTML = `
         <h2 class="feature-title">WIN-L</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the last position of the word.</p>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the last position. Enter the possible letters.</p>
         <div class="input-group">
             <input type="text" id="whatItsNotLInput" placeholder="Enter letters...">
             <button id="whatItsNotLButton">SUBMIT</button>
@@ -9992,18 +9992,18 @@ function filterWordsByNotIn(letters) {
     displayResults(currentFilteredWords);
 }
 
-/** Pure filter: keep words whose letter at the given position is NOT in the letter set. position: 1, 2, 3, or 'L' (last). */
+/** Pure filter: keep words whose letter at the given position IS one of the letters in the set (one of these is correct). position: 1, 2, 3, or 'L' (last). Words without that position are excluded. */
 function filterWordsByNotInPosition(words, letters, position) {
     const letterSet = new Set(sanitizeLetterString(letters));
     if (letterSet.size === 0) return words;
     return words.filter(word => {
         const idx = position === 'L' ? word.length - 1 : position - 1;
-        if (idx < 0 || idx >= word.length) return true;
-        return !letterSet.has(word[idx].toUpperCase());
+        if (idx < 0 || idx >= word.length) return false;
+        return letterSet.has(word[idx].toUpperCase());
     });
 }
 
-/** Keep words whose first letter is NOT in the given letter set. */
+/** Keep words whose first letter is one of the given letters. */
 function filterWordsByNotInPosition1(words, letters) {
     return filterWordsByNotInPosition(words, letters, 1);
 }

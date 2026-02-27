@@ -601,7 +601,7 @@
                 <!-- WIN-1 feature -->
                 <div id="whatItsNot1Feature" class="feature-section" style="display: none;">
                     <h2 class="feature-title">WIN-1</h2>
-                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the first position of the word.</p>
+                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the first position. Enter the possible letters.</p>
                     <div class="input-group">
                         <input type="text" id="whatItsNot1Input" placeholder="Enter letters (e.g. GTURE)...">
                         <button id="whatItsNot1Button">SUBMIT</button>
@@ -612,7 +612,7 @@
                 <!-- WIN-2 feature -->
                 <div id="whatItsNot2Feature" class="feature-section" style="display: none;">
                     <h2 class="feature-title">WIN-2</h2>
-                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the second position of the word.</p>
+                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the second position. Enter the possible letters.</p>
                     <div class="input-group">
                         <input type="text" id="whatItsNot2Input" placeholder="Enter letters...">
                         <button id="whatItsNot2Button">SUBMIT</button>
@@ -623,7 +623,7 @@
                 <!-- WIN-3 feature -->
                 <div id="whatItsNot3Feature" class="feature-section" style="display: none;">
                     <h2 class="feature-title">WIN-3</h2>
-                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the third position of the word.</p>
+                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the third position. Enter the possible letters.</p>
                     <div class="input-group">
                         <input type="text" id="whatItsNot3Input" placeholder="Enter letters...">
                         <button id="whatItsNot3Button">SUBMIT</button>
@@ -634,7 +634,7 @@
                 <!-- WIN-L feature -->
                 <div id="whatItsNotLFeature" class="feature-section" style="display: none;">
                     <h2 class="feature-title">WIN-L</h2>
-                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the last position of the word.</p>
+                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the last position. Enter the possible letters.</p>
                     <div class="input-group">
                         <input type="text" id="whatItsNotLInput" placeholder="Enter letters...">
                         <button id="whatItsNotLButton">SUBMIT</button>
@@ -1140,28 +1140,28 @@
         <div id="whatItsNot1Info" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>WIN-1</h3>
-                <p><strong>Letters Not in Position 1</strong><br>Enter a string of letters (e.g. GTURE). Any word whose <em>first</em> letter is in that set will be removed. Words whose first letter is not in the set are kept.</p>
+                <p><strong>One of these letters is in position 1</strong><br>Enter a string of letters (e.g. GTURE). Exactly one of these is the correct first letter. Only words whose first letter is one of these letters are kept. Words without a first letter are excluded.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
         <div id="whatItsNot2Info" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>WIN-2</h3>
-                <p><strong>Letters Not in Position 2</strong><br>Enter a string of letters. Any word whose <em>second</em> letter is in that set will be removed. Words whose second letter is not in the set are kept.</p>
+                <p><strong>One of these letters is in position 2</strong><br>Enter a string of letters. Exactly one of these is the correct second letter. Only words whose second letter is one of these letters are kept. Words shorter than 2 letters are excluded.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
         <div id="whatItsNot3Info" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>WIN-3</h3>
-                <p><strong>Letters Not in Position 3</strong><br>Enter a string of letters. Any word whose <em>third</em> letter is in that set will be removed. Words whose third letter is not in the set are kept.</p>
+                <p><strong>One of these letters is in position 3</strong><br>Enter a string of letters. Exactly one of these is the correct third letter. Only words whose third letter is one of these letters are kept. Words shorter than 3 letters are excluded.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
         <div id="whatItsNotLInfo" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>WIN-L</h3>
-                <p><strong>Letters Not in Last Position</strong><br>Enter a string of letters. Any word whose <em>last</em> letter is in that set will be removed. Words whose last letter is not in the set are kept.</p>
+                <p><strong>One of these letters is in the last position</strong><br>Enter a string of letters. Exactly one of these is the correct last letter. Only words whose last letter is one of these letters are kept. Empty words are excluded.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
