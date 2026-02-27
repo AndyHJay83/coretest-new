@@ -128,10 +128,31 @@
     },
     {
       "id": "whatItsNot1",
-      "name": "What It's Not - 1",
-      "displayName": "What It's Not - 1",
+      "name": "WIN-1",
+      "displayName": "WIN-1",
       "requiresParam": true,
       "analyzeFunction": "return [{ param: 'Letters not in position 1', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
+      "id": "whatItsNot2",
+      "name": "WIN-2",
+      "displayName": "WIN-2",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Letters not in position 2', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
+      "id": "whatItsNot3",
+      "name": "WIN-3",
+      "displayName": "WIN-3",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Letters not in position 3', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
+      "id": "whatItsNotL",
+      "name": "WIN-L",
+      "displayName": "WIN-L",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Letters not in last position', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "abcde",

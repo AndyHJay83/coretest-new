@@ -1543,6 +1543,9 @@ async function executeWorkflow(steps) {
             leastFrequentFeature: createLeastFrequentFeature(),
             notInFeature: createNotInFeature(),
             whatItsNot1Feature: createWhatItsNot1Feature(),
+            whatItsNot2Feature: createWhatItsNot2Feature(),
+            whatItsNot3Feature: createWhatItsNot3Feature(),
+            whatItsNotLFeature: createWhatItsNotLFeature(),
             abcde: createAbcdeFeature(),
             abc: createAbcFeature(),
             findEee: createFindEeeFeature(),
@@ -1635,6 +1638,15 @@ async function executeWorkflow(steps) {
                     break;
                 case 'whatItsNot1':
                     featureElement = createWhatItsNot1Feature();
+                    break;
+                case 'whatItsNot2':
+                    featureElement = createWhatItsNot2Feature();
+                    break;
+                case 'whatItsNot3':
+                    featureElement = createWhatItsNot3Feature();
+                    break;
+                case 'whatItsNotL':
+                    featureElement = createWhatItsNotLFeature();
                     break;
                 case 'position1':
                     featureElement = createPosition1Feature();
@@ -2374,6 +2386,57 @@ function createWhatItsNot1Feature() {
             <input type="text" id="whatItsNot1Input" placeholder="Enter letters (e.g. GTURE)...">
             <button id="whatItsNot1Button">SUBMIT</button>
             <button id="whatItsNot1SkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- What It's Not - 2 (second position) ---
+function createWhatItsNot2Feature() {
+    const div = document.createElement('div');
+    div.id = 'whatItsNot2Feature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">What It's Not - 2</h2>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the second position of the word.</p>
+        <div class="input-group">
+            <input type="text" id="whatItsNot2Input" placeholder="Enter letters...">
+            <button id="whatItsNot2Button">SUBMIT</button>
+            <button id="whatItsNot2SkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- What It's Not - 3 (third position) ---
+function createWhatItsNot3Feature() {
+    const div = document.createElement('div');
+    div.id = 'whatItsNot3Feature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">What It's Not - 3</h2>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the third position of the word.</p>
+        <div class="input-group">
+            <input type="text" id="whatItsNot3Input" placeholder="Enter letters...">
+            <button id="whatItsNot3Button">SUBMIT</button>
+            <button id="whatItsNot3SkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- What It's Not - L (last position) ---
+function createWhatItsNotLFeature() {
+    const div = document.createElement('div');
+    div.id = 'whatItsNotLFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">What It's Not - L</h2>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the last position of the word.</p>
+        <div class="input-group">
+            <input type="text" id="whatItsNotLInput" placeholder="Enter letters...">
+            <button id="whatItsNotLButton">SUBMIT</button>
+            <button id="whatItsNotLSkipButton" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
@@ -5249,6 +5312,93 @@ function setupFeatureListeners(feature, callback, options) {
             break;
         }
 
+        case 'whatItsNot2': {
+            const btn = document.getElementById('whatItsNot2Button');
+            const skipBtn = document.getElementById('whatItsNot2SkipButton');
+            const input = document.getElementById('whatItsNot2Input');
+            if (btn && input && skipBtn) {
+                const newBtn = btn.cloneNode(true), newSkip = skipBtn.cloneNode(true), newInput = input.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
+                skipBtn.parentNode.replaceChild(newSkip, skipBtn);
+                input.parentNode.replaceChild(newInput, input);
+                newBtn.addEventListener('click', () => {
+                    const filtered = filterWordsByNotInPosition(currentFilteredWords, newInput.value, 2);
+                    currentFilteredWords = filtered;
+                    displayResults(currentFilteredWords);
+                    callback(currentFilteredWords);
+                    document.getElementById('whatItsNot2Feature').classList.add('completed');
+                    document.getElementById('whatItsNot2Feature').dispatchEvent(new Event('completed'));
+                });
+                newSkip.addEventListener('click', () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('whatItsNot2Feature').classList.add('completed');
+                    document.getElementById('whatItsNot2Feature').dispatchEvent(new Event('completed'));
+                });
+                newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') newBtn.click(); });
+                newBtn.addEventListener('touchstart', (e) => { e.preventDefault(); newBtn.click(); }, { passive: false });
+                newSkip.addEventListener('touchstart', (e) => { e.preventDefault(); newSkip.click(); }, { passive: false });
+            }
+            break;
+        }
+
+        case 'whatItsNot3': {
+            const btn = document.getElementById('whatItsNot3Button');
+            const skipBtn = document.getElementById('whatItsNot3SkipButton');
+            const input = document.getElementById('whatItsNot3Input');
+            if (btn && input && skipBtn) {
+                const newBtn = btn.cloneNode(true), newSkip = skipBtn.cloneNode(true), newInput = input.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
+                skipBtn.parentNode.replaceChild(newSkip, skipBtn);
+                input.parentNode.replaceChild(newInput, input);
+                newBtn.addEventListener('click', () => {
+                    const filtered = filterWordsByNotInPosition(currentFilteredWords, newInput.value, 3);
+                    currentFilteredWords = filtered;
+                    displayResults(currentFilteredWords);
+                    callback(currentFilteredWords);
+                    document.getElementById('whatItsNot3Feature').classList.add('completed');
+                    document.getElementById('whatItsNot3Feature').dispatchEvent(new Event('completed'));
+                });
+                newSkip.addEventListener('click', () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('whatItsNot3Feature').classList.add('completed');
+                    document.getElementById('whatItsNot3Feature').dispatchEvent(new Event('completed'));
+                });
+                newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') newBtn.click(); });
+                newBtn.addEventListener('touchstart', (e) => { e.preventDefault(); newBtn.click(); }, { passive: false });
+                newSkip.addEventListener('touchstart', (e) => { e.preventDefault(); newSkip.click(); }, { passive: false });
+            }
+            break;
+        }
+
+        case 'whatItsNotL': {
+            const btn = document.getElementById('whatItsNotLButton');
+            const skipBtn = document.getElementById('whatItsNotLSkipButton');
+            const input = document.getElementById('whatItsNotLInput');
+            if (btn && input && skipBtn) {
+                const newBtn = btn.cloneNode(true), newSkip = skipBtn.cloneNode(true), newInput = input.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
+                skipBtn.parentNode.replaceChild(newSkip, skipBtn);
+                input.parentNode.replaceChild(newInput, input);
+                newBtn.addEventListener('click', () => {
+                    const filtered = filterWordsByNotInPosition(currentFilteredWords, newInput.value, 'L');
+                    currentFilteredWords = filtered;
+                    displayResults(currentFilteredWords);
+                    callback(currentFilteredWords);
+                    document.getElementById('whatItsNotLFeature').classList.add('completed');
+                    document.getElementById('whatItsNotLFeature').dispatchEvent(new Event('completed'));
+                });
+                newSkip.addEventListener('click', () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('whatItsNotLFeature').classList.add('completed');
+                    document.getElementById('whatItsNotLFeature').dispatchEvent(new Event('completed'));
+                });
+                newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') newBtn.click(); });
+                newBtn.addEventListener('touchstart', (e) => { e.preventDefault(); newBtn.click(); }, { passive: false });
+                newSkip.addEventListener('touchstart', (e) => { e.preventDefault(); newSkip.click(); }, { passive: false });
+            }
+            break;
+        }
+
         case 'abcde': {
             const yesBtns = Array.from(document.querySelectorAll('.abcde-btn'));
             const doneBtn = document.getElementById('abcdeDoneButton');
@@ -7456,6 +7606,9 @@ function showNextFeature() {
         'leastFrequentFeature',
         'notInFeature',
         'whatItsNot1Feature',
+        'whatItsNot2Feature',
+        'whatItsNot3Feature',
+        'whatItsNotLFeature',
         'abcdeFeature',
         'abcFeature',
     ];
@@ -7501,6 +7654,15 @@ function showNextFeature() {
     }
     else if (!document.getElementById('whatItsNot1Feature').classList.contains('completed')) {
         document.getElementById('whatItsNot1Feature').style.display = 'block';
+    }
+    else if (!document.getElementById('whatItsNot2Feature').classList.contains('completed')) {
+        document.getElementById('whatItsNot2Feature').style.display = 'block';
+    }
+    else if (!document.getElementById('whatItsNot3Feature').classList.contains('completed')) {
+        document.getElementById('whatItsNot3Feature').style.display = 'block';
+    }
+    else if (!document.getElementById('whatItsNotLFeature').classList.contains('completed')) {
+        document.getElementById('whatItsNotLFeature').style.display = 'block';
     }
     else if (!document.getElementById('abcdeFeature').classList.contains('completed')) {
         document.getElementById('abcdeFeature').style.display = 'block';
@@ -7555,6 +7717,9 @@ function resetApp() {
         'leastFrequentFeature',
         'notInFeature',
         'whatItsNot1Feature',
+        'whatItsNot2Feature',
+        'whatItsNot3Feature',
+        'whatItsNotLFeature',
         'abcdeFeature',
         'abcFeature',
     ];
@@ -7573,6 +7738,9 @@ function resetApp() {
     document.getElementById('lexiconInput').value = '';
     document.getElementById('notInInput').value = '';
     document.getElementById('whatItsNot1Input').value = '';
+    document.getElementById('whatItsNot2Input').value = '';
+    document.getElementById('whatItsNot3Input').value = '';
+    document.getElementById('whatItsNotLInput').value = '';
     
     // Show the first feature (consonant question)
     document.getElementById('consonantQuestion').style.display = 'block';
@@ -9814,11 +9982,20 @@ function filterWordsByNotIn(letters) {
     displayResults(currentFilteredWords);
 }
 
-/** Pure filter: keep words whose first letter is NOT in the given letter set. */
-function filterWordsByNotInPosition1(words, letters) {
+/** Pure filter: keep words whose letter at the given position is NOT in the letter set. position: 1, 2, 3, or 'L' (last). */
+function filterWordsByNotInPosition(words, letters, position) {
     const letterSet = new Set(sanitizeLetterString(letters));
     if (letterSet.size === 0) return words;
-    return words.filter(word => word.length >= 1 && !letterSet.has(word[0].toUpperCase()));
+    return words.filter(word => {
+        const idx = position === 'L' ? word.length - 1 : position - 1;
+        if (idx < 0 || idx >= word.length) return true;
+        return !letterSet.has(word[idx].toUpperCase());
+    });
+}
+
+/** Keep words whose first letter is NOT in the given letter set. */
+function filterWordsByNotInPosition1(words, letters) {
+    return filterWordsByNotInPosition(words, letters, 1);
 }
 
 // ========== POSITION-CONS Helper Functions ==========
