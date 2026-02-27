@@ -2391,13 +2391,13 @@ function createNotInFeature() {
     return div;
 }
 
-// --- WIN-1 Feature Logic (one of these letters IS in position 1) ---
+// --- 1-CHAIN REACTION Feature Logic (one of these letters IS in position 1) ---
 function createWhatItsNot1Feature() {
     const div = document.createElement('div');
     div.id = 'whatItsNot1Feature';
     div.className = 'feature-section';
     div.innerHTML = `
-        <h2 class="feature-title">WIN-1</h2>
+        <h2 class="feature-title">1-CHAIN REACTION</h2>
         <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the first position. Enter the possible letters.</p>
         <div class="input-group">
             <input type="text" id="whatItsNot1Input" placeholder="Enter letters (e.g. GTURE)...">
@@ -2408,13 +2408,13 @@ function createWhatItsNot1Feature() {
     return div;
 }
 
-// --- WIN-2 (one of these letters IS in position 2) ---
+// --- 2-CHAIN REACTION (one of these letters IS in position 2) ---
 function createWhatItsNot2Feature() {
     const div = document.createElement('div');
     div.id = 'whatItsNot2Feature';
     div.className = 'feature-section';
     div.innerHTML = `
-        <h2 class="feature-title">WIN-2</h2>
+        <h2 class="feature-title">2-CHAIN REACTION</h2>
         <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the second position. Enter the possible letters.</p>
         <div class="input-group">
             <input type="text" id="whatItsNot2Input" placeholder="Enter letters...">
@@ -2425,13 +2425,13 @@ function createWhatItsNot2Feature() {
     return div;
 }
 
-// --- WIN-3 (one of these letters IS in position 3) ---
+// --- 3-CHAIN REACTION (one of these letters IS in position 3) ---
 function createWhatItsNot3Feature() {
     const div = document.createElement('div');
     div.id = 'whatItsNot3Feature';
     div.className = 'feature-section';
     div.innerHTML = `
-        <h2 class="feature-title">WIN-3</h2>
+        <h2 class="feature-title">3-CHAIN REACTION</h2>
         <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the third position. Enter the possible letters.</p>
         <div class="input-group">
             <input type="text" id="whatItsNot3Input" placeholder="Enter letters...">
@@ -2442,13 +2442,13 @@ function createWhatItsNot3Feature() {
     return div;
 }
 
-// --- WIN-L (one of these letters IS in last position) ---
+// --- L-CHAIN REACTION (one of these letters IS in last position) ---
 function createWhatItsNotLFeature() {
     const div = document.createElement('div');
     div.id = 'whatItsNotLFeature';
     div.className = 'feature-section';
     div.innerHTML = `
-        <h2 class="feature-title">WIN-L</h2>
+        <h2 class="feature-title">L-CHAIN REACTION</h2>
         <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the last position. Enter the possible letters.</p>
         <div class="input-group">
             <input type="text" id="whatItsNotLInput" placeholder="Enter letters...">
