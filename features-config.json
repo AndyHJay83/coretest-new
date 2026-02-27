@@ -99,6 +99,13 @@
       "analyzeFunction": "const colors = new Set(['r','e','d','b','l','u','e','g','r','e','e','n','y','e','l','l','o','w','o','r','a','n','g','e','p','u','r','p','l','e','p','i','n','k','b','r','o','w','n','b','l','a','c','k','w','h','i','t','e','g','r','a','y','g','r','e','y','c','y','a','n','m','a','g','e','n','t','a']); const yes = wordlist.filter(w => w.length >= 3 && colors.has(w[2].toLowerCase())); return [{ param: 'YES', wordsLeft: yes.length, percentFiltered: 100 * (1 - yes.length / totalWords) }];"
     },
     {
+      "id": "atlas",
+      "name": "ATLAS",
+      "displayName": "ATLAS",
+      "requiresParam": true,
+      "analyzeFunction": "const letters = new Set(['A','B','C','E','G','I','L','N','M','O','P','R','S','T','V','W','Y']); const byCount = {}; for (let n = 0; n <= 6; n++) { byCount[n] = wordlist.filter(w => { const s = w.slice(0,6).toUpperCase(); let c = 0; for (let i = 0; i < s.length; i++) { if (letters.has(s[i])) c++; } return c === n; }); } return [0,1,2,3,4,5,6].map(n => ({ param: n + '', wordsLeft: byCount[n].length, percentFiltered: 100 * (1 - byCount[n].length / totalWords) }));"
+    },
+    {
       "id": "length",
       "name": "LENGTH",
       "displayName": "LENGTH",

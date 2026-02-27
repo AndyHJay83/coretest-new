@@ -1532,6 +1532,7 @@ async function executeWorkflow(steps) {
             originalLexFeature: createOriginalLexFeature(),
             consonantQuestion: createConsonantQuestion(),
             colour3Feature: createColour3Feature(),
+            atlasFeature: createAtlasFeature(),
             shapeFeature: createShapeFeature(),
             curvedFeature: createCurvedFeature(),
             lengthFeature: createLengthFeature(),
@@ -1689,6 +1690,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 'colour3':
                     featureElement = createColour3Feature();
+                    break;
+                case 'atlas':
+                    featureElement = createAtlasFeature();
                     break;
                 case 'shape':
                     featureElement = createShapeFeature();
@@ -2178,6 +2182,23 @@ function createColour3Feature() {
         <div class="button-container">
             <button id="colour3YesBtn" class="yes-btn">YES</button>
             <button id="colour3SkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+// --- ATLAS: how many of positions 1–6 are colour-start letters ---
+function createAtlasFeature() {
+    const div = document.createElement('div');
+    div.id = 'atlasFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">ATLAS</h2>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">How many of the first 6 letters can start a colour? (0–6)</p>
+        <div class="input-group">
+            <input type="number" id="atlasInput" placeholder="0–6" min="0" max="6" step="1">
+            <button id="atlasButton">SUBMIT</button>
+            <button id="atlasSkipButton" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
@@ -4396,6 +4417,49 @@ function setupFeatureListeners(feature, callback, options) {
                 colour3SkipButton.addEventListener('touchstart', (e) => {
                     e.preventDefault();
                     colour3SkipButton.click();
+                }, { passive: false });
+            }
+            break;
+        }
+
+        case 'atlas': {
+            const atlasButton = document.getElementById('atlasButton');
+            const atlasSkipButton = document.getElementById('atlasSkipButton');
+            const atlasInput = document.getElementById('atlasInput');
+            if (atlasButton && atlasInput && atlasSkipButton) {
+                const newAtlasButton = atlasButton.cloneNode(true);
+                const newAtlasSkipButton = atlasSkipButton.cloneNode(true);
+                const newAtlasInput = atlasInput.cloneNode(true);
+                atlasButton.parentNode.replaceChild(newAtlasButton, atlasButton);
+                atlasSkipButton.parentNode.replaceChild(newAtlasSkipButton, atlasSkipButton);
+                atlasInput.parentNode.replaceChild(newAtlasInput, atlasInput);
+                newAtlasButton.addEventListener('click', () => {
+                    const raw = newAtlasInput.value.trim();
+                    const num = raw === '' ? null : parseInt(newAtlasInput.value, 10);
+                    if (num >= 0 && num <= 6) {
+                        const filtered = filterWordsByAtlas(currentFilteredWords, num);
+                        currentFilteredWords = filtered;
+                        displayResults(currentFilteredWords);
+                        callback(currentFilteredWords);
+                        document.getElementById('atlasFeature').classList.add('completed');
+                        document.getElementById('atlasFeature').dispatchEvent(new Event('completed'));
+                    }
+                });
+                newAtlasSkipButton.addEventListener('click', () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('atlasFeature').classList.add('completed');
+                    document.getElementById('atlasFeature').dispatchEvent(new Event('completed'));
+                });
+                newAtlasInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') newAtlasButton.click();
+                });
+                newAtlasButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    newAtlasButton.click();
+                }, { passive: false });
+                newAtlasSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    newAtlasSkipButton.click();
                 }, { passive: false });
             }
             break;
@@ -7579,17 +7643,31 @@ function filterWordsByO(words, includeO) {
     return filteredWords;
 }
 
+// Letters that can start a colour name (shared by COLOUR3 and ATLAS)
+const COLOUR_START_LETTERS = new Set(['A', 'B', 'C', 'E', 'G', 'I', 'L', 'N', 'M', 'O', 'P', 'R', 'S', 'T', 'V', 'W', 'Y']);
+
 // Function to filter words by COLOUR3
 function filterWordsByColour3(words) {
-    const colour3Letters = new Set(['A', 'B', 'C', 'E', 'G', 'I', 'L', 'N', 'M', 'O', 'P', 'R', 'S', 'T', 'V', 'W', 'Y']);
-    
     const filteredWords = words.filter(word => {
         // Check only position 5 (0-based index 4)
         const pos5 = word.length > 4 ? word[4].toUpperCase() : null;
-        return pos5 && colour3Letters.has(pos5);
+        return pos5 && COLOUR_START_LETTERS.has(pos5);
     });
-    
     return filteredWords;
+}
+
+/** Pure filter: keep words where exactly `count` of positions 1–6 are colour-start letters. */
+function filterWordsByAtlas(words, count) {
+    const n = typeof count === 'number' && count >= 0 && count <= 6 ? count : null;
+    if (n === null) return words;
+    return words.filter(word => {
+        const slice = word.slice(0, 6).toUpperCase();
+        let c = 0;
+        for (let i = 0; i < slice.length; i++) {
+            if (COLOUR_START_LETTERS.has(slice[i])) c++;
+        }
+        return c === n;
+    });
 }
 
 // Function to show next feature
@@ -7705,6 +7783,7 @@ function resetApp() {
         'position1Feature',
         'vowelFeature',
         'colour3Feature',
+        'atlasFeature',
         'shapeFeature',
         'oFeature',
         'curvedFeature',
@@ -7741,6 +7820,8 @@ function resetApp() {
     document.getElementById('whatItsNot2Input').value = '';
     document.getElementById('whatItsNot3Input').value = '';
     document.getElementById('whatItsNotLInput').value = '';
+    const atlasInputEl = document.getElementById('atlasInput');
+    if (atlasInputEl) atlasInputEl.value = '';
     
     // Show the first feature (consonant question)
     document.getElementById('consonantQuestion').style.display = 'block';

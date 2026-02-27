@@ -161,6 +161,10 @@
                                 <button class="info-button" data-feature="colour3"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
+                                <button class="feature-button" data-feature="atlas" draggable="true">ATLAS</button>
+                                <button class="info-button" data-feature="atlas"><i class="fas fa-info-circle"></i></button>
+                            </div>
+                            <div class="feature-group">
                                 <button class="feature-button" data-feature="length" draggable="true">LENGTH</button>
                                 <button class="info-button" data-feature="length"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -342,6 +346,17 @@
                     <div class="button-container">
                         <button id="colour3YesBtn" class="yes-btn">YES</button>
                         <button id="colour3SkipButton" class="skip-button">SKIP</button>
+                    </div>
+                </div>
+
+                <!-- ATLAS feature -->
+                <div id="atlasFeature" class="feature-section" style="display: none;">
+                    <h2 class="feature-title">ATLAS</h2>
+                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">How many of the first 6 letters can start a colour? (0–6)</p>
+                    <div class="input-group">
+                        <input type="number" id="atlasInput" placeholder="0–6" min="0" max="6" step="1">
+                        <button id="atlasButton">SUBMIT</button>
+                        <button id="atlasSkipButton" class="skip-button">SKIP</button>
                     </div>
                 </div>
 
@@ -1088,6 +1103,13 @@
             <div class="feature-info-content">
                 <h3>COLOUR3</h3>
                 <p><strong>Colour in 3rd position.</strong><br>Can the spectator think of a colour beginning with the letter in the 3rd position? Yes/No.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="atlasInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>ATLAS</h3>
+                <p><strong>Colour letters in positions 1–6.</strong><br>Enter how many of the first 6 letters can start a colour name (0–6). Words are filtered to those that match that count. Same letter set as COLOUR3 (e.g. A, B, C, E, G, I, L, N, M, O, P, R, S, T, V, W, Y).</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
