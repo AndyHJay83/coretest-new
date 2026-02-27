@@ -2374,13 +2374,13 @@ function createNotInFeature() {
     return div;
 }
 
-// --- What It's Not - 1 Feature Logic (letters NOT in position 1) ---
+// --- WIN-1 Feature Logic (letters NOT in position 1) ---
 function createWhatItsNot1Feature() {
     const div = document.createElement('div');
     div.id = 'whatItsNot1Feature';
     div.className = 'feature-section';
     div.innerHTML = `
-        <h2 class="feature-title">What It's Not - 1</h2>
+        <h2 class="feature-title">WIN-1</h2>
         <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the first position of the word.</p>
         <div class="input-group">
             <input type="text" id="whatItsNot1Input" placeholder="Enter letters (e.g. GTURE)...">
@@ -2391,13 +2391,13 @@ function createWhatItsNot1Feature() {
     return div;
 }
 
-// --- What It's Not - 2 (second position) ---
+// --- WIN-2 (second position) ---
 function createWhatItsNot2Feature() {
     const div = document.createElement('div');
     div.id = 'whatItsNot2Feature';
     div.className = 'feature-section';
     div.innerHTML = `
-        <h2 class="feature-title">What It's Not - 2</h2>
+        <h2 class="feature-title">WIN-2</h2>
         <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the second position of the word.</p>
         <div class="input-group">
             <input type="text" id="whatItsNot2Input" placeholder="Enter letters...">
@@ -2408,13 +2408,13 @@ function createWhatItsNot2Feature() {
     return div;
 }
 
-// --- What It's Not - 3 (third position) ---
+// --- WIN-3 (third position) ---
 function createWhatItsNot3Feature() {
     const div = document.createElement('div');
     div.id = 'whatItsNot3Feature';
     div.className = 'feature-section';
     div.innerHTML = `
-        <h2 class="feature-title">What It's Not - 3</h2>
+        <h2 class="feature-title">WIN-3</h2>
         <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the third position of the word.</p>
         <div class="input-group">
             <input type="text" id="whatItsNot3Input" placeholder="Enter letters...">
@@ -2425,13 +2425,13 @@ function createWhatItsNot3Feature() {
     return div;
 }
 
-// --- What It's Not - L (last position) ---
+// --- WIN-L (last position) ---
 function createWhatItsNotLFeature() {
     const div = document.createElement('div');
     div.id = 'whatItsNotLFeature';
     div.className = 'feature-section';
     div.innerHTML = `
-        <h2 class="feature-title">What It's Not - L</h2>
+        <h2 class="feature-title">WIN-L</h2>
         <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Letters that are NOT in the last position of the word.</p>
         <div class="input-group">
             <input type="text" id="whatItsNotLInput" placeholder="Enter letters...">
