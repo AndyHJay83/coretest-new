@@ -119,6 +119,10 @@
                                 <button class="feature-button birthday-mode-button" id="birthdayModeButton" draggable="false">BIRTHDAY</button>
                                 <button class="info-button" data-feature="birthdayMode"><i class="fas fa-info-circle"></i></button>
                             </div>
+                            <div class="feature-group">
+                                <button class="feature-button prefilters-mode-button" id="prefiltersModeButton" draggable="false">PRE-FILTERS</button>
+                                <button class="info-button" data-feature="prefiltersMode"><i class="fas fa-info-circle"></i></button>
+                            </div>
                             <!-- BINARY: group button (features shown via JS when clicked) -->
                             <div class="feature-group">
                                 <button class="feature-button binary-mode-button" id="binaryModeButton" draggable="false">BINARY</button>
@@ -145,10 +149,6 @@
                                 <button class="info-button" data-feature="vowel"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
-                                <button class="feature-button" data-feature="vowel2" draggable="true">VOWEL2</button>
-                                <button class="info-button" data-feature="vowel2"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
                                 <button class="feature-button" data-feature="vowelPos" draggable="true">VOWEL POS</button>
                                 <button class="info-button" data-feature="vowelPos"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -160,10 +160,7 @@
                                 <button class="feature-button" data-feature="o" draggable="true">O?</button>
                                 <button class="info-button" data-feature="o"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="oCurves" draggable="true">O-CURVES</button>
-                                <button class="info-button" data-feature="oCurves"><i class="fas fa-info-circle"></i></button>
-                            </div>
+                            
                             <div class="feature-group" data-builder-hidden="true">
                                 <button class="feature-button" data-feature="lexicon" draggable="true">Curved Pos.</button>
                                 <button class="info-button" data-feature="lexicon"><i class="fas fa-info-circle"></i></button>
@@ -180,10 +177,7 @@
                                 <button class="feature-button" data-feature="eeeFirst" draggable="true">EEEFIRST</button>
                                 <button class="info-button" data-feature="eeeFirst"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="e21" draggable="true">E21</button>
-                                <button class="info-button" data-feature="e21"><i class="fas fa-info-circle"></i></button>
-                            </div>
+                            
                             <div class="feature-group">
                                 <button class="feature-button" data-feature="advLex" draggable="true">ADV-LEX</button>
                                 <button class="info-button" data-feature="advLex"><i class="fas fa-info-circle"></i></button>
@@ -200,21 +194,9 @@
                                 <button class="feature-button" data-feature="colour3" draggable="true">Colour3</button>
                                 <button class="info-button" data-feature="colour3"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="atlas" draggable="true">ATLAS</button>
-                                <button class="info-button" data-feature="atlas"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="letterLying" draggable="true">Letter Lying</button>
-                                <button class="info-button" data-feature="letterLying"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="loveLetters" draggable="true">Love Letters</button>
-                                <button class="info-button" data-feature="loveLetters"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="length" draggable="true">LENGTH</button>
-                                <button class="info-button" data-feature="length"><i class="fas fa-info-circle"></i></button>
+                            <div class="feature-group" data-builder-hidden="true">
+                                <button class="feature-button" data-feature="theCore" draggable="true">THE CORE</button>
+                                <button class="info-button" data-feature="theCore"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group" data-builder-hidden="true">
                                 <button class="feature-button" data-feature="mostFrequent" draggable="true">MOST FREQUENT</button>
@@ -224,14 +206,7 @@
                                 <button class="feature-button" data-feature="leastFrequent" draggable="true">LEAST FREQUENT</button>
                                 <button class="info-button" data-feature="leastFrequent"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="notIn" draggable="true">ABSENT</button>
-                                <button class="info-button" data-feature="notIn"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="present" draggable="true">PRESENT</button>
-                                <button class="info-button" data-feature="present"><i class="fas fa-info-circle"></i></button>
-                            </div>
+                            
                             <div class="feature-group">
                                 <button class="feature-button" data-feature="consonants" draggable="true">CONSONANTS</button>
                                 <button class="info-button" data-feature="consonants"><i class="fas fa-info-circle"></i></button>
@@ -248,14 +223,7 @@
                                 <button class="feature-button" data-feature="middle" draggable="true">MIDDLE</button>
                                 <button class="info-button" data-feature="middle"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="abcde" draggable="true">ABCDE</button>
-                                <button class="info-button" data-feature="abcde"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="abc" draggable="true">ABC</button>
-                                <button class="info-button" data-feature="abc"><i class="fas fa-info-circle"></i></button>
-                            </div>
+                            
                             <div class="feature-group" data-builder-hidden="true">
                                 <button class="feature-button" data-feature="findEee" draggable="true">FIND-EEE</button>
                                 <button class="info-button" data-feature="findEee"><i class="fas fa-info-circle"></i></button>
@@ -264,7 +232,7 @@
                                 <button class="feature-button" data-feature="positionCons" draggable="true">POSITION-CONS</button>
                                 <button class="info-button" data-feature="positionCons"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
+                            <div class="feature-group" data-builder-hidden="true">
                                 <button class="feature-button" data-feature="firstCurved" draggable="true">FIRST CURVED</button>
                                 <button class="info-button" data-feature="firstCurved"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -272,50 +240,16 @@
                                 <button class="feature-button" data-feature="eyeTest" draggable="true">EYE TEST</button>
                                 <button class="info-button" data-feature="eyeTest"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="pin" draggable="true">PIN</button>
-                                <button class="info-button" data-feature="pin"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="scrabble" draggable="true">SCRABBLE</button>
-                                <button class="info-button" data-feature="scrabble"><i class="fas fa-info-circle"></i></button>
-                            </div>
                             <div class="feature-group" data-builder-hidden="true">
                                 <button class="feature-button" data-feature="scrabble1" draggable="true">SCRABBLE1</button>
                                 <button class="info-button" data-feature="scrabble1"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="sologram" draggable="true">SOLOGRAM</button>
-                                <button class="info-button" data-feature="sologram"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="scramble" draggable="true">DECODE</button>
-                                <button class="info-button" data-feature="scramble"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="pianoForte" draggable="true">PIANO FORTE</button>
-                                <button class="info-button" data-feature="pianoForte"><i class="fas fa-info-circle"></i></button>
-                            </div>
+                            
                             <div class="feature-group" data-builder-hidden="true">
                                 <button class="feature-button" data-feature="pianoPiano" draggable="true">PIANO PIANO</button>
                                 <button class="info-button" data-feature="pianoPiano"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="dictionaryAlpha" draggable="true">Dictionary (Alpha)</button>
-                                <button class="info-button" data-feature="dictionaryAlpha"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="alpha" draggable="true">ALPHA (ORIGIN)</button>
-                                <button class="info-button" data-feature="alpha"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="smlLength" draggable="true">S/M/L (Length)</button>
-                                <button class="info-button" data-feature="smlLength"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button" data-feature="omega" draggable="true">OMEGA: Short</button>
-                                <button class="info-button" data-feature="omega"><i class="fas fa-info-circle"></i></button>
-                            </div>
+                            
                             <div class="feature-group">
                                 <button class="feature-button" data-feature="calculus" draggable="true">CALCULUS</button>
                                 <button class="info-button" data-feature="calculus"><i class="fas fa-info-circle"></i></button>
@@ -1339,7 +1273,6 @@
                             <label for="letterLyingStringSourceSelect">Letter set:</label>
                             <select id="letterLyingStringSourceSelect">
                                 <option value="default">Default</option>
-                                <option value="unique">Unique (8 random)</option>
                                 <option value="personal">Custom</option>
                                 <optgroup id="letterLyingSavedOptgroup" label="Saved">
                                     <!-- options filled by script -->
@@ -1348,10 +1281,7 @@
                             <div id="letterLyingDefaultFields" class="letter-lying-source-fields" style="display: none;">
                                 <p class="settings-section-subtitle">Uses the default letter string.</p>
                             </div>
-                            <div id="letterLyingUniqueFields" class="letter-lying-source-fields" style="display: none;">
-                                <button type="button" id="letterLyingGenerateUniqueBtn" class="small-button">Generate 8 random letters</button>
-                                <span id="letterLyingUniqueDisplay" class="letter-lying-unique-display"></span>
-                            </div>
+                            
                             <div id="letterLyingPersonalFields" class="letter-lying-source-fields" style="display: none;">
                                 <label for="letterLyingStaticInput">Letters (A–Z only, no duplicates):</label>
                                 <input type="text" id="letterLyingStaticInput" placeholder="e.g. NTRLCSAIEUO" maxlength="26" autocomplete="off">
@@ -1368,10 +1298,13 @@
                                 <button type="button" id="letterLyingSaveAsBtn" class="small-button">Save</button>
                             </div>
                             <div id="letterLyingSavedList" class="letter-lying-saved-list"></div>
+                            <div class="letter-lying-steps-row">
+                                <label for="letterLyingStepsInput">Static steps before auto-advance (0 = all letters):</label>
+                                <input type="number" id="letterLyingStepsInput" min="0" max="26" value="0">
+                            </div>
                         </div>
                         <div id="letterLyingDynamicFields" class="letter-lying-dynamic-fields" style="display: none;">
-                            <label for="letterLyingStepsInput">Steps (most frequent letter each step):</label>
-                            <input type="number" id="letterLyingStepsInput" min="1" max="26" value="4">
+                            <label>Dynamic: most frequent letter each step (uses internal defaults)</label>
                         </div>
                     </div>
                     <div class="settings-section">

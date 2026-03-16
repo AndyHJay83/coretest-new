@@ -160,11 +160,11 @@ const DEFAULT_SETTINGS = {
     atlasCustomName: '',
     atlasCustomLetters: '',
     letterLyingMode: 'static',
-    letterLyingStringSource: 'default',   // 'default' | 'unique' | 'personal' | 'saved'
+    letterLyingStringSource: 'default',   // 'default' | 'personal' | 'saved'
     letterLyingStaticString: 'NTRLCSAIEUO',
-    letterLyingUniqueString: '',          // 8 random letters when source is 'unique'
     letterLyingSavedSets: [],             // [{ id, name, string }, ...]
     letterLyingSavedId: null,             // id of selected saved set when source is 'saved'
+    letterLyingStaticMaxSteps: 0,         // 0 = use full static string (no auto-advance)
     letterLyingDynamicSteps: 4,
     zeroCurvesApprox: false,
     loveLettersRowCount: 5,
@@ -2200,6 +2200,7 @@ async function executeWorkflow(steps) {
             consonantQuestion: createConsonantQuestion(),
             colour3Feature: createColour3Feature(),
             atlasFeature: createAtlasFeature(),
+            theCoreFeature: createTheCoreFeature(),
             letterLyingFeature: createLetterLyingFeature(),
             loveLettersFeature: createLoveLettersFeature(),
             shapeFeature: createShapeFeature(),
@@ -2534,6 +2535,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 'smlLength':
                     featureElement = createSmlLengthFeature();
+                    break;
+                case 'theCore':
+                    featureElement = createTheCoreFeature();
                     break;
                 default:
                     featureElement = null;
@@ -3040,6 +3044,47 @@ function createConsonantQuestion() {
     return div;
 }
 
+function createTheCoreFeature() {
+    const div = document.createElement('div');
+    div.id = 'theCoreFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">THE CORE</h2>
+        <div class="the-core-section" id="theCoreStep1">
+            <p style="text-align: center; margin: 8px 0; font-size: 14px; color: #666;">Are there two consonants together in your word?</p>
+            <div class="button-container">
+                <button id="theCoreQ1YesBtn" class="yes-btn">YES</button>
+                <button id="theCoreQ1NoBtn" class="no-btn">NO</button>
+            </div>
+        </div>
+        <div class="the-core-section" id="theCoreYesBranch" style="display: none; margin-top: 12px;">
+            <p style="text-align: center; margin: 4px 0; font-size: 14px; color: #666;">Enter a short word. Any two of its consonants will appear together in the word (in either order).</p>
+            <div class="position-input">
+                <input type="text" id="theCoreShortWordInput" placeholder="e.g. CAT or HELLO" autocomplete="off" style="text-transform: uppercase;">
+                <button id="theCoreShortWordSubmitBtn">SUBMIT</button>
+            </div>
+        </div>
+        <div class="the-core-section" id="theCoreNoBranch" style="display: none; margin-top: 12px;">
+            <p style="text-align: center; margin: 4px 0; font-size: 14px; color: #666;">Enter a word. Any two of its consonants may appear in the word, but never together.</p>
+            <div class="position-input">
+                <input type="text" id="theCoreConsMidInput" placeholder="e.g. PLANET" autocomplete="off" style="text-transform: uppercase;">
+                <button id="theCoreConsMidSubmitBtn">SUBMIT</button>
+            </div>
+        </div>
+        <div class="the-core-section" id="theCoreVowelSection" style="display: none; margin-top: 12px;">
+            <p style="text-align: center; margin: 4px 0; font-size: 14px; color: #666;">Vowels from your short word. Does each vowel appear in the word?</p>
+            <div style="text-align: center; margin-bottom: 6px;">
+                <span id="theCoreVowelLetter" style="font-size: 20px; font-weight: bold;">-</span>
+            </div>
+            <div class="button-container">
+                <button id="theCoreVowelYesBtn" class="yes-btn">YES</button>
+                <button id="theCoreVowelNoBtn" class="no-btn">NO</button>
+            </div>
+        </div>
+    `;
+    return div;
+}
+
 function createColour3Feature() {
     const div = document.createElement('div');
     div.id = 'colour3Feature';
@@ -3061,9 +3106,9 @@ function createAtlasFeature() {
     div.className = 'feature-section';
     div.innerHTML = `
         <h2 class="feature-title">ATLAS</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">How many of the first 6 letters can start a colour? (0–6)</p>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Enter positions 1–6 that are definitely colour letters (e.g. 145).</p>
         <div class="atlas-input-row">
-            <input type="number" id="atlasInput" placeholder="0–6" min="0" max="6" step="1">
+            <input type="text" id="atlasInput" placeholder="Positions (e.g. 145)" autocomplete="off">
         </div>
         <div class="input-group">
             <button id="atlasButton">SUBMIT</button>
@@ -6426,18 +6471,16 @@ function setupFeatureListeners(feature, callback, options) {
                 atlasSkipButton.parentNode.replaceChild(newAtlasSkipButton, atlasSkipButton);
                 atlasInput.parentNode.replaceChild(newAtlasInput, atlasInput);
                 newAtlasButton.addEventListener('click', () => {
-                    const raw = newAtlasInput.value.trim();
-                    const num = raw === '' ? null : parseInt(newAtlasInput.value, 10);
-                    if (num >= 0 && num <= 6) {
-                        const filtered = filterWordsByAtlas(currentFilteredWords, num);
-                        currentFilteredWords = filtered;
-                        const source = (appSettings && appSettings.atlasLetterSource) || 'default';
-                        if (source === 'default') lastAtlasColoursCount = num;
-                        displayResults(currentFilteredWords);
-                        callback(currentFilteredWords);
-                        document.getElementById('atlasFeature').classList.add('completed');
-                        document.getElementById('atlasFeature').dispatchEvent(new Event('completed'));
-                    }
+                    const raw = (newAtlasInput.value || '').toString().trim().replace(/\s+/g, '');
+                    if (!raw) return;
+                    const filtered = filterWordsByAtlas(currentFilteredWords, raw);
+                    currentFilteredWords = filtered;
+                    const source = (appSettings && appSettings.atlasLetterSource) || 'default';
+                    if (source === 'default') lastAtlasColoursCount = raw.length;
+                    displayResults(currentFilteredWords);
+                    callback(currentFilteredWords);
+                    document.getElementById('atlasFeature').classList.add('completed');
+                    document.getElementById('atlasFeature').dispatchEvent(new Event('completed'));
                 });
                 newAtlasSkipButton.addEventListener('click', () => {
                     callback(currentFilteredWords);
@@ -6715,6 +6758,190 @@ function setupFeatureListeners(feature, callback, options) {
             }
             break;
         }
+
+        case 'theCore': {
+            const featureDiv = document.getElementById('theCoreFeature');
+            if (!featureDiv) {
+                callback(currentFilteredWords);
+                break;
+            }
+
+            const step1 = document.getElementById('theCoreStep1');
+            const yesBranch = document.getElementById('theCoreYesBranch');
+            const noBranch = document.getElementById('theCoreNoBranch');
+            const q1YesBtn = document.getElementById('theCoreQ1YesBtn');
+            const q1NoBtn = document.getElementById('theCoreQ1NoBtn');
+
+            const shortWordInput = document.getElementById('theCoreShortWordInput');
+            const shortWordSubmitBtn = document.getElementById('theCoreShortWordSubmitBtn');
+
+            const vowelSection = document.getElementById('theCoreVowelSection');
+            const vowelLetterSpan = document.getElementById('theCoreVowelLetter');
+            const vowelYesBtn = document.getElementById('theCoreVowelYesBtn');
+            const vowelNoBtn = document.getElementById('theCoreVowelNoBtn');
+
+            const consMidInput = document.getElementById('theCoreConsMidInput');
+            const consMidSubmitBtn = document.getElementById('theCoreConsMidSubmitBtn');
+
+            let workingWords = [...currentFilteredWords];
+            let coreVowels = [];
+            let coreVowelIndex = 0;
+
+            function completeCore(finalWords) {
+                callback(finalWords);
+                featureDiv.classList.add('completed');
+                featureDiv.dispatchEvent(new Event('completed'));
+            }
+
+            function getConsonantPairsFromWord(word) {
+                const vowelsSet = new Set(['A', 'E', 'I', 'O', 'U']);
+                const upper = (word || '').toString().toUpperCase().replace(/[^A-Z]/g, '');
+                const consonants = upper.split('').filter(ch => !vowelsSet.has(ch));
+                const pairs = new Set();
+                for (let i = 0; i < consonants.length; i++) {
+                    for (let j = i + 1; j < consonants.length; j++) {
+                        const a = consonants[i];
+                        const b = consonants[j];
+                        const key = a <= b ? a + b : b + a;
+                        pairs.add(key);
+                    }
+                }
+                return pairs;
+            }
+
+            function filterWordsByAdjacentConsonantPairs(words, helperWord) {
+                const pairs = getConsonantPairsFromWord(helperWord);
+                if (!pairs.size) return words;
+                return words.filter(word => {
+                    const upper = (word || '').toString().toUpperCase();
+                    for (let i = 0; i < upper.length - 1; i++) {
+                        const a = upper[i];
+                        const b = upper[i + 1];
+                        if (a < 'A' || a > 'Z' || b < 'A' || b > 'Z') continue;
+                        const key = a <= b ? a + b : b + a;
+                        if (pairs.has(key)) return true;
+                    }
+                    return false;
+                });
+            }
+
+            function filterWordsByNonAdjacentConsonantPairs(words, helperWord) {
+                const pairs = getConsonantPairsFromWord(helperWord);
+                if (!pairs.size) return words;
+                return words.filter(word => {
+                    const upper = (word || '').toString().toUpperCase();
+                    const letters = new Set(upper.split('').filter(ch => ch >= 'A' && ch <= 'Z'));
+                    for (const key of pairs) {
+                        const a = key[0];
+                        const b = key[1];
+                        if (letters.has(a) && letters.has(b)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+            }
+
+            function startVowelPhase(helperWord) {
+                const vowelsSet = new Set(['A', 'E', 'I', 'O', 'U']);
+                const upper = (helperWord || '').toString().toUpperCase();
+                coreVowels = [];
+                const seen = new Set();
+                for (const ch of upper) {
+                    if (vowelsSet.has(ch) && !seen.has(ch)) {
+                        seen.add(ch);
+                        coreVowels.push(ch);
+                    }
+                }
+                coreVowelIndex = 0;
+                if (!coreVowels.length) {
+                    completeCore(workingWords);
+                    return;
+                }
+                if (vowelSection) vowelSection.style.display = '';
+                if (vowelLetterSpan) vowelLetterSpan.textContent = coreVowels[0];
+            }
+
+            function advanceVowel(include) {
+                const current = coreVowels[coreVowelIndex];
+                if (current) {
+                    const lower = current.toLowerCase();
+                    if (include) {
+                        workingWords = workingWords.filter(w => (w || '').toString().toLowerCase().includes(lower));
+                    } else {
+                        workingWords = workingWords.filter(w => !(w || '').toString().toLowerCase().includes(lower));
+                    }
+                }
+                // Update main workflow results after each vowel answer
+                callback(workingWords);
+                coreVowelIndex++;
+                if (coreVowelIndex >= coreVowels.length || workingWords.length === 0) {
+                    completeCore(workingWords);
+                } else if (vowelLetterSpan) {
+                    vowelLetterSpan.textContent = coreVowels[coreVowelIndex];
+                }
+            }
+
+            if (q1YesBtn) {
+                q1YesBtn.onclick = () => {
+                    workingWords = workingWords.filter(word => hasWordAdjacentConsonants(word));
+                    callback(workingWords);
+                    if (step1) step1.style.display = 'none';
+                    if (yesBranch) yesBranch.style.display = '';
+                };
+                q1YesBtn.addEventListener('touchstart', (e) => { e.preventDefault(); q1YesBtn.click(); }, { passive: false });
+            }
+
+            if (q1NoBtn) {
+                q1NoBtn.onclick = () => {
+                    workingWords = workingWords.filter(word => !hasWordAdjacentConsonants(word));
+                    callback(workingWords);
+                    if (step1) step1.style.display = 'none';
+                    if (noBranch) noBranch.style.display = '';
+                };
+                q1NoBtn.addEventListener('touchstart', (e) => { e.preventDefault(); q1NoBtn.click(); }, { passive: false });
+            }
+
+            if (shortWordSubmitBtn && shortWordInput) {
+                shortWordSubmitBtn.onclick = () => {
+                    const raw = shortWordInput.value.trim();
+                    if (!raw) {
+                        alert('Please enter a short word.');
+                        return;
+                    }
+                    const filtered = filterWordsByAdjacentConsonantPairs(workingWords, raw);
+                    workingWords = filtered;
+                    callback(workingWords);
+                    startVowelPhase(raw);
+                };
+                shortWordSubmitBtn.addEventListener('touchstart', (e) => { e.preventDefault(); shortWordSubmitBtn.click(); }, { passive: false });
+            }
+
+            if (vowelYesBtn) {
+                vowelYesBtn.onclick = () => advanceVowel(true);
+                vowelYesBtn.addEventListener('touchstart', (e) => { e.preventDefault(); vowelYesBtn.click(); }, { passive: false });
+            }
+            if (vowelNoBtn) {
+                vowelNoBtn.onclick = () => advanceVowel(false);
+                vowelNoBtn.addEventListener('touchstart', (e) => { e.preventDefault(); vowelNoBtn.click(); }, { passive: false });
+            }
+
+            if (consMidSubmitBtn && consMidInput) {
+                consMidSubmitBtn.onclick = () => {
+                    const raw = consMidInput.value.trim();
+                    if (!raw) {
+                        alert('Please enter a word.');
+                        return;
+                    }
+                    workingWords = filterWordsByNonAdjacentConsonantPairs(workingWords, raw);
+                    callback(workingWords);
+                    startVowelPhase(raw);
+                };
+                consMidSubmitBtn.addEventListener('touchstart', (e) => { e.preventDefault(); consMidSubmitBtn.click(); }, { passive: false });
+            }
+
+            break;
+        }
             
         case 'eee': {
             const eeeButton = document.getElementById('eeeButton');
@@ -6981,7 +7208,12 @@ function setupFeatureListeners(feature, callback, options) {
 
             const isStatic = (appSettings && appSettings.letterLyingMode) === 'static';
             const staticLetters = getLetterLyingStaticLetters();
-            const totalParts = isStatic ? staticLetters.length : (Math.max(1, Math.min(26, (appSettings && appSettings.letterLyingDynamicSteps) || 4)));
+            const staticMax = (appSettings && typeof appSettings.letterLyingStaticMaxSteps === 'number')
+                ? appSettings.letterLyingStaticMaxSteps
+                : 0;
+            const totalParts = isStatic
+                ? (staticMax && staticMax > 0 ? Math.min(staticMax, staticLetters.length) : staticLetters.length)
+                : (Math.max(1, Math.min(26, (appSettings && appSettings.letterLyingDynamicSteps) || 4)));
             let partIndex = 0;
             let currentLetter = null;
 
@@ -11200,7 +11432,8 @@ function filterWordsByO(words, includeO) {
 }
 
 // Default ATLAS/Colours letters (locked; COLOUR3 always uses this set)
-const ATLAS_DEFAULT_LETTERS = new Set(['A', 'B', 'C', 'E', 'G', 'I', 'L', 'N', 'M', 'O', 'P', 'R', 'S', 'T', 'V', 'W', 'Y']);
+// Updated to use the colour letter string: ABCGILMOPRSTUVWY
+const ATLAS_DEFAULT_LETTERS = new Set(['A', 'B', 'C', 'G', 'I', 'L', 'M', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'W', 'Y']);
 
 // Letter → colour name for ATLAS "applicable colours" display at end of workflow
 const ATLAS_COLOUR_NAMES = {
@@ -11240,18 +11473,27 @@ function filterWordsByColour3(words) {
     return filteredWords;
 }
 
-/** Pure filter: keep words where at least `count` of positions 1–6 are in the ATLAS letter set. */
-function filterWordsByAtlas(words, count) {
-    const n = typeof count === 'number' && count >= 0 && count <= 6 ? count : null;
-    if (n === null) return words;
+/** Pure filter: keep words where all specified positions (1–6) are in the ATLAS letter set. */
+function filterWordsByAtlas(words, positionsInput) {
+    const raw = (positionsInput || '').toString().trim();
+    if (!raw) return words;
+
+    const positions = new Set();
+    for (const ch of raw) {
+        if (ch >= '1' && ch <= '6') {
+            positions.add(parseInt(ch, 10) - 1); // store as 0-based
+        }
+    }
+    if (positions.size === 0) return words;
+
     const letterSet = getAtlasLetterSet();
     return words.filter(word => {
-        const slice = word.slice(0, 6).toUpperCase();
-        let c = 0;
-        for (let i = 0; i < slice.length; i++) {
-            if (letterSet.has(slice[i])) c++;
+        const upper = (word || '').toString().toUpperCase();
+        for (const idx of positions) {
+            if (idx < 0 || idx >= upper.length) return false;
+            if (!letterSet.has(upper[idx])) return false;
         }
-        return c >= n;
+        return true;
     });
 }
 
@@ -11367,28 +11609,12 @@ function getMostFrequentLetterInWordlist(words, excludedLetters) {
     return sorted[0][0];
 }
 
-/** Pick 8 random letters A–Z without replacement. */
-function generateLetterLyingUniqueString() {
-    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-    for (let i = letters.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [letters[i], letters[j]] = [letters[j], letters[i]];
-    }
-    return letters.slice(0, 8).join('');
-}
-
 /** Static letter list for Letter Lying: from Default, Unique, Personal, or Saved set. */
 function getLetterLyingStaticLetters() {
     const source = (appSettings && appSettings.letterLyingStringSource) || 'default';
     let s = '';
     if (source === 'default') {
         s = DEFAULT_LETTER_LYING_STRING;
-    } else if (source === 'unique') {
-        s = (appSettings && appSettings.letterLyingUniqueString) || '';
-        if (!s || s.length !== 8) {
-            s = generateLetterLyingUniqueString();
-            if (appSettings) appSettings.letterLyingUniqueString = s;
-        }
     } else if (source === 'personal') {
         s = (appSettings && appSettings.letterLyingStaticString) || DEFAULT_LETTER_LYING_STRING;
     } else if (source === 'saved') {
@@ -13007,6 +13233,110 @@ function initializeModeButtons() {
         binaryButton.addEventListener('click', showBinaryFeatures);
         addModeButtonTouchHandlers(binaryButton, showBinaryFeatures);
     }
+
+    const prefiltersButton = document.getElementById('prefiltersModeButton');
+    if (prefiltersButton) {
+        const showPrefiltersFeatures = () => {
+            const availableFeatures = document.getElementById('availableFeatures');
+            if (!availableFeatures) return;
+            const normalFeatures = availableFeatures.innerHTML;
+            if (!availableFeatures.dataset.normalFeatures) {
+                availableFeatures.dataset.normalFeatures = normalFeatures;
+            }
+            availableFeatures.innerHTML = `
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="length" draggable="true">LENGTH</button>
+                    <button class="info-button" data-feature="length"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="vowel2" draggable="true">VOWEL2</button>
+                    <button class="info-button" data-feature="vowel2"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="oCurves" draggable="true">O-CURVES</button>
+                    <button class="info-button" data-feature="oCurves"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="e21" draggable="true">E21</button>
+                    <button class="info-button" data-feature="e21"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="atlas" draggable="true">ATLAS</button>
+                    <button class="info-button" data-feature="atlas"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="letterLying" draggable="true">Letter Lying</button>
+                    <button class="info-button" data-feature="letterLying"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="loveLetters" draggable="true">Love Letters</button>
+                    <button class="info-button" data-feature="loveLetters"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="notIn" draggable="true">ABSENT</button>
+                    <button class="info-button" data-feature="notIn"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="present" draggable="true">PRESENT</button>
+                    <button class="info-button" data-feature="present"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="abcde" draggable="true">ABCDE</button>
+                    <button class="info-button" data-feature="abcde"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="abc" draggable="true">ABC</button>
+                    <button class="info-button" data-feature="abc"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="pin" draggable="true">PIN</button>
+                    <button class="info-button" data-feature="pin"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="scrabble" draggable="true">SCRABBLE</button>
+                    <button class="info-button" data-feature="scrabble"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="scramble" draggable="true">DECODE</button>
+                    <button class="info-button" data-feature="scramble"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="sologram" draggable="true">SOLOGRAM</button>
+                    <button class="info-button" data-feature="sologram"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="pianoForte" draggable="true">PIANO FORTE</button>
+                    <button class="info-button" data-feature="pianoForte"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="alpha" draggable="true">ALPHA (SHORT)</button>
+                    <button class="info-button" data-feature="alpha"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="omega" draggable="true">OMEGA: Short</button>
+                    <button class="info-button" data-feature="omega"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="dictionaryAlpha" draggable="true">DICTIONARY (B/M/E)</button>
+                    <button class="info-button" data-feature="dictionaryAlpha"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="smlLength" draggable="true">LENGTH (S/M/L)</button>
+                    <button class="info-button" data-feature="smlLength"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="theCore" draggable="true">THE CORE</button>
+                    <button class="info-button" data-feature="theCore"><i class="fas fa-info-circle"></i></button>
+                </div>
+            `;
+            const headerBack = document.getElementById('workflowBuilderBackButton');
+            if (headerBack) headerBack.style.display = 'inline-block';
+            initializeFeatureSelection();
+            initializeInfoButtons();
+        };
+        prefiltersButton.addEventListener('click', showPrefiltersFeatures);
+        addModeButtonTouchHandlers(prefiltersButton, showPrefiltersFeatures);
+    }
 }
 
 // Re-initialize feature selection when new content is added
@@ -13795,11 +14125,9 @@ function initSettingsUI() {
     const letterLyingDynamicFields = document.getElementById('letterLyingDynamicFields');
     const letterLyingStringSourceSelect = document.getElementById('letterLyingStringSourceSelect');
     const letterLyingDefaultFields = document.getElementById('letterLyingDefaultFields');
-    const letterLyingUniqueFields = document.getElementById('letterLyingUniqueFields');
     const letterLyingPersonalFields = document.getElementById('letterLyingPersonalFields');
     const letterLyingSavedFields = document.getElementById('letterLyingSavedFields');
-    const letterLyingGenerateUniqueBtn = document.getElementById('letterLyingGenerateUniqueBtn');
-    const letterLyingUniqueDisplay = document.getElementById('letterLyingUniqueDisplay');
+    
     const letterLyingStaticInput = document.getElementById('letterLyingStaticInput');
     const letterLyingDuplicateMsg = document.getElementById('letterLyingDuplicateMsg');
     const letterLyingResetDefaultBtn = document.getElementById('letterLyingResetDefaultBtn');
@@ -13814,11 +14142,6 @@ function initSettingsUI() {
     function getCurrentLetterLyingStringForSave() {
         const source = (appSettings && appSettings.letterLyingStringSource) || 'default';
         if (source === 'default') return DEFAULT_LETTER_LYING_STRING;
-        if (source === 'unique') {
-            let u = (appSettings && appSettings.letterLyingUniqueString) || '';
-            if (u.length !== 8) u = generateLetterLyingUniqueString();
-            return u;
-        }
         if (source === 'personal') return (appSettings && appSettings.letterLyingStaticString) || DEFAULT_LETTER_LYING_STRING;
         if (source === 'saved') {
             const sets = (appSettings && appSettings.letterLyingSavedSets) || [];
@@ -13844,19 +14167,11 @@ function initSettingsUI() {
         const source = (appSettings && appSettings.letterLyingStringSource) || 'default';
         const savedId = appSettings && appSettings.letterLyingSavedId;
         const showDefault = source === 'default';
-        const showUnique = source === 'unique';
         const showPersonal = source === 'personal';
         const showSaved = source === 'saved' && savedId;
         if (letterLyingDefaultFields) letterLyingDefaultFields.style.display = showDefault ? '' : 'none';
-        if (letterLyingUniqueFields) letterLyingUniqueFields.style.display = showUnique ? '' : 'none';
         if (letterLyingPersonalFields) letterLyingPersonalFields.style.display = showPersonal ? '' : 'none';
         if (letterLyingSavedFields) letterLyingSavedFields.style.display = showSaved ? '' : 'none';
-        if (showUnique && letterLyingUniqueDisplay) {
-            let u = (appSettings && appSettings.letterLyingUniqueString) || '';
-            if (u.length !== 8) u = generateLetterLyingUniqueString();
-            if (appSettings) appSettings.letterLyingUniqueString = u;
-            letterLyingUniqueDisplay.textContent = u || '—';
-        }
         if (showPersonal && letterLyingStaticInput) letterLyingStaticInput.value = (appSettings && appSettings.letterLyingStaticString) || DEFAULT_LETTER_LYING_STRING;
         if (showSaved && letterLyingSavedSelectedName) {
             const sets = (appSettings && appSettings.letterLyingSavedSets) || [];
@@ -13896,7 +14211,12 @@ function initSettingsUI() {
         if (letterLyingModeSelect) letterLyingModeSelect.value = mode;
         if (letterLyingStaticFields) letterLyingStaticFields.style.display = mode === 'static' ? '' : 'none';
         if (letterLyingDynamicFields) letterLyingDynamicFields.style.display = mode === 'dynamic' ? '' : 'none';
-        if (letterLyingStepsInput) letterLyingStepsInput.value = Math.max(1, Math.min(26, (appSettings && appSettings.letterLyingDynamicSteps) || 4));
+        if (letterLyingStepsInput) {
+            const v = (appSettings && typeof appSettings.letterLyingStaticMaxSteps === 'number')
+                ? appSettings.letterLyingStaticMaxSteps
+                : 0;
+            letterLyingStepsInput.value = v;
+        }
         if (letterLyingDuplicateMsg) letterLyingDuplicateMsg.style.display = 'none';
         if (mode !== 'static') return;
         const sets = (appSettings && appSettings.letterLyingSavedSets) || [];
@@ -13940,14 +14260,6 @@ function initSettingsUI() {
                 appSettings.letterLyingSavedId = null;
             }
             syncLetterLyingSourcePanels();
-            saveAppSettings();
-        });
-    }
-    if (letterLyingGenerateUniqueBtn) {
-        letterLyingGenerateUniqueBtn.addEventListener('click', () => {
-            const u = generateLetterLyingUniqueString();
-            if (appSettings) appSettings.letterLyingUniqueString = u;
-            if (letterLyingUniqueDisplay) letterLyingUniqueDisplay.textContent = u;
             saveAppSettings();
         });
     }
@@ -14040,10 +14352,9 @@ function initSettingsUI() {
     if (letterLyingStepsInput) {
         letterLyingStepsInput.addEventListener('input', () => {
             const n = parseInt(letterLyingStepsInput.value, 10);
-            if (!isNaN(n) && n >= 1 && n <= 26) {
-                appSettings.letterLyingDynamicSteps = n;
-                saveAppSettings();
-            }
+            const val = !isNaN(n) && n >= 0 && n <= 26 ? n : 0;
+            appSettings.letterLyingStaticMaxSteps = val;
+            saveAppSettings();
         });
     }
 

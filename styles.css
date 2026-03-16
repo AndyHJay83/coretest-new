@@ -2704,14 +2704,16 @@ input:checked + .slider:before {
     .feature-group:has(.t9-mode-button),
     .feature-group:has(.alphanumeric-mode-button),
     .feature-group:has(.chain-reaction-mode-button),
-    .feature-group:has(.binary-mode-button) {
+    .feature-group:has(.binary-mode-button),
+    .feature-group:has(.prefilters-mode-button) {
         width: 100% !important;
     }
     
     .t9-mode-button,
     .alphanumeric-mode-button,
     .chain-reaction-mode-button,
-    .binary-mode-button {
+    .binary-mode-button,
+    .prefilters-mode-button {
         flex: 1 1 auto !important;
         max-width: 100% !important;
     }
@@ -4619,6 +4621,21 @@ input:checked + .slider:before {
     background-color: #e91e63 !important;
     color: white !important;
     border-color: #c2185b !important;
+    font-weight: bold;
+    width: 100% !important;
+    padding: 10px 12px !important;
+    margin: 0 !important;
+    font-size: 14px !important;
+    box-sizing: border-box !important;
+    flex: 1 1 auto !important;
+    max-width: 100% !important;
+}
+
+/* PRE-FILTERS mode button (dark grey) */
+.prefilters-mode-button {
+    background-color: #424242 !important;
+    color: white !important;
+    border-color: #212121 !important;
     font-weight: bold;
     width: 100% !important;
     padding: 10px 12px !important;

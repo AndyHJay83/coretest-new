@@ -138,7 +138,14 @@
       "name": "ATLAS",
       "displayName": "ATLAS",
       "requiresParam": true,
-      "analyzeFunction": "const letters = new Set(['A','B','C','E','G','I','L','N','M','O','P','R','S','T','V','W','Y']); const byCount = {}; for (let n = 0; n <= 6; n++) { byCount[n] = wordlist.filter(w => { const s = w.slice(0,6).toUpperCase(); let c = 0; for (let i = 0; i < s.length; i++) { if (letters.has(s[i])) c++; } return c === n; }); } return [0,1,2,3,4,5,6].map(n => ({ param: n + '', wordsLeft: byCount[n].length, percentFiltered: 100 * (1 - byCount[n].length / totalWords) }));"
+      "analyzeFunction": "return [{ param: 'Requires position string (e.g. 145)', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
+      "id": "theCore",
+      "name": "THE CORE",
+      "displayName": "THE CORE",
+      "requiresParam": false,
+      "analyzeFunction": "return [{ param: 'Multi-part pre-filter combining consonants-together question, short word consonant pairs, and vowel YES/NO passes (YES branch) or non-adjacent consonant pairs (NO branch).', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "letterLying",
@@ -429,22 +436,22 @@
     },
     {
       "id": "dictionaryAlpha",
-      "name": "Dictionary (Alpha)",
-      "displayName": "Dictionary (Alpha)",
+      "name": "DICTIONARY (B/M/E)",
+      "displayName": "DICTIONARY (B/M/E)",
       "requiresParam": false,
       "analyzeFunction": "const begin = wordlist.filter(w => { const first = w[0].toUpperCase().charCodeAt(0); return first >= 65 && first <= 77; }); const mid = wordlist.filter(w => { const first = w[0].toUpperCase().charCodeAt(0); return first >= 73 && first <= 84; }); const end = wordlist.filter(w => { const first = w[0].toUpperCase().charCodeAt(0); return first >= 78 && first <= 90; }); return [{ param: 'Beginning (A-M)', wordsLeft: begin.length, percentFiltered: 100 * (1 - begin.length / totalWords) }, { param: 'Middle (I-T)', wordsLeft: mid.length, percentFiltered: 100 * (1 - mid.length / totalWords) }, { param: 'End (N-Z)', wordsLeft: end.length, percentFiltered: 100 * (1 - end.length / totalWords) }];"
     },
     {
       "id": "alpha",
-      "name": "ALPHA",
-      "displayName": "ALPHA (ORIGIN)",
+      "name": "ALPHA (SHORT)",
+      "displayName": "ALPHA (SHORT)",
       "requiresParam": true,
       "analyzeFunction": "return [{ param: 'Directional filter (Left/Right/Repeat). First letter from Dictionary (Alpha).', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "smlLength",
-      "name": "S/M/L (Length)",
-      "displayName": "S/M/L (Length)",
+      "name": "LENGTH (S/M/L)",
+      "displayName": "LENGTH (S/M/L)",
       "requiresParam": false,
       "analyzeFunction": "const small = wordlist.filter(w => w.length >= 1 && w.length <= 6); const medium = wordlist.filter(w => w.length >= 5 && w.length <= 9); const long = wordlist.filter(w => w.length >= 7); return [{ param: 'Small (1-6)', wordsLeft: small.length, percentFiltered: 100 * (1 - small.length / totalWords) }, { param: 'Medium (5-9)', wordsLeft: medium.length, percentFiltered: 100 * (1 - medium.length / totalWords) }, { param: 'Long (7+)', wordsLeft: long.length, percentFiltered: 100 * (1 - long.length / totalWords) }];"
     },
