@@ -112,12 +112,8 @@
                                 <button class="info-button" data-feature="t9Mode"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
-                                <button class="feature-button chain-reaction-mode-button" id="chainReactionModeButton" draggable="false">CHAIN REACTION</button>
-                                <button class="info-button" data-feature="chainReactionMode"><i class="fas fa-info-circle"></i></button>
-                            </div>
-                            <div class="feature-group">
-                                <button class="feature-button birthday-mode-button" id="birthdayModeButton" draggable="false">BIRTHDAY</button>
-                                <button class="info-button" data-feature="birthdayMode"><i class="fas fa-info-circle"></i></button>
+                                <button class="feature-button birthday-mode-button" data-feature="numerology" draggable="true">NUMEROLOGY</button>
+                                <button class="info-button" data-feature="numerology"><i class="fas fa-info-circle"></i></button>
                             </div>
                             <div class="feature-group">
                                 <button class="feature-button prefilters-mode-button" id="prefiltersModeButton" draggable="false">PRE-FILTERS</button>
@@ -673,50 +669,6 @@
                     </div>
                 </div>
 
-                <!-- 1-CHAIN REACTION feature -->
-                <div id="whatItsNot1Feature" class="feature-section" style="display: none;">
-                    <h2 class="feature-title">1-CHAIN REACTION</h2>
-                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the first position. Enter the possible letters.</p>
-                    <div class="input-group">
-                        <input type="text" id="whatItsNot1Input" placeholder="Enter letters (e.g. GTURE)...">
-                        <button id="whatItsNot1Button">SUBMIT</button>
-                        <button id="whatItsNot1SkipButton" class="skip-button">SKIP</button>
-                    </div>
-                </div>
-
-                <!-- 2-CHAIN REACTION feature -->
-                <div id="whatItsNot2Feature" class="feature-section" style="display: none;">
-                    <h2 class="feature-title">2-CHAIN REACTION</h2>
-                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the second position. Enter the possible letters.</p>
-                    <div class="input-group">
-                        <input type="text" id="whatItsNot2Input" placeholder="Enter letters...">
-                        <button id="whatItsNot2Button">SUBMIT</button>
-                        <button id="whatItsNot2SkipButton" class="skip-button">SKIP</button>
-                    </div>
-                </div>
-
-                <!-- 3-CHAIN REACTION feature -->
-                <div id="whatItsNot3Feature" class="feature-section" style="display: none;">
-                    <h2 class="feature-title">3-CHAIN REACTION</h2>
-                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the third position. Enter the possible letters.</p>
-                    <div class="input-group">
-                        <input type="text" id="whatItsNot3Input" placeholder="Enter letters...">
-                        <button id="whatItsNot3Button">SUBMIT</button>
-                        <button id="whatItsNot3SkipButton" class="skip-button">SKIP</button>
-                    </div>
-                </div>
-
-                <!-- L-CHAIN REACTION feature -->
-                <div id="whatItsNotLFeature" class="feature-section" style="display: none;">
-                    <h2 class="feature-title">L-CHAIN REACTION</h2>
-                    <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the last position. Enter the possible letters.</p>
-                    <div class="input-group">
-                        <input type="text" id="whatItsNotLInput" placeholder="Enter letters...">
-                        <button id="whatItsNotLButton">SUBMIT</button>
-                        <button id="whatItsNotLSkipButton" class="skip-button">SKIP</button>
-                    </div>
-                </div>
-
                 <!-- ABCDE feature -->
                 <div id="abcdeFeature" class="feature-section" style="display: none;">
                     <h2 class="feature-title">ABCDE</h2>
@@ -1176,6 +1128,23 @@
                         </select>
                     </div>
                     <div class="settings-section">
+                        <h3 class="settings-section-title">Lexicon</h3>
+                        <p class="settings-section-subtitle">Lexicon OVERRIDE: when the workflow drops to ≤ N words, show Lexicon next.</p>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="lexiconOverrideToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="settings-toggle-label">Lexicon OVERRIDE</span>
+                        <div id="lexiconOverrideFields" class="decode-position-fields" style="display: none;">
+                            <label for="lexiconOverrideThresholdInput">Threshold (words left):</label>
+                            <input type="number" id="lexiconOverrideThresholdInput" min="1" max="5000" value="50">
+                            <div class="settings-toggle-row" style="margin-top: 10px;">
+                                <label for="lexiconOverrideContinueToggle">Continue workflow</label>
+                                <input type="checkbox" id="lexiconOverrideContinueToggle">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
                         <h3 class="settings-section-title">EYE TEST</h3>
                         <p class="settings-section-subtitle">Default = E</p>
                         <label for="eyeTestFirstLetterInput">First line letter:</label>
@@ -1576,34 +1545,6 @@
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
-        <div id="whatItsNot1Info" class="feature-info-modal">
-            <div class="feature-info-content">
-                <h3>1-CHAIN REACTION</h3>
-                <p><strong>One of these letters is in position 1</strong><br>Enter a string of letters (e.g. GTURE). Exactly one of these is the correct first letter. Only words whose first letter is one of these letters are kept. Words without a first letter are excluded.</p>
-                <button class="close-info-button">&times;</button>
-            </div>
-        </div>
-        <div id="whatItsNot2Info" class="feature-info-modal">
-            <div class="feature-info-content">
-                <h3>2-CHAIN REACTION</h3>
-                <p><strong>One of these letters is in position 2</strong><br>Enter a string of letters. Exactly one of these is the correct second letter. Only words whose second letter is one of these letters are kept. Words shorter than 2 letters are excluded.</p>
-                <button class="close-info-button">&times;</button>
-            </div>
-        </div>
-        <div id="whatItsNot3Info" class="feature-info-modal">
-            <div class="feature-info-content">
-                <h3>3-CHAIN REACTION</h3>
-                <p><strong>One of these letters is in position 3</strong><br>Enter a string of letters. Exactly one of these is the correct third letter. Only words whose third letter is one of these letters are kept. Words shorter than 3 letters are excluded.</p>
-                <button class="close-info-button">&times;</button>
-            </div>
-        </div>
-        <div id="whatItsNotLInfo" class="feature-info-modal">
-            <div class="feature-info-content">
-                <h3>L-CHAIN REACTION</h3>
-                <p><strong>One of these letters is in the last position</strong><br>Enter a string of letters. Exactly one of these is the correct last letter. Only words whose last letter is one of these letters are kept. Empty words are excluded.</p>
-                <button class="close-info-button">&times;</button>
-            </div>
-        </div>
         <div id="abcdeInfo" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>ABCDE</h3>
@@ -1814,10 +1755,10 @@
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
-        <div id="birthdayModeInfo" class="feature-info-modal">
+        <div id="theCoreInfo" class="feature-info-modal">
             <div class="feature-info-content">
-                <h3>BIRTHDAY</h3>
-                <p><strong>Birthday tools category.</strong><br>Opens the BIRTHDAY tools (NUMEROLOGY and CUPS). These filters work with dates and months based on a chosen numerology number or short/long style; their output feeds into the shared BIRTHDAY results box under the active feature.</p>
+                <h3>THE CORE</h3>
+                <p><strong>Consonants + helper word + vowels.</strong><br>First, you ask if there are two consonants together in the thought-of word. If YES, the spectator gives a short helper word; any two of its consonants must appear together somewhere in the word. If NO, they give a helper word whose consonants may all appear in the word, but never together. Finally, you run through the distinct vowels from that helper word one by one, confirming whether each vowel is in the word and, for each vowel, where in the word it lands.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
@@ -1825,13 +1766,6 @@
             <div class="feature-info-content">
                 <h3>NUMEROLOGY</h3>
                 <p><strong>Find months/dates from a numerology number.</strong><br>Enter a numerology number (1–9) and a difference. The filter finds dates in the year whose day/month digits reduce to that number with the given difference and keeps only words whose MONTH matches those dates in the MONTHS_STARSIGNS list (shared BIRTHDAY results update under the feature).</p>
-                <button class="close-info-button">&times;</button>
-            </div>
-        </div>
-        <div id="cupsInfo" class="feature-info-modal">
-            <div class="feature-info-content">
-                <h3>CUPS</h3>
-                <p><strong>Short/Long birthday style filter.</strong><br>Choose SHORT or LONG to apply a pre-built BIRTHDAY routine. SHORT uses a compact set of dates; LONG uses a fuller structure. The filter maps the spectator’s information onto a month and keeps only words whose MONTH matches that outcome (results appear in the shared BIRTHDAY box under the feature).</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
@@ -1865,13 +1799,6 @@
             <div class="feature-info-content">
                 <h3>Alpha-Numeric</h3>
                 <p><strong>Alpha-Numeric Features Category</strong><br>Click this button to view and access Alpha-Numeric filtering features. These features filter words based on relationships between letters and their positions in the alphabet.</p>
-                <button class="close-info-button">&times;</button>
-            </div>
-        </div>
-        <div id="chainReactionModeInfo" class="feature-info-modal">
-            <div class="feature-info-content">
-                <h3>CHAIN REACTION</h3>
-                <p><strong>CHAIN REACTION Features</strong><br>Click this button to view 1-CHAIN REACTION, 2-CHAIN REACTION, 3-CHAIN REACTION, and L-CHAIN REACTION filtering features.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

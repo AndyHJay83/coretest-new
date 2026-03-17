@@ -197,34 +197,6 @@
       "analyzeFunction": \"return [{ param: 'Requires letters input (all must be present)', wordsLeft: wordlist.length, percentFiltered: 0 }];\"
     },
     {
-      "id": "whatItsNot1",
-      "name": "1-CHAIN REACTION",
-      "displayName": "1-CHAIN REACTION",
-      "requiresParam": true,
-      "analyzeFunction": "return [{ param: 'Letters not in position 1', wordsLeft: wordlist.length, percentFiltered: 0 }];"
-    },
-    {
-      "id": "whatItsNot2",
-      "name": "2-CHAIN REACTION",
-      "displayName": "2-CHAIN REACTION",
-      "requiresParam": true,
-      "analyzeFunction": "return [{ param: 'Letters not in position 2', wordsLeft: wordlist.length, percentFiltered: 0 }];"
-    },
-    {
-      "id": "whatItsNot3",
-      "name": "3-CHAIN REACTION",
-      "displayName": "3-CHAIN REACTION",
-      "requiresParam": true,
-      "analyzeFunction": "return [{ param: 'Letters not in position 3', wordsLeft: wordlist.length, percentFiltered: 0 }];"
-    },
-    {
-      "id": "whatItsNotL",
-      "name": "L-CHAIN REACTION",
-      "displayName": "L-CHAIN REACTION",
-      "requiresParam": true,
-      "analyzeFunction": "return [{ param: 'Letters not in last position', wordsLeft: wordlist.length, percentFiltered: 0 }];"
-    },
-    {
       "id": "abcde",
       "name": "ABCDE",
       "displayName": "ABCDE",
@@ -265,13 +237,6 @@
       "displayName": "NUMEROLOGY",
       "requiresParam": true,
       "analyzeFunction": "return [{ param: 'Numerology + difference (dates only)', wordsLeft: wordlist.length, percentFiltered: 0 }];"
-    },
-    {
-      "id": "cups",
-      "name": "CUPS",
-      "displayName": "CUPS",
-      "requiresParam": false,
-      "analyzeFunction": "return [{ param: 'Filter NUMEROLOGY dates (SHORT/LONG)', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "eyeTest",

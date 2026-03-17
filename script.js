@@ -34,7 +34,7 @@ let workflowHasSologram = false;
 // ATLAS Colours: when user enters 0–6, store count so we can show applicable colours at end of workflow (null = not used or skipped)
 let lastAtlasColoursCount = null;
 
-// BIRTHDAY: NUMEROLOGY + CUPS. Store dates from NUMEROLOGY for CUPS to filter by month name length.
+// BIRTHDAY: NUMEROLOGY helper data (dates + month names).
 const BIRTHDAY_MONTH_NAMES = { 1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June', 7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December' };
 let lastNumerologyDates = []; // [{ day, monthNum, monthName }, ...]
 
@@ -177,6 +177,9 @@ const DEFAULT_SETTINGS = {
     decodePositionOn: false,
     decodePosition: 1,
     sologramBook: 'all',
+    lexiconOverrideOn: false,
+    lexiconOverrideThreshold: 50,
+    lexiconOverrideContinueWorkflow: true,
     pianoForteUseCustomRange: false,
     pianoForteStartLetter: 'A',
     pianoForteEndLetter: 'G',
@@ -2033,6 +2036,9 @@ let lastNumberStartSection = null;
 // Function to execute workflow
 async function executeWorkflow(steps) {
     try {
+        const workflowSteps = Array.isArray(steps) ? steps.slice() : [];
+        let lexiconOverrideTriggered = false;
+
         // Get the currently selected wordlist
         const wordlistSelect = document.getElementById('wordlistSelect');
         const selectedWordlist = wordlistSelect.value;
@@ -2082,15 +2088,15 @@ async function executeWorkflow(steps) {
         t9OneLieLastActualLength = 0;
         
         // Check if workflow contains any T9 features
-        workflowHasT9Feature = steps.some(step => step.feature.startsWith('t9'));
+        workflowHasT9Feature = workflowSteps.some(step => step.feature.startsWith('t9'));
         console.log('Workflow has T9 feature:', workflowHasT9Feature);
         // T9 B-IDENTITY definites overlay: only after B-IDENTITY has been submitted
-        workflowHasT9B = steps.some(step => step.feature === 't9B' || step.feature === 't9OneLie');
+        workflowHasT9B = workflowSteps.some(step => step.feature === 't9B' || step.feature === 't9OneLie');
         t9BSubmitted = false;
         userShowT9ByLongPress = false; // Reset tap-to-hold T9 when starting a run
         // SOLOGRAM: clear last Y/N and set flag if this workflow includes SOLOGRAM
         lastSologramYnString = null;
-        workflowHasSologram = steps.some(step => step.feature === 'sologram');
+        workflowHasSologram = workflowSteps.some(step => step.feature === 'sologram');
         // OMEGA: reset state
         omegaSelections = [];
         omegaActiveMapping = {};
@@ -2214,10 +2220,6 @@ async function executeWorkflow(steps) {
             leastFrequentFeature: createLeastFrequentFeature(),
             notInFeature: createNotInFeature(),
             presentFeature: createPresentFeature(),
-            whatItsNot1Feature: createWhatItsNot1Feature(),
-            whatItsNot2Feature: createWhatItsNot2Feature(),
-            whatItsNot3Feature: createWhatItsNot3Feature(),
-            whatItsNotLFeature: createWhatItsNotLFeature(),
             abcde: createAbcdeFeature(),
             abc: createAbcFeature(),
             findEee: createFindEeeFeature(),
@@ -2228,7 +2230,6 @@ async function executeWorkflow(steps) {
             eeeFeature: createEeeFeature(),
             eeeFirstFeature: createEeeFirstFeature(),
             numerologyFeature: createNumerologyFeature(),
-            cupsFeature: createCupsFeature(),
         };
         
         // Add all feature elements to the document body
@@ -2310,9 +2311,9 @@ async function executeWorkflow(steps) {
         let mostFrequentRank = 1;
         
         // Execute each step in sequence
-        for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
-            const step = steps[stepIndex];
-            const previousStepFeature = stepIndex > 0 ? steps[stepIndex - 1].feature : null;
+        for (let stepIndex = 0; stepIndex < workflowSteps.length; stepIndex++) {
+            const step = workflowSteps[stepIndex];
+            const previousStepFeature = stepIndex > 0 ? workflowSteps[stepIndex - 1].feature : null;
             console.log('Executing step:', step);
             
             let featureId = step.feature + 'Feature';
@@ -2349,18 +2350,6 @@ async function executeWorkflow(steps) {
                     break;
                 case 'consonants':
                     featureElement = createConsonantsFeature();
-                    break;
-                case 'whatItsNot1':
-                    featureElement = createWhatItsNot1Feature();
-                    break;
-                case 'whatItsNot2':
-                    featureElement = createWhatItsNot2Feature();
-                    break;
-                case 'whatItsNot3':
-                    featureElement = createWhatItsNot3Feature();
-                    break;
-                case 'whatItsNotL':
-                    featureElement = createWhatItsNotLFeature();
                     break;
                 case 'position1':
                     featureElement = createPosition1Feature();
@@ -2421,9 +2410,6 @@ async function executeWorkflow(steps) {
                     break;
                 case 'numerology':
                     featureElement = createNumerologyFeature();
-                    break;
-                case 'cups':
-                    featureElement = createCupsFeature();
                     break;
                 case 'letterLying':
                     featureElement = createLetterLyingFeature();
@@ -2547,11 +2533,11 @@ async function executeWorkflow(steps) {
                 continue;
             }
             console.log('Created feature element for:', step.feature, featureElement);
-            // Clear feature area; show active feature first, then BIRTHDAY results container underneath for numerology/cups
+            // Clear feature area; show active feature first, then shared BIRTHDAY results container underneath for numerology
             let birthdayResultsElStep = document.getElementById('birthdayResults');
             featureArea.innerHTML = '';
             featureArea.appendChild(featureElement);
-            const isBirthdayStep = (step.feature === 'numerology' || step.feature === 'cups');
+            const isBirthdayStep = (step.feature === 'numerology');
             if (isBirthdayStep) {
                 if (!birthdayResultsElStep) {
                     birthdayResultsElStep = document.createElement('div');
@@ -2592,7 +2578,7 @@ async function executeWorkflow(steps) {
                 setupFeatureListeners(step.feature, (filteredWords) => {
                     currentFilteredWords = filteredWords;
                     displayResults(currentFilteredWords);
-                }, { previousStepFeature, steps, stepIndex });
+                }, { previousStepFeature, steps: workflowSteps, stepIndex });
             }, 0);
             
             // Wait for user interaction
@@ -2606,6 +2592,26 @@ async function executeWorkflow(steps) {
                     if (step.feature === 'mostFrequent' && mostFrequentLetter) {
                         usedLettersInWorkflow.push(mostFrequentLetter);
                         mostFrequentRank++;
+                    }
+
+                    // Lexicon OVERRIDE: insert Original Lex once per workflow when words drop to threshold or below
+                    const overrideOn = !!(appSettings && appSettings.lexiconOverrideOn);
+                    const continueWorkflow = !!(appSettings && appSettings.lexiconOverrideContinueWorkflow);
+                    const thresholdRaw = (appSettings && appSettings.lexiconOverrideThreshold);
+                    const threshold = Math.max(1, Math.min(5000, parseInt(thresholdRaw != null ? thresholdRaw : 50, 10) || 50));
+                    const shouldOverride = overrideOn
+                        && !lexiconOverrideTriggered
+                        && step.feature !== 'originalLex'
+                        && Array.isArray(currentFilteredWords)
+                        && currentFilteredWords.length <= threshold
+                        && !(workflowSteps[stepIndex + 1] && workflowSteps[stepIndex + 1].feature === 'originalLex');
+                    if (shouldOverride) {
+                        lexiconOverrideTriggered = true;
+                        workflowSteps.splice(stepIndex + 1, 0, { feature: 'originalLex' });
+                        if (!continueWorkflow) {
+                            // Original Lex becomes the final step of this performance
+                            workflowSteps.length = stepIndex + 2;
+                        }
                     }
                     
                     resolve();
@@ -3076,9 +3082,19 @@ function createTheCoreFeature() {
             <div style="text-align: center; margin-bottom: 6px;">
                 <span id="theCoreVowelLetter" style="font-size: 20px; font-weight: bold;">-</span>
             </div>
-            <div class="button-container">
+            <div class="button-container" id="theCoreVowelYesNo">
                 <button id="theCoreVowelYesBtn" class="yes-btn">YES</button>
                 <button id="theCoreVowelNoBtn" class="no-btn">NO</button>
+            </div>
+            <div id="theCoreVowelPosSection" style="display: none; margin-top: 12px;">
+                <p style="text-align: center; margin: 4px 0; font-size: 14px; color: #666;">
+                    Where is the letter <span id="theCoreVowelPosLetter" style="font-weight: bold;">-</span> in their word?
+                </p>
+                <div class="button-container">
+                    <button type="button" class="section-btn" data-section="begin">Beginning</button>
+                    <button type="button" class="section-btn" data-section="mid">Middle</button>
+                    <button type="button" class="section-btn" data-section="end">End</button>
+                </div>
             </div>
         </div>
     `;
@@ -3700,75 +3716,7 @@ function createConsonantsFeature() {
     return div;
 }
 
-// --- 1-CHAIN REACTION Feature Logic (one of these letters IS in position 1) ---
-function createWhatItsNot1Feature() {
-    const div = document.createElement('div');
-    div.id = 'whatItsNot1Feature';
-    div.className = 'feature-section';
-    div.innerHTML = `
-        <h2 class="feature-title">1-CHAIN REACTION</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the first position. Enter the possible letters.</p>
-        <div class="input-group">
-            <input type="text" id="whatItsNot1Input" placeholder="Enter letters (e.g. GTURE)...">
-            <button id="whatItsNot1Button">SUBMIT</button>
-            <button id="whatItsNot1SkipButton" class="skip-button">SKIP</button>
-        </div>
-    `;
-    return div;
-}
-
-// --- 2-CHAIN REACTION (one of these letters IS in position 2) ---
-function createWhatItsNot2Feature() {
-    const div = document.createElement('div');
-    div.id = 'whatItsNot2Feature';
-    div.className = 'feature-section';
-    div.innerHTML = `
-        <h2 class="feature-title">2-CHAIN REACTION</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the second position. Enter the possible letters.</p>
-        <div class="input-group">
-            <input type="text" id="whatItsNot2Input" placeholder="Enter letters...">
-            <button id="whatItsNot2Button">SUBMIT</button>
-            <button id="whatItsNot2SkipButton" class="skip-button">SKIP</button>
-        </div>
-    `;
-    return div;
-}
-
-// --- 3-CHAIN REACTION (one of these letters IS in position 3) ---
-function createWhatItsNot3Feature() {
-    const div = document.createElement('div');
-    div.id = 'whatItsNot3Feature';
-    div.className = 'feature-section';
-    div.innerHTML = `
-        <h2 class="feature-title">3-CHAIN REACTION</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the third position. Enter the possible letters.</p>
-        <div class="input-group">
-            <input type="text" id="whatItsNot3Input" placeholder="Enter letters...">
-            <button id="whatItsNot3Button">SUBMIT</button>
-            <button id="whatItsNot3SkipButton" class="skip-button">SKIP</button>
-        </div>
-    `;
-    return div;
-}
-
-// --- L-CHAIN REACTION (one of these letters IS in last position) ---
-function createWhatItsNotLFeature() {
-    const div = document.createElement('div');
-    div.id = 'whatItsNotLFeature';
-    div.className = 'feature-section';
-    div.innerHTML = `
-        <h2 class="feature-title">L-CHAIN REACTION</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">One of these letters is in the last position. Enter the possible letters.</p>
-        <div class="input-group">
-            <input type="text" id="whatItsNotLInput" placeholder="Enter letters...">
-            <button id="whatItsNotLButton">SUBMIT</button>
-            <button id="whatItsNotLSkipButton" class="skip-button">SKIP</button>
-        </div>
-    `;
-    return div;
-}
-
-// --- BIRTHDAY: NUMEROLOGY (date from numerology number + difference) ---
+// --- NUMEROLOGY (date from numerology number + difference) ---
 function createNumerologyFeature() {
     const div = document.createElement('div');
     div.id = 'numerologyFeature';
@@ -3805,24 +3753,6 @@ function createNumerologyFeature() {
             </div>
         </div>
         <div id="numerologyMessage" class="position-cons-message" style="margin-top: 8px;"></div>
-    `;
-    return div;
-}
-
-// --- BIRTHDAY: CUPS (SHORT = months 1–6 letters, LONG = 6+ letters) ---
-function createCupsFeature() {
-    const div = document.createElement('div');
-    div.id = 'cupsFeature';
-    div.className = 'feature-section';
-    div.innerHTML = `
-        <h2 class="feature-title">CUPS</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Filter NUMEROLOGY dates by month name length.</p>
-        <div class="button-container" style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
-            <button id="cupsShortButton" class="primary-btn">SHORT</button>
-            <button id="cupsLongButton" class="primary-btn">LONG</button>
-            <button id="cupsSkipButton" class="skip-button">SKIP</button>
-        </div>
-        <p style="text-align: center; margin: 8px 0; font-size: 12px; color: #888;">SHORT: 1–6 letters. LONG: 6+ letters.</p>
     `;
     return div;
 }
@@ -6583,72 +6513,6 @@ function setupFeatureListeners(feature, callback, options) {
             }
             break;
         }
-
-        case 'cups': {
-            const shortBtn = document.getElementById('cupsShortButton');
-            const longBtn = document.getElementById('cupsLongButton');
-            const skipBtn = document.getElementById('cupsSkipButton');
-
-            const applyFilter = (mode) => {
-                if (!Array.isArray(lastNumerologyDates) || lastNumerologyDates.length === 0) {
-                    alert('Run NUMEROLOGY first to generate dates.');
-                    return;
-                }
-                let filtered = lastNumerologyDates;
-                if (mode === 'short') {
-                    filtered = lastNumerologyDates.filter(d => (d.monthName || '').length > 0 && (d.monthName || '').length <= 6);
-                } else if (mode === 'long') {
-                    filtered = lastNumerologyDates.filter(d => (d.monthName || '').length >= 6);
-                }
-                const birthdayResultsEl = document.getElementById('birthdayResults');
-                const msg = filtered.length
-                    ? filtered.map(d => `${d.day} ${d.monthName}`).join(', ')
-                    : 'No dates match this CUPS filter.';
-                if (birthdayResultsEl) {
-                    const html = filtered.length
-                        ? filtered.map(d => {
-                            const sign = getBirthdayStarSign(d.day, d.monthNum);
-                            const dateText = `${d.day} ${d.monthName}`;
-                            const signText = sign || '';
-                            return `
-<div class="birthday-date-line">${dateText}</div>
-<div class="birthday-sign-line">${signText}</div>
-<div class="birthday-separator">&nbsp;</div>`;
-                        }).join('').trim()
-                        : 'No dates match this CUPS filter.';
-                    birthdayResultsEl.innerHTML = html;
-                } else {
-                    alert(msg);
-                }
-                callback(currentFilteredWords);
-                const featureDiv = document.getElementById('cupsFeature');
-                if (featureDiv) {
-                    featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
-                }
-            };
-
-            if (shortBtn) {
-                shortBtn.onclick = () => applyFilter('short');
-                shortBtn.addEventListener('touchstart', (e) => { e.preventDefault(); shortBtn.click(); }, { passive: false });
-            }
-            if (longBtn) {
-                longBtn.onclick = () => applyFilter('long');
-                longBtn.addEventListener('touchstart', (e) => { e.preventDefault(); longBtn.click(); }, { passive: false });
-            }
-            if (skipBtn) {
-                skipBtn.onclick = () => {
-                    callback(currentFilteredWords);
-                    const featureDiv = document.getElementById('cupsFeature');
-                    if (featureDiv) {
-                        featureDiv.classList.add('completed');
-                        featureDiv.dispatchEvent(new Event('completed'));
-                    }
-                };
-                skipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); skipBtn.click(); }, { passive: false });
-            }
-            break;
-        }
             
         case 'lexicon': {
             const lexiconButton = document.getElementById('lexiconButton');
@@ -6780,12 +6644,20 @@ function setupFeatureListeners(feature, callback, options) {
             const vowelYesBtn = document.getElementById('theCoreVowelYesBtn');
             const vowelNoBtn = document.getElementById('theCoreVowelNoBtn');
 
+            const vowelPosSection = document.getElementById('theCoreVowelPosSection');
+            const vowelPosSectionBtns = vowelPosSection
+                ? Array.from(vowelPosSection.querySelectorAll('.section-btn'))
+                : [];
+            const vowelPresenceButtons = document.getElementById('theCoreVowelYesNo');
+            const vowelPosLetterSpan = document.getElementById('theCoreVowelPosLetter');
+
             const consMidInput = document.getElementById('theCoreConsMidInput');
             const consMidSubmitBtn = document.getElementById('theCoreConsMidSubmitBtn');
 
             let workingWords = [...currentFilteredWords];
             let coreVowels = [];
             let coreVowelIndex = 0;
+            let coreVowelStage = 'presence'; // 'presence' or 'position'
 
             function completeCore(finalWords) {
                 callback(finalWords);
@@ -6854,31 +6726,89 @@ function setupFeatureListeners(feature, callback, options) {
                     }
                 }
                 coreVowelIndex = 0;
+                coreVowelStage = 'presence';
                 if (!coreVowels.length) {
                     completeCore(workingWords);
                     return;
                 }
+                // Move to Part 3 screen (hide Part 2 branches)
+                if (yesBranch) yesBranch.style.display = 'none';
+                if (noBranch) noBranch.style.display = 'none';
                 if (vowelSection) vowelSection.style.display = '';
+                if (vowelPresenceButtons) vowelPresenceButtons.style.display = '';
+                if (vowelPosSection) vowelPosSection.style.display = 'none';
                 if (vowelLetterSpan) vowelLetterSpan.textContent = coreVowels[0];
+                if (vowelPosLetterSpan) vowelPosLetterSpan.textContent = coreVowels[0];
+            }
+
+            // Helper for vowel position sections (Beginning / Middle / End), adapted from VOWEL POS
+            function getCoreSectionPositions(wordLength) {
+                const beginEnd = Math.ceil(wordLength / 2);
+                
+                let midStart, midEnd;
+                if (wordLength <= 5) {
+                    midStart = 2;
+                    midEnd = wordLength - 1;
+                } else if (wordLength <= 8) {
+                    midStart = 2;
+                    midEnd = wordLength - 1;
+                } else if (wordLength <= 12) {
+                    midStart = 4;
+                    midEnd = wordLength - 1;
+                } else {
+                    midStart = 4;
+                    midEnd = wordLength - 1;
+                }
+                
+                return {
+                    begin: [0, beginEnd],
+                    mid: [midStart - 1, midEnd],
+                    end: [beginEnd, wordLength]
+                };
+            }
+
+            function filterWordsByCoreVowelSection(words, vowel, section) {
+                return words.filter(word => {
+                    const wordLower = (word || '').toString().toLowerCase();
+                    const sections = getCoreSectionPositions(wordLower.length);
+                    const [start, end] = sections[section] || [];
+                    if (start == null || end == null) return false;
+                    const sectionText = wordLower.slice(start, end);
+                    return sectionText.includes((vowel || '').toString().toLowerCase());
+                });
             }
 
             function advanceVowel(include) {
                 const current = coreVowels[coreVowelIndex];
-                if (current) {
+                if (!current) {
+                    completeCore(workingWords);
+                    return;
+                }
+
+                if (coreVowelStage === 'presence') {
                     const lower = current.toLowerCase();
                     if (include) {
+                        // VOWEL = YES: keep words containing this vowel, then move to VOWEL POS
                         workingWords = workingWords.filter(w => (w || '').toString().toLowerCase().includes(lower));
+                        callback(workingWords);
+                        coreVowelStage = 'position';
+                        if (vowelPresenceButtons) vowelPresenceButtons.style.display = 'none';
+                        if (vowelPosSection) vowelPosSection.style.display = '';
+                        if (vowelPosLetterSpan) vowelPosLetterSpan.textContent = current;
                     } else {
+                        // VOWEL = NO: exclude words containing this vowel, then go straight to next vowel
                         workingWords = workingWords.filter(w => !(w || '').toString().toLowerCase().includes(lower));
+                        callback(workingWords);
+                        coreVowelIndex++;
+                        coreVowelStage = 'presence';
+                        if (vowelPosSection) vowelPosSection.style.display = 'none';
+                        if (coreVowelIndex >= coreVowels.length || workingWords.length === 0) {
+                            completeCore(workingWords);
+                        } else if (vowelLetterSpan) {
+                            vowelLetterSpan.textContent = coreVowels[coreVowelIndex];
+                            if (vowelPosLetterSpan) vowelPosLetterSpan.textContent = coreVowels[coreVowelIndex];
+                        }
                     }
-                }
-                // Update main workflow results after each vowel answer
-                callback(workingWords);
-                coreVowelIndex++;
-                if (coreVowelIndex >= coreVowels.length || workingWords.length === 0) {
-                    completeCore(workingWords);
-                } else if (vowelLetterSpan) {
-                    vowelLetterSpan.textContent = coreVowels[coreVowelIndex];
                 }
             }
 
@@ -6924,6 +6854,38 @@ function setupFeatureListeners(feature, callback, options) {
             if (vowelNoBtn) {
                 vowelNoBtn.onclick = () => advanceVowel(false);
                 vowelNoBtn.addEventListener('touchstart', (e) => { e.preventDefault(); vowelNoBtn.click(); }, { passive: false });
+            }
+
+            if (vowelPosSectionBtns && vowelPosSectionBtns.length > 0) {
+                vowelPosSectionBtns.forEach(btn => {
+                    btn.onclick = () => {
+                        const current = coreVowels[coreVowelIndex];
+                        if (!current) {
+                            completeCore(workingWords);
+                            return;
+                        }
+                        const section = btn.dataset.section;
+                        workingWords = filterWordsByCoreVowelSection(workingWords, current, section);
+                        callback(workingWords);
+
+                        // Advance to next vowel
+                        coreVowelIndex++;
+                        coreVowelStage = 'presence';
+                        if (vowelPosSection) vowelPosSection.style.display = 'none';
+                        if (vowelPresenceButtons) vowelPresenceButtons.style.display = '';
+
+                        if (coreVowelIndex >= coreVowels.length || workingWords.length === 0) {
+                            completeCore(workingWords);
+                        } else if (vowelLetterSpan) {
+                            vowelLetterSpan.textContent = coreVowels[coreVowelIndex];
+                            if (vowelPosLetterSpan) vowelPosLetterSpan.textContent = coreVowels[coreVowelIndex];
+                        }
+                    };
+                    btn.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        btn.click();
+                    }, { passive: false });
+                });
             }
 
             if (consMidSubmitBtn && consMidInput) {
@@ -7354,7 +7316,9 @@ function setupFeatureListeners(feature, callback, options) {
             const originalLexInput = document.getElementById('originalLexInput');
             
             // Find position with most variance and update display
-            const { position, letters } = findPositionWithMostVariance(currentFilteredWords);
+            // ORIGINAL-LEX: Always ignore Position 1 (index 0) when picking the most efficient position.
+            // This avoids suggesting Position 1 even if ADV-LEX's setting is OFF.
+            const { position, letters } = findPositionWithMostVariance(currentFilteredWords, true);
             originalLexPosition = position;
             
             // Update position display
@@ -7371,9 +7335,10 @@ function setupFeatureListeners(feature, callback, options) {
             
             if (originalLexButton) {
                 originalLexButton.onclick = () => {
-                    const input = originalLexInput?.value.trim();
-                    if (input) {
-                        const filteredWords = filterWordsByOriginalLex(currentFilteredWords, originalLexPosition, input);
+                    const raw = (originalLexInput?.value ?? '').trim();
+                    const letter = raw.length > 0 ? raw[0] : '';
+                    if (letter) {
+                        const filteredWords = filterWordsByOriginalLex(currentFilteredWords, originalLexPosition, letter);
                         callback(filteredWords);
                         document.getElementById('originalLexFeature').dispatchEvent(new Event('completed'));
                     } else {
@@ -8509,142 +8474,6 @@ function setupFeatureListeners(feature, callback, options) {
 
         case 'calculus': {
             startCalculus(callback);
-            break;
-        }
-
-        case 'whatItsNot1': {
-            const whatItsNot1Button = document.getElementById('whatItsNot1Button');
-            const whatItsNot1SkipButton = document.getElementById('whatItsNot1SkipButton');
-            const whatItsNot1Input = document.getElementById('whatItsNot1Input');
-
-            if (whatItsNot1Button && whatItsNot1Input && whatItsNot1SkipButton) {
-                const newWhatItsNot1Button = whatItsNot1Button.cloneNode(true);
-                const newWhatItsNot1SkipButton = whatItsNot1SkipButton.cloneNode(true);
-                const newWhatItsNot1Input = whatItsNot1Input.cloneNode(true);
-
-                whatItsNot1Button.parentNode.replaceChild(newWhatItsNot1Button, whatItsNot1Button);
-                whatItsNot1SkipButton.parentNode.replaceChild(newWhatItsNot1SkipButton, whatItsNot1SkipButton);
-                whatItsNot1Input.parentNode.replaceChild(newWhatItsNot1Input, whatItsNot1Input);
-
-                newWhatItsNot1Button.addEventListener('click', () => {
-                    const letters = newWhatItsNot1Input.value;
-                    const filtered = filterWordsByNotInPosition1(currentFilteredWords, letters);
-                    currentFilteredWords = filtered;
-                    displayResults(currentFilteredWords);
-                    callback(currentFilteredWords);
-                    document.getElementById('whatItsNot1Feature').classList.add('completed');
-                    document.getElementById('whatItsNot1Feature').dispatchEvent(new Event('completed'));
-                });
-
-                newWhatItsNot1SkipButton.addEventListener('click', () => {
-                    callback(currentFilteredWords);
-                    document.getElementById('whatItsNot1Feature').classList.add('completed');
-                    document.getElementById('whatItsNot1Feature').dispatchEvent(new Event('completed'));
-                });
-
-                newWhatItsNot1Input.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        newWhatItsNot1Button.click();
-                    }
-                });
-
-                newWhatItsNot1Button.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    newWhatItsNot1Button.click();
-                }, { passive: false });
-
-                newWhatItsNot1SkipButton.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    newWhatItsNot1SkipButton.click();
-                }, { passive: false });
-            }
-            break;
-        }
-
-        case 'whatItsNot2': {
-            const btn = document.getElementById('whatItsNot2Button');
-            const skipBtn = document.getElementById('whatItsNot2SkipButton');
-            const input = document.getElementById('whatItsNot2Input');
-            if (btn && input && skipBtn) {
-                const newBtn = btn.cloneNode(true), newSkip = skipBtn.cloneNode(true), newInput = input.cloneNode(true);
-                btn.parentNode.replaceChild(newBtn, btn);
-                skipBtn.parentNode.replaceChild(newSkip, skipBtn);
-                input.parentNode.replaceChild(newInput, input);
-                newBtn.addEventListener('click', () => {
-                    const filtered = filterWordsByNotInPosition(currentFilteredWords, newInput.value, 2);
-                    currentFilteredWords = filtered;
-                    displayResults(currentFilteredWords);
-                    callback(currentFilteredWords);
-                    document.getElementById('whatItsNot2Feature').classList.add('completed');
-                    document.getElementById('whatItsNot2Feature').dispatchEvent(new Event('completed'));
-                });
-                newSkip.addEventListener('click', () => {
-                    callback(currentFilteredWords);
-                    document.getElementById('whatItsNot2Feature').classList.add('completed');
-                    document.getElementById('whatItsNot2Feature').dispatchEvent(new Event('completed'));
-                });
-                newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') newBtn.click(); });
-                newBtn.addEventListener('touchstart', (e) => { e.preventDefault(); newBtn.click(); }, { passive: false });
-                newSkip.addEventListener('touchstart', (e) => { e.preventDefault(); newSkip.click(); }, { passive: false });
-            }
-            break;
-        }
-
-        case 'whatItsNot3': {
-            const btn = document.getElementById('whatItsNot3Button');
-            const skipBtn = document.getElementById('whatItsNot3SkipButton');
-            const input = document.getElementById('whatItsNot3Input');
-            if (btn && input && skipBtn) {
-                const newBtn = btn.cloneNode(true), newSkip = skipBtn.cloneNode(true), newInput = input.cloneNode(true);
-                btn.parentNode.replaceChild(newBtn, btn);
-                skipBtn.parentNode.replaceChild(newSkip, skipBtn);
-                input.parentNode.replaceChild(newInput, input);
-                newBtn.addEventListener('click', () => {
-                    const filtered = filterWordsByNotInPosition(currentFilteredWords, newInput.value, 3);
-                    currentFilteredWords = filtered;
-                    displayResults(currentFilteredWords);
-                    callback(currentFilteredWords);
-                    document.getElementById('whatItsNot3Feature').classList.add('completed');
-                    document.getElementById('whatItsNot3Feature').dispatchEvent(new Event('completed'));
-                });
-                newSkip.addEventListener('click', () => {
-                    callback(currentFilteredWords);
-                    document.getElementById('whatItsNot3Feature').classList.add('completed');
-                    document.getElementById('whatItsNot3Feature').dispatchEvent(new Event('completed'));
-                });
-                newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') newBtn.click(); });
-                newBtn.addEventListener('touchstart', (e) => { e.preventDefault(); newBtn.click(); }, { passive: false });
-                newSkip.addEventListener('touchstart', (e) => { e.preventDefault(); newSkip.click(); }, { passive: false });
-            }
-            break;
-        }
-
-        case 'whatItsNotL': {
-            const btn = document.getElementById('whatItsNotLButton');
-            const skipBtn = document.getElementById('whatItsNotLSkipButton');
-            const input = document.getElementById('whatItsNotLInput');
-            if (btn && input && skipBtn) {
-                const newBtn = btn.cloneNode(true), newSkip = skipBtn.cloneNode(true), newInput = input.cloneNode(true);
-                btn.parentNode.replaceChild(newBtn, btn);
-                skipBtn.parentNode.replaceChild(newSkip, skipBtn);
-                input.parentNode.replaceChild(newInput, input);
-                newBtn.addEventListener('click', () => {
-                    const filtered = filterWordsByNotInPosition(currentFilteredWords, newInput.value, 'L');
-                    currentFilteredWords = filtered;
-                    displayResults(currentFilteredWords);
-                    callback(currentFilteredWords);
-                    document.getElementById('whatItsNotLFeature').classList.add('completed');
-                    document.getElementById('whatItsNotLFeature').dispatchEvent(new Event('completed'));
-                });
-                newSkip.addEventListener('click', () => {
-                    callback(currentFilteredWords);
-                    document.getElementById('whatItsNotLFeature').classList.add('completed');
-                    document.getElementById('whatItsNotLFeature').dispatchEvent(new Event('completed'));
-                });
-                newInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') newBtn.click(); });
-                newBtn.addEventListener('touchstart', (e) => { e.preventDefault(); newBtn.click(); }, { passive: false });
-                newSkip.addEventListener('touchstart', (e) => { e.preventDefault(); newSkip.click(); }, { passive: false });
-            }
             break;
         }
 
@@ -11664,10 +11493,6 @@ function showNextFeature() {
         'mostFrequentFeature',
         'leastFrequentFeature',
         'notInFeature',
-        'whatItsNot1Feature',
-        'whatItsNot2Feature',
-        'whatItsNot3Feature',
-        'whatItsNotLFeature',
         'abcdeFeature',
         'abcFeature',
     ];
@@ -11710,18 +11535,6 @@ function showNextFeature() {
     }
     else if (!document.getElementById('notInFeature').classList.contains('completed')) {
         document.getElementById('notInFeature').style.display = 'block';
-    }
-    else if (!document.getElementById('whatItsNot1Feature').classList.contains('completed')) {
-        document.getElementById('whatItsNot1Feature').style.display = 'block';
-    }
-    else if (!document.getElementById('whatItsNot2Feature').classList.contains('completed')) {
-        document.getElementById('whatItsNot2Feature').style.display = 'block';
-    }
-    else if (!document.getElementById('whatItsNot3Feature').classList.contains('completed')) {
-        document.getElementById('whatItsNot3Feature').style.display = 'block';
-    }
-    else if (!document.getElementById('whatItsNotLFeature').classList.contains('completed')) {
-        document.getElementById('whatItsNotLFeature').style.display = 'block';
     }
     else if (!document.getElementById('abcdeFeature').classList.contains('completed')) {
         document.getElementById('abcdeFeature').style.display = 'block';
@@ -11778,10 +11591,6 @@ function resetApp() {
         'mostFrequentFeature',
         'leastFrequentFeature',
         'notInFeature',
-        'whatItsNot1Feature',
-        'whatItsNot2Feature',
-        'whatItsNot3Feature',
-        'whatItsNotLFeature',
         'abcdeFeature',
         'abcFeature',
     ];
@@ -11801,10 +11610,6 @@ function resetApp() {
     const loveLettersInputEl = document.getElementById('loveLettersInput');
     if (loveLettersInputEl) loveLettersInputEl.value = '';
     document.getElementById('notInInput').value = '';
-    document.getElementById('whatItsNot1Input').value = '';
-    document.getElementById('whatItsNot2Input').value = '';
-    document.getElementById('whatItsNot3Input').value = '';
-    document.getElementById('whatItsNotLInput').value = '';
     const atlasInputEl = document.getElementById('atlasInput');
     if (atlasInputEl) atlasInputEl.value = '';
     
@@ -12983,7 +12788,7 @@ function showT9Features() {
         </div>
     `;
     
-    // Show BACK under HOME (same as CHAIN REACTION and BIRTHDAY)
+    // Show BACK under HOME (same as BIRTHDAY)
     const headerBack = document.getElementById('workflowBuilderBackButton');
     if (headerBack) headerBack.style.display = 'inline-block';
     
@@ -13022,58 +12827,6 @@ function showNormalFeatures() {
     initializeInfoButtons();
 }
 
-function showChainReactionFeatures() {
-    const availableFeatures = document.getElementById('availableFeatures');
-    const normalFeatures = availableFeatures.innerHTML;
-    if (!availableFeatures.dataset.normalFeatures) {
-        availableFeatures.dataset.normalFeatures = normalFeatures;
-    }
-    availableFeatures.innerHTML = `
-        <div class="feature-group">
-            <button class="feature-button" data-feature="whatItsNot1" draggable="true">1-CHAIN REACTION</button>
-            <button class="info-button" data-feature="whatItsNot1"><i class="fas fa-info-circle"></i></button>
-        </div>
-        <div class="feature-group">
-            <button class="feature-button" data-feature="whatItsNot2" draggable="true">2-CHAIN REACTION</button>
-            <button class="info-button" data-feature="whatItsNot2"><i class="fas fa-info-circle"></i></button>
-        </div>
-        <div class="feature-group">
-            <button class="feature-button" data-feature="whatItsNot3" draggable="true">3-CHAIN REACTION</button>
-            <button class="info-button" data-feature="whatItsNot3"><i class="fas fa-info-circle"></i></button>
-        </div>
-        <div class="feature-group">
-            <button class="feature-button" data-feature="whatItsNotL" draggable="true">L-CHAIN REACTION</button>
-            <button class="info-button" data-feature="whatItsNotL"><i class="fas fa-info-circle"></i></button>
-        </div>
-    `;
-    const headerBack = document.getElementById('workflowBuilderBackButton');
-    if (headerBack) headerBack.style.display = 'inline-block';
-    initializeFeatureSelection();
-    initializeInfoButtons();
-}
-
-function showBirthdayFeatures() {
-    const availableFeatures = document.getElementById('availableFeatures');
-    if (!availableFeatures) return;
-    const normalFeatures = availableFeatures.innerHTML;
-    if (!availableFeatures.dataset.normalFeatures) {
-        availableFeatures.dataset.normalFeatures = normalFeatures;
-    }
-    availableFeatures.innerHTML = `
-        <div class="feature-group">
-            <button class="feature-button" data-feature="numerology" draggable="true">NUMEROLOGY</button>
-            <button class="info-button" data-feature="numerology"><i class="fas fa-info-circle"></i></button>
-        </div>
-        <div class="feature-group">
-            <button class="feature-button" data-feature="cups" draggable="true">CUPS</button>
-            <button class="info-button" data-feature="cups"><i class="fas fa-info-circle"></i></button>
-        </div>
-    `;
-    const headerBack = document.getElementById('workflowBuilderBackButton');
-    if (headerBack) headerBack.style.display = 'inline-block';
-    initializeFeatureSelection();
-    initializeInfoButtons();
-}
 function showAlphaNumericFeatures() {
     isAlphaNumericMode = true;
     const availableFeatures = document.getElementById('availableFeatures');
@@ -13135,7 +12888,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeModeButtons();
 });
 
-// Initialize mode folder buttons (PIN-NACLE, CHAIN REACTION, Alpha-Numeric)
+// Initialize mode folder buttons (PIN-NACLE, Alpha-Numeric)
 // Must be called after initializeFeatureSelection when content is restored (e.g. after BACK)
 // Uses touch move threshold so scrolling doesn't trigger selection
 function initializeModeButtons() {
@@ -13178,32 +12931,6 @@ function initializeModeButtons() {
     if (alphanumericButton) {
         alphanumericButton.addEventListener('click', showAlphaNumericFeatures);
         addModeButtonTouchHandlers(alphanumericButton, showAlphaNumericFeatures);
-    }
-    const chainReactionButton = document.getElementById('chainReactionModeButton');
-    if (chainReactionButton) {
-        chainReactionButton.addEventListener('click', () => {
-            showChainReactionFeatures();
-            const headerBack = document.getElementById('workflowBuilderBackButton');
-            if (headerBack) headerBack.style.display = 'inline-block';
-        });
-        addModeButtonTouchHandlers(chainReactionButton, () => {
-            showChainReactionFeatures();
-            const headerBack = document.getElementById('workflowBuilderBackButton');
-            if (headerBack) headerBack.style.display = 'inline-block';
-        });
-    }
-    const birthdayButton = document.getElementById('birthdayModeButton');
-    if (birthdayButton) {
-        birthdayButton.addEventListener('click', () => {
-            showBirthdayFeatures();
-            const headerBack = document.getElementById('workflowBuilderBackButton');
-            if (headerBack) headerBack.style.display = 'inline-block';
-        });
-        addModeButtonTouchHandlers(birthdayButton, () => {
-            showBirthdayFeatures();
-            const headerBack = document.getElementById('workflowBuilderBackButton');
-            if (headerBack) headerBack.style.display = 'inline-block';
-        });
     }
 
     const binaryButton = document.getElementById('binaryModeButton');
@@ -13848,6 +13575,42 @@ function initSettingsUI() {
         calculusModeSelect.value = (mode === 'curvesStraight' ? 'curvesStraight' : 'abstract');
         calculusModeSelect.addEventListener('change', () => {
             appSettings.calculusMode = calculusModeSelect.value;
+            saveAppSettings();
+        });
+    }
+
+    const lexiconOverrideToggle = document.getElementById('lexiconOverrideToggle');
+    const lexiconOverrideFields = document.getElementById('lexiconOverrideFields');
+    const lexiconOverrideThresholdInput = document.getElementById('lexiconOverrideThresholdInput');
+    const lexiconOverrideContinueToggle = document.getElementById('lexiconOverrideContinueToggle');
+    if (lexiconOverrideToggle) {
+        lexiconOverrideToggle.checked = !!(appSettings && appSettings.lexiconOverrideOn);
+        if (lexiconOverrideFields) lexiconOverrideFields.style.display = lexiconOverrideToggle.checked ? '' : 'none';
+        if (lexiconOverrideThresholdInput) {
+            const n = parseInt((appSettings && appSettings.lexiconOverrideThreshold) || 50, 10);
+            lexiconOverrideThresholdInput.value = String(Math.max(1, Math.min(5000, isNaN(n) ? 50 : n)));
+        }
+        if (lexiconOverrideContinueToggle) {
+            lexiconOverrideContinueToggle.checked = !!(appSettings && appSettings.lexiconOverrideContinueWorkflow);
+        }
+        lexiconOverrideToggle.addEventListener('change', () => {
+            appSettings.lexiconOverrideOn = lexiconOverrideToggle.checked;
+            if (lexiconOverrideFields) lexiconOverrideFields.style.display = lexiconOverrideToggle.checked ? '' : 'none';
+            saveAppSettings();
+        });
+    }
+    if (lexiconOverrideThresholdInput) {
+        lexiconOverrideThresholdInput.addEventListener('input', () => {
+            const n = parseInt(lexiconOverrideThresholdInput.value, 10);
+            if (!isNaN(n) && n >= 1 && n <= 5000) {
+                appSettings.lexiconOverrideThreshold = n;
+                saveAppSettings();
+            }
+        });
+    }
+    if (lexiconOverrideContinueToggle) {
+        lexiconOverrideContinueToggle.addEventListener('change', () => {
+            appSettings.lexiconOverrideContinueWorkflow = lexiconOverrideContinueToggle.checked;
             saveAppSettings();
         });
     }
