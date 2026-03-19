@@ -7,6 +7,16 @@ import 'dotenv/config';
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
+// Allow cross-origin calls (e.g. GitHub Pages -> Render API).
+// For production, you may want to restrict Access-Control-Allow-Origin.
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  return next();
+});
+
 function readFirstExistingFile(paths) {
   for (const p of paths) {
     if (existsSync(p)) {
