@@ -960,63 +960,119 @@ app.post('/api/claude', async (req, res, next) => {
     );
 
     const merged = new Map(); // normalized -> { word, display, score, tags:Set }
-    for (const q of queryResults) {
-      for (const item of q.items) {
-        const display = String(item?.word ?? '').trim();
-        if (!display) continue;
-        const normalized = normalizeForWorkflowWord(display);
-        if (!normalized) continue;
-        const rawScore = Number(item?.score || 0);
-        const weighted = q.weight * rawScore;
-        const existing = merged.get(normalized);
-        if (!existing) {
-          merged.set(normalized, {
-            word: normalized,
-            display,
-            score: weighted,
-            tags: new Set(['datamuse', q.tag])
-          });
-        } else {
-          existing.score += weighted;
-          existing.tags.add(q.tag);
-          // Prefer shorter readable display if variants differ.
-          if (display.length < existing.display.length) existing.display = display;
-        }
+    const addDatamuseCandidate = (display, rawScore, weight, tagsToAdd) => {
+      const d = String(display || '').trim();
+      if (!d) return;
+      const normalized = normalizeForWorkflowWord(d);
+      if (!normalized) return;
 
-        // If Datamuse returns compound phrases like "soup spoon",
-        // add constituent tokens (e.g. "spoon") as derived candidates.
-        // This helps keep single-object associations available for workflows.
-        if (display.includes(' ')) {
-          const tokens = display.split(/\s+/).filter(Boolean);
-          if (tokens.length > 1) {
-            for (let i = 0; i < tokens.length; i += 1) {
-              const tokenDisplay = tokens[i];
-              if (!tokenDisplay) continue;
-              if (tokenDisplay.length < 3) continue;
+      const rs = Number(rawScore || 0);
+      if (!Number.isFinite(rs)) return;
+      const w = Number(weight || 0);
+      const weighted = w * rs;
+      if (!Number.isFinite(weighted)) return;
 
-              const tokenNormalized = normalizeForWorkflowWord(tokenDisplay);
-              if (!tokenNormalized) continue;
-              if (tokenNormalized === normalized) continue;
+      const existing = merged.get(normalized);
+      if (!existing) {
+        merged.set(normalized, {
+          word: normalized,
+          display: d,
+          score: weighted,
+          tags: new Set(tagsToAdd || [])
+        });
+      } else {
+        existing.score += weighted;
+        (tagsToAdd || []).forEach(t => existing.tags.add(t));
+        // Prefer shorter readable display if variants differ.
+        if (d.length < existing.display.length) existing.display = d;
+      }
 
-              const tokenFactor = (i === tokens.length - 1) ? 0.85 : 0.45; // last token (e.g. spoon) higher
-              const tokenWeighted = weighted * tokenFactor;
-              const existingTok = merged.get(tokenNormalized);
-              if (!existingTok) {
-                merged.set(tokenNormalized, {
-                  word: tokenNormalized,
-                  display: tokenDisplay,
-                  score: tokenWeighted,
-                  tags: new Set(['datamuse', q.tag, 'datamuse_compound_split'])
-                });
-              } else {
-                existingTok.score += tokenWeighted;
-                existingTok.tags.add('datamuse_compound_split');
-                if (tokenDisplay.length < existingTok.display.length) existingTok.display = tokenDisplay;
-              }
+      // If Datamuse returns compound phrases like "soup spoon",
+      // add constituent tokens (e.g. "spoon") as derived candidates.
+      // This helps keep single-object associations available for workflows.
+      if (d.includes(' ')) {
+        const tokens = d.split(/\s+/).filter(Boolean);
+        if (tokens.length > 1) {
+          for (let i = 0; i < tokens.length; i += 1) {
+            const tokenDisplay = tokens[i];
+            if (!tokenDisplay) continue;
+            if (tokenDisplay.length < 3) continue;
+
+            const tokenNormalized = normalizeForWorkflowWord(tokenDisplay);
+            if (!tokenNormalized) continue;
+            if (tokenNormalized === normalized) continue;
+
+            const tokenFactor = (i === tokens.length - 1) ? 0.85 : 0.45; // last token higher
+            const tokenWeighted = weighted * tokenFactor;
+
+            const existingTok = merged.get(tokenNormalized);
+            if (!existingTok) {
+              merged.set(tokenNormalized, {
+                word: tokenNormalized,
+                display: tokenDisplay,
+                score: tokenWeighted,
+                tags: new Set([...(tagsToAdd || []), 'datamuse_compound_split'])
+              });
+            } else {
+              existingTok.score += tokenWeighted;
+              existingTok.tags.add('datamuse_compound_split');
+              if (tokenDisplay.length < existingTok.display.length) existingTok.display = tokenDisplay;
             }
           }
         }
       }
+    };
+
+    for (const q of queryResults) {
+      for (const item of q.items) {
+        const display = String(item?.word ?? '').trim();
+        if (!display) continue;
+        addDatamuseCandidate(display, item?.score, q.weight, ['datamuse', q.tag]);
+      }
+    }
+
+    // Two-hop enrichment:
+    // hop1: noun -> adjectives (rel_jjb)
+    // hop2: adjectives -> nouns (rel_jja)
+    // This approximates aesthetic/color/texture-style associations.
+    const hop1Max = 60;
+    const topAdjectives = 5;
+    const hop2Max = 120;
+    const hop2BaseWeight = 0.45;
+
+    try {
+      const hop1Items = await fetchDatamuseWords({ rel_jjb: inputWord, max: hop1Max });
+      const adjCandidates = (Array.isArray(hop1Items) ? hop1Items : [])
+        .map(a => ({ word: String(a?.word || '').trim(), score: Number(a?.score || 0) }))
+        .filter(a => a.word && Number.isFinite(a.score) && a.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topAdjectives);
+
+      if (adjCandidates.length > 0) {
+        const bestAdjScore = adjCandidates[0].score || 1;
+
+        const hop2Results = await Promise.all(adjCandidates.map(adj => {
+          return fetchDatamuseWords({ rel_jja: adj.word, max: hop2Max })
+            .then(items => ({ adjective: adj, items }));
+        }));
+
+        for (const hop2 of hop2Results) {
+          const adjScore = hop2.adjective.score || 0;
+          const factor = bestAdjScore > 0 ? (adjScore / bestAdjScore) : 0;
+          const perAdjWeight = hop2BaseWeight * factor;
+
+          for (const item of (hop2.items || [])) {
+            const nounDisplay = String(item?.word ?? '').trim();
+            if (!nounDisplay) continue;
+            addDatamuseCandidate(nounDisplay, item?.score, perAdjWeight, [
+              'datamuse_twohop',
+              'datamuse_twohop_jjb_jja'
+            ]);
+          }
+        }
+      }
+    } catch {
+      // Two-hop enrichment is best-effort; never block the main associations.
     }
 
     let cleanedResults = Array.from(merged.values())
