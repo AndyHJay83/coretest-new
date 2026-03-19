@@ -2102,7 +2102,7 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
             if (resultsContainer) resultsContainer.innerHTML = '<p>Generating ENGINE wordlist...</p>';
 
             try {
-                const resp = await fetch('/api/claude', {
+                const resp = await fetch('https://coretest-new.onrender.com/api/claude', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
