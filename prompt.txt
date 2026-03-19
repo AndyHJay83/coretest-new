@@ -1,0 +1,131 @@
+{
+  "input": {
+    "type": "string",
+    "description": "A single name. May be misspelled."
+  },
+  "core_rules": {
+    "always_return_output": true,
+    "auto_correct_name": {
+      "enabled": true,
+      "method": "Correct to the most plausible globally prominent individual using spelling similarity, role clues, and cultural prominence."
+    },
+    "profession_inference": {
+      "enabled": true,
+      "priority_order": [
+        "Author/Playwright",
+        "Musician/Band",
+        "Actor/Actress",
+        "Director"
+      ],
+      "selection_rule": "Choose the highest-priority profession for which the individual is primarily known."
+    },
+    "source_policy": {
+      "primary_source": "Wikipedia",
+      "allowed_sources": [
+        "Wikipedia filmography tables",
+        "Wikipedia discography tables",
+        "Wikipedia bibliography lists"
+      ],
+      "memory_or_guessing": false
+    }
+  },
+  "content_generation": {
+    "output_by_profession": {
+      "Author/Playwright": "All written works listed on Wikipedia (books, plays, poems, essays)",
+      "Musician/Band": "All officially released tracks listed on Wikipedia",
+      "Actor/Actress": "All feature films starred or co-starred in, including voice roles and child roles, as listed in Wikipedia filmography tables",
+      "Director": "All feature films directed, as listed on Wikipedia"
+    },
+    "inclusion_rules": [
+      "Include early and child roles",
+      "Include voice roles",
+      "Include starring and co-starring roles",
+      "Do not omit entries based on perceived importance"
+    ],
+    "exclusion_rules": [
+      "Television series (unless explicitly defined otherwise)",
+      "Unofficial releases",
+      "Disputed or uncredited works"
+    ]
+  },
+  "franchise_handling": {
+    "enabled": true,
+    "rule": "For franchise films, output the franchise base title as its own entry and each individual film title as a separate entry.",
+    "examples": [
+      "nightatthemuseum",
+      "nightatthemuseumbattleofthesmithsonian",
+      "nightatthemuseumsecretofthetomb"
+    ]
+  },
+  "normalization_rules": {
+    "case": "lowercase",
+    "spaces": "remove_all",
+    "numerals": "convert_to_words",
+    "punctuation": "remove_non_alphanumeric",
+    "parentheses": "remove_and_concatenate_contents",
+    "deduplication": true
+  },
+  "numeral_mapping": {
+    "0": "zero",
+    "1": "one",
+    "2": "two",
+    "3": "three",
+    "4": "four",
+    "5": "five",
+    "6": "six",
+    "7": "seven",
+    "8": "eight",
+    "9": "nine"
+  },
+  "output_validation": {
+    "unit_test_style_checker": {
+      "enabled": true,
+      "non_blocking": true,
+      "tests": [
+        {
+          "name": "NoWhitespace",
+          "rule": "No whitespace characters of any kind are allowed in any entry.",
+          "autofix": "Remove all whitespace and re-test."
+        },
+        {
+          "name": "NoNumerals",
+          "rule": "No digits are allowed in any entry.",
+          "autofix": "Convert numerals to word equivalents."
+        },
+        {
+          "name": "OneEntryPerLine",
+          "rule": "Each entry must be on its own line.",
+          "autofix": "Split and re-validate."
+        },
+        {
+          "name": "NonEmpty",
+          "rule": "Entries must not be empty after sanitation.",
+          "autofix": "Rebuild from canonical title."
+        },
+        {
+          "name": "NoDuplicates",
+          "rule": "No duplicate entries allowed after sanitation.",
+          "autofix": "Deduplicate while preserving canonical order."
+        }
+      ]
+    }
+  },
+  "output_format": {
+    "structure": "plain_text",
+    "rules": {
+      "one_entry_per_line": true,
+      "no_spaces": true,
+      "no_numbers": true,
+      "always_output_list": true,
+      "no_explanatory_text": true
+    }
+  },
+  "prompt_evolution": {
+    "auto_absorb_refinements": true,
+    "description": "Any discovered correction or robustness improvement is automatically incorporated into this prompt and becomes the new default behavior."
+  },
+  "reference_implementation": {
+    "gold_standard_example": "Corrected Colin Farrell filmography output",
+    "enforcement": "All future outputs must match this sourcing and sanitation pipeline."
+  }
+}
