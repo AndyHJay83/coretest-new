@@ -13636,24 +13636,6 @@ function initSettingsUI() {
     const lengthToggle = document.getElementById('lengthBuffer1Toggle');
     const t9LengthToggle = document.getElementById('t9LengthBuffer1Toggle');
     const e21Toggle = document.getElementById('e21AnywhereToggle');
-
-    // ENGINE API keys (persisted in localStorage)
-    const tmdbApiKeyInput = document.getElementById('tmdbApiKeyInput');
-    if (tmdbApiKeyInput) {
-        tmdbApiKeyInput.value = (appSettings && appSettings.tmdbApiKey) || '';
-        tmdbApiKeyInput.addEventListener('input', () => {
-            appSettings.tmdbApiKey = tmdbApiKeyInput.value.trim();
-            saveAppSettings();
-        });
-    }
-    const anthropicApiKeyInput = document.getElementById('anthropicApiKeyInput');
-    if (anthropicApiKeyInput) {
-        anthropicApiKeyInput.value = (appSettings && appSettings.anthropicApiKey) || '';
-        anthropicApiKeyInput.addEventListener('input', () => {
-            appSettings.anthropicApiKey = anthropicApiKeyInput.value.trim();
-            saveAppSettings();
-        });
-    }
     
     if (lengthToggle) {
         lengthToggle.checked = !!appSettings.lengthBuffer1;
