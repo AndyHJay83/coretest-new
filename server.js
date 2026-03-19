@@ -1,0 +1,1120 @@
+import express from 'express';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import 'dotenv/config';
+
+const app = express();
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+
+function readFirstExistingFile(paths) {
+  for (const p of paths) {
+    if (existsSync(p)) {
+      return readFileSync(p, 'utf8');
+    }
+  }
+  throw new Error(`No existing file found in paths: ${paths.join(', ')}`);
+}
+
+function extractJsonObjectBlock(text) {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    return text.slice(start, end + 1);
+  }
+  return text;
+}
+
+// Specs used by /api/claude (support repo-root file OR ~/ file)
+const ASSOCIATION_ENGINE_SPEC = extractJsonObjectBlock(readFirstExistingFile([
+  resolve(process.cwd(), 'UniversalAssociationEngine.txt'),
+  resolve(homedir(), 'UniversalAssociationEngine.txt')
+]));
+const FILMOGRAPHY_PROMPT_SPEC = extractJsonObjectBlock(readFirstExistingFile([
+  resolve(process.cwd(), 'prompt.txt'),
+  resolve(homedir(), 'prompt.txt')
+]));
+
+app.use(express.json({ limit: '1mb' }));
+
+function requireString(v, name) {
+  if (typeof v !== 'string' || v.trim().length === 0) {
+    const err = new Error(`Invalid ${name}`);
+    err.status = 400;
+    throw err;
+  }
+  return v.trim();
+}
+
+function clampInt(v, min, max, fallback) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+function parseEntityId(entityId) {
+  const parts = String(entityId || '').split(':');
+  if (parts.length !== 3) return null;
+  const [provider, kind, id] = parts;
+  return { provider, kind, id };
+}
+
+async function fetchJson(url, { headers } = {}) {
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    const err = new Error(`Upstream error ${res.status} for ${url}${text ? `: ${text.slice(0, 200)}` : ''}`);
+    err.status = 502;
+    throw err;
+  }
+  return await res.json();
+}
+
+// --- TMDB ---
+function tmdbKey(apiKeyOverride) {
+  const key = apiKeyOverride || process.env.TMDB_API_KEY;
+  if (!key) {
+    const err = new Error('TMDB_API_KEY is not set');
+    err.status = 500;
+    throw err;
+  }
+  return key;
+}
+
+function tmdbPersonSearchUrl(query, limit, apiKeyOverride) {
+  const key = tmdbKey(apiKeyOverride);
+  const q = encodeURIComponent(query);
+  return `https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(key)}&query=${q}&include_adult=false&page=1`;
+}
+
+function tmdbCombinedCreditsUrl(personId, apiKeyOverride) {
+  const key = tmdbKey(apiKeyOverride);
+  return `https://api.themoviedb.org/3/person/${encodeURIComponent(personId)}/combined_credits?api_key=${encodeURIComponent(key)}&language=en-US`;
+}
+
+function tmdbImageUrl(path) {
+  if (!path) return null;
+  return `https://image.tmdb.org/t/p/w185${path}`;
+}
+
+function normalizeNameForMatch(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isCloseNameMatch(query, candidate) {
+  const q = normalizeNameForMatch(query);
+  const c = normalizeNameForMatch(candidate);
+  if (!q || !c) return false;
+  if (q === c) return true;
+
+  const qTokens = q.split(' ').filter(Boolean);
+  const cTokens = c.split(' ').filter(Boolean);
+  if (qTokens.length === 0 || cTokens.length === 0) return false;
+
+  // Require each query token to match the start of some candidate token,
+  // or be contained within the candidate string (handles middle names, etc.).
+  for (const qt of qTokens) {
+    let ok = false;
+    for (const ct of cTokens) {
+      if (ct.startsWith(qt) || qt.startsWith(ct) || tokenSimilarityScore(qt, ct) >= 0.7) { ok = true; break; }
+    }
+    if (!ok && !c.includes(qt)) return false;
+  }
+
+  return true;
+}
+
+function levenshteinDistance(a, b) {
+  const s = String(a || '');
+  const t = String(b || '');
+  const m = s.length;
+  const n = t.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i += 1) dp[i][0] = i;
+  for (let j = 0; j <= n; j += 1) dp[0][j] = j;
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+function tokenSimilarityScore(inputToken, candidateToken) {
+  const a = normalizeNameForMatch(inputToken);
+  const b = normalizeNameForMatch(candidateToken);
+  if (!a || !b) return 0;
+  if (a === b) return 1.0;
+  if (b.startsWith(a) || a.startsWith(b)) return 0.92;
+  if (b.includes(a) || a.includes(b)) return 0.82;
+  const maxLen = Math.max(a.length, b.length);
+  const dist = levenshteinDistance(a, b);
+  if (maxLen >= 8 && dist <= 2) return 0.76;
+  if (maxLen >= 5 && dist <= 1) return 0.72;
+  if (maxLen >= 4 && dist <= 1) return 0.7; // handles short misspellings like hanz->hans
+  return 0;
+}
+
+function entityNameFitScore(inputName, personName) {
+  const inputNorm = normalizeNameForMatch(inputName);
+  const personNorm = normalizeNameForMatch(personName);
+  if (!inputNorm || !personNorm) return 0;
+
+  const inputTokens = inputNorm.split(' ').filter(Boolean);
+  const personTokens = personNorm.split(' ').filter(Boolean);
+  if (inputTokens.length === 0 || personTokens.length === 0) return 0;
+
+  let tokenScoreSum = 0;
+  for (const it of inputTokens) {
+    let bestForToken = 0;
+    for (const ct of personTokens) {
+      const sim = tokenSimilarityScore(it, ct);
+      if (sim > bestForToken) bestForToken = sim;
+    }
+    tokenScoreSum += bestForToken;
+  }
+
+  return tokenScoreSum / inputTokens.length;
+}
+
+function chooseEntityAwareTmdbCandidate(inputName, tmdbResults) {
+  const pool = Array.isArray(tmdbResults) ? tmdbResults : [];
+  if (pool.length === 0) return null;
+  const inputNorm = normalizeNameForMatch(inputName);
+  const inputTokens = inputNorm.split(' ').filter(Boolean);
+  if (inputTokens.length === 0) return null;
+
+  const scored = pool
+    .map((p) => {
+      const candName = String(p?.name || '').trim();
+      const candNorm = normalizeNameForMatch(candName);
+      const candTokens = candNorm.split(' ').filter(Boolean);
+      if (!candName || candTokens.length === 0) return null;
+
+      let tokenScoreSum = 0;
+      let firstTokenScore = 0;
+      for (let i = 0; i < inputTokens.length; i += 1) {
+        const it = inputTokens[i];
+        let bestForToken = 0;
+        for (const ct of candTokens) {
+          const sim = tokenSimilarityScore(it, ct);
+          if (sim > bestForToken) bestForToken = sim;
+        }
+        if (i === 0) firstTokenScore = bestForToken;
+        tokenScoreSum += bestForToken;
+      }
+
+      const tokenAvg = tokenScoreSum / inputTokens.length;
+      const sameTokenCountBonus = candTokens.length === inputTokens.length ? 0.12 : 0;
+      const exactNameBonus = inputNorm === candNorm ? 0.2 : 0;
+      const deptBonus = ['Acting', 'Directing'].includes(String(p?.known_for_department || '')) ? 0.1 : 0;
+      const popularity = Number(p?.popularity || 0);
+      const popularityBonus = Math.min(0.18, Math.log10(popularity + 1) * 0.07);
+      const score = tokenAvg + sameTokenCountBonus + exactNameBonus + deptBonus + popularityBonus;
+
+      return { person: p, score, tokenAvg, firstTokenScore };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length === 0) return null;
+  const best = scored[0];
+  const runnerUp = scored[1];
+  const gap = runnerUp ? (best.score - runnerUp.score) : best.score;
+
+  // Guardrails: avoid over-correcting ambiguous names.
+  if (best.tokenAvg < 0.6) return null;
+  if (best.firstTokenScore < 0.68) return null;
+  const veryStrongBest = best.tokenAvg >= 0.82 && best.firstTokenScore >= 0.9;
+  if (runnerUp && gap < 0.12 && !veryStrongBest) return null;
+
+  return {
+    person: best.person,
+    correctedInput: String(best.person?.name || inputName).trim() || inputName,
+    confidence: Math.min(0.98, Math.max(0.72, best.score)),
+    gap
+  };
+}
+
+function computeTmdbScore(item) {
+  const popularity = Number(item.popularity || 0);
+  const voteCount = Number(item.vote_count || 0);
+  const voteBoost = Math.log10(voteCount + 1) * 10;
+  const dateStr = item.release_date || item.first_air_date || '';
+  const year = Number((dateStr || '').slice(0, 4));
+  const nowYear = new Date().getFullYear();
+  const recency = Number.isFinite(year) ? Math.max(0, 1 - Math.min(30, Math.max(0, nowYear - year)) / 30) : 0;
+  const recencyBoost = recency * 10;
+  return 0.65 * popularity + 0.25 * voteBoost + 0.10 * recencyBoost;
+}
+
+// --- MusicBrainz ---
+const MB_BASE = 'https://musicbrainz.org/ws/2';
+const MB_UA = process.env.MUSICBRAINZ_USER_AGENT || 'coretest-engine/0.1 (local dev)';
+
+function mbHeaders() {
+  return {
+    'User-Agent': MB_UA,
+    'Accept': 'application/json'
+  };
+}
+
+function mbTypeRank(primaryType) {
+  const t = String(primaryType || '').toLowerCase();
+  if (t === 'album') return 0;
+  if (t === 'ep') return 1;
+  if (t === 'single') return 2;
+  return 3;
+}
+
+// --- Open Library ---
+const OL_BASE = 'https://openlibrary.org';
+const DATAMUSE_BASE = 'https://api.datamuse.com/words';
+
+async function fetchDatamuseWords(params) {
+  const query = new URLSearchParams(params).toString();
+  const url = `${DATAMUSE_BASE}?${query}`;
+  try {
+    const data = await fetchJson(url);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+// --- Unified API ---
+app.post('/api/engine/search', async (req, res, next) => {
+  try {
+    const profession = requireString(req.body?.profession, 'profession').toLowerCase();
+    const query = requireString(req.body?.query, 'query');
+    const limit = clampInt(req.body?.limit, 1, 20, 10);
+
+    if (profession === 'actor' || profession === 'director' || profession === 'composer') {
+      // Fetch more than we display, then tighten results to close name matches.
+      const data = await fetchJson(tmdbPersonSearchUrl(query, Math.max(20, limit)));
+      const tightened = (data.results || []).filter(p => isCloseNameMatch(query, p.name));
+      const pool = tightened.length > 0 ? tightened : (data.results || []);
+      const results = pool
+        .slice(0, limit)
+        .map(p => ({
+          entity_id: `tmdb:person:${p.id}`,
+          display_name: p.name,
+          subtitle: p.known_for_department ? `Known for ${p.known_for_department}` : 'Person',
+          image_url: tmdbImageUrl(p.profile_path),
+          provider: 'tmdb',
+          confidence: null
+        }));
+      return res.json({ profession, query, results });
+    }
+
+    if (profession === 'musician') {
+      const q = encodeURIComponent(query);
+      const url = `${MB_BASE}/artist/?query=${q}&fmt=json&limit=${limit}`;
+      const data = await fetchJson(url, { headers: mbHeaders() });
+      const results = (data.artists || []).slice(0, limit).map(a => ({
+        entity_id: `mb:artist:${a.id}`,
+        display_name: a.name,
+        subtitle: [a.type, a.country].filter(Boolean).join(' · ') || 'Artist',
+        image_url: null,
+        provider: 'musicbrainz',
+        confidence: null
+      }));
+      return res.json({ profession, query, results });
+    }
+
+    if (profession === 'author') {
+      const q = encodeURIComponent(query);
+      const url = `${OL_BASE}/search/authors.json?q=${q}&limit=${limit}`;
+      const data = await fetchJson(url);
+      const results = (data.docs || []).slice(0, limit).map(a => ({
+        entity_id: `ol:author:${String(a.key || '').replace('/authors/', '')}`,
+        display_name: a.name,
+        subtitle: typeof a.work_count === 'number' ? `${a.work_count} works` : 'Author',
+        image_url: null,
+        provider: 'openlibrary',
+        confidence: null
+      }));
+      return res.json({ profession, query, results });
+    }
+
+    const err = new Error('Unsupported profession. Use actor, director, composer, musician, or author.');
+    err.status = 400;
+    throw err;
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.post('/api/engine/generate', async (req, res, next) => {
+  try {
+    const profession = requireString(req.body?.profession, 'profession').toLowerCase();
+    const entityId = requireString(req.body?.entity_id, 'entity_id');
+    const limit = clampInt(req.body?.limit, 1, 200, 200);
+
+    const parsed = parseEntityId(entityId);
+    if (!parsed) {
+      const err = new Error('Invalid entity_id');
+      err.status = 400;
+      throw err;
+    }
+
+    if ((profession === 'actor' || profession === 'director' || profession === 'composer') && parsed.provider === 'tmdb' && parsed.kind === 'person') {
+      const credits = await fetchJson(tmdbCombinedCreditsUrl(parsed.id));
+
+      let items = [];
+      if (profession === 'actor') {
+        items = (credits.cast || []).filter(x => x.media_type === 'movie');
+        items = items.map(x => ({
+          tmdb_id: x.id,
+          title: x.title || x.original_title || x.name,
+          date: x.release_date || '',
+          popularity: x.popularity || 0,
+          vote_count: x.vote_count || 0,
+          score: computeTmdbScore(x),
+          tags: ['film', 'acting']
+        }));
+      } else if (profession === 'director') {
+        items = (credits.crew || []).filter(x => x.media_type === 'movie' && x.job === 'Director');
+        items = items.map(x => ({
+          tmdb_id: x.id,
+          title: x.title || x.original_title || x.name,
+          date: x.release_date || '',
+          popularity: x.popularity || 0,
+          vote_count: x.vote_count || 0,
+          score: computeTmdbScore(x),
+          tags: ['film', 'directing']
+        }));
+      } else {
+        items = (credits.crew || []).filter((x) => {
+          if (x.media_type !== 'movie') return false;
+          const job = String(x.job || '').toLowerCase();
+          return job.includes('composer') || job === 'music' || job === 'original music composer' || job === 'music director';
+        });
+        items = items.map(x => ({
+          tmdb_id: x.id,
+          title: x.title || x.original_title || x.name,
+          date: x.release_date || '',
+          popularity: x.popularity || 0,
+          vote_count: x.vote_count || 0,
+          score: computeTmdbScore(x),
+          tags: ['film', 'composer', 'soundtrack']
+        }));
+      }
+
+      // de-dupe by TMDB id
+      const byId = new Map();
+      for (const it of items) {
+        if (!it.tmdb_id || !it.title) continue;
+        if (!byId.has(it.tmdb_id)) byId.set(it.tmdb_id, it);
+        else if (it.score > byId.get(it.tmdb_id).score) byId.set(it.tmdb_id, it);
+      }
+      const deduped = Array.from(byId.values());
+      deduped.sort((a, b) => (b.score - a.score) || (String(b.date).localeCompare(String(a.date))) || a.title.localeCompare(b.title));
+
+      const results = deduped.slice(0, limit).map((it, idx) => ({
+        word: it.title,
+        rank: idx + 1,
+        score: Math.round(it.score * 10) / 10,
+        tags: it.tags
+      }));
+
+      return res.json({
+        input_word: null,
+        engine_version: 'engine-v1',
+        mode: `tmdb_${profession}_to_films_popularity`,
+        total_candidates: results.length,
+        results
+      });
+    }
+
+    if (profession === 'musician' && parsed.provider === 'mb' && parsed.kind === 'artist') {
+      const pageSize = 100;
+      const pages = [];
+      for (let offset = 0; offset < limit; offset += pageSize) {
+        const url = `${MB_BASE}/release-group?artist=${encodeURIComponent(parsed.id)}&fmt=json&limit=${Math.min(pageSize, limit - offset)}&offset=${offset}`;
+        pages.push(fetchJson(url, { headers: mbHeaders() }));
+      }
+      const dataPages = await Promise.all(pages);
+      const all = dataPages.flatMap(d => d['release-groups'] || []);
+
+      const byId = new Map();
+      for (const rg of all) {
+        if (!rg.id || !rg.title) continue;
+        const type = rg['primary-type'] || '';
+        const date = rg['first-release-date'] || '';
+        const existing = byId.get(rg.id);
+        if (!existing) byId.set(rg.id, { id: rg.id, title: rg.title, type, date });
+      }
+      const items = Array.from(byId.values());
+      items.sort((a, b) => {
+        const ta = mbTypeRank(a.type);
+        const tb = mbTypeRank(b.type);
+        if (ta !== tb) return ta - tb;
+        // latest first
+        const da = String(a.date || '');
+        const db = String(b.date || '');
+        if (da !== db) return db.localeCompare(da);
+        return a.title.localeCompare(b.title);
+      });
+
+      const results = items.slice(0, limit).map((it, idx) => ({
+        word: it.title,
+        rank: idx + 1,
+        score: null,
+        tags: ['music', it.type || 'ReleaseGroup']
+      }));
+
+      return res.json({
+        input_word: null,
+        engine_version: 'engine-v1',
+        mode: 'musicbrainz_musician_to_releases_latest',
+        total_candidates: results.length,
+        results
+      });
+    }
+
+    if (profession === 'author' && parsed.provider === 'ol' && parsed.kind === 'author') {
+      const url = `${OL_BASE}/authors/${encodeURIComponent(parsed.id)}/works.json?limit=${limit}`;
+      const data = await fetchJson(url);
+      const entries = (data.entries || []).filter(e => e && e.title);
+
+      const byKey = new Map();
+      for (const w of entries) {
+        const key = w.key || w.title;
+        if (!key) continue;
+        if (!byKey.has(key)) {
+          const year = Array.isArray(w.first_publish_date) ? null : w.first_publish_date;
+          byKey.set(key, {
+            title: w.title,
+            year: w.first_publish_year || null,
+            date: w.created?.value || '',
+            edition_count: w.edition_count || null
+          });
+        }
+      }
+
+      const items = Array.from(byKey.values());
+      items.sort((a, b) => {
+        // latest first: first_publish_year desc if present, else created date desc
+        const ya = Number(a.year || -1);
+        const yb = Number(b.year || -1);
+        if (ya !== yb) return yb - ya;
+        const da = String(a.date || '');
+        const db = String(b.date || '');
+        if (da !== db) return db.localeCompare(da);
+        return a.title.localeCompare(b.title);
+      });
+
+      const results = items.slice(0, limit).map((it, idx) => ({
+        word: it.title,
+        rank: idx + 1,
+        score: it.edition_count ?? null,
+        tags: ['book']
+      }));
+
+      return res.json({
+        input_word: null,
+        engine_version: 'engine-v1',
+        mode: 'openlibrary_author_to_works_latest',
+        total_candidates: results.length,
+        results
+      });
+    }
+
+    const err = new Error('Unsupported profession/entity_id combination');
+    err.status = 400;
+    throw err;
+  } catch (e) {
+    next(e);
+  }
+});
+
+function normalizeForWorkflowWord(raw) {
+  const digitMap = {
+    '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
+    '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine'
+  };
+  const withWords = String(raw || '').replace(/\d/g, d => digitMap[d] || '');
+  return withWords
+    .toLowerCase()
+    .replace(/[()]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\s/g, '');
+}
+
+// --- Claude route (auto: name->filmography prompt, word->association engine) ---
+app.post('/api/claude', async (req, res, next) => {
+  try {
+    let inputWord = requireString(req.body?.input_word, 'input_word');
+    const limit = clampInt(req.body?.limit, 1, 500, 500);
+    const requestedModeRaw = (req.body?.mode || 'auto').toString().toLowerCase();
+    const requestedMode = ['auto', 'name', 'association'].includes(requestedModeRaw) ? requestedModeRaw : 'auto';
+
+    const apiKey = req.body?.anthropic_api_key || process.env.ANTHROPIC_API_KEY;
+    const tmdbApiKeyOverride = req.body?.tmdb_api_key || req.body?.tmdbApiKey;
+
+    const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+    const callClaudeStructured = async (systemPrompt, userMessage, schema, useStructuredOutput = true) => {
+      if (!apiKey) {
+        const err = new Error('ANTHROPIC_API_KEY is not set');
+        err.status = 500;
+        throw err;
+      }
+      const requestBody = {
+        model,
+        max_tokens: 12000,
+        temperature: 0.2,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+      };
+      if (useStructuredOutput) {
+        requestBody.output_config = {
+          format: {
+            type: 'json_schema',
+            schema
+          }
+        };
+      }
+      const anthropicResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify(requestBody)
+      });
+      const data = await anthropicResp.json();
+      if (!anthropicResp.ok) {
+        const err = new Error(data?.error?.message || 'Anthropic request failed');
+        err.status = anthropicResp.status || 502;
+        throw err;
+      }
+      const text = data?.content?.[0]?.text ?? '';
+      if (!text) {
+        const err = new Error('Anthropic returned no content');
+        err.status = 502;
+        throw err;
+      }
+      try {
+        return JSON.parse(text);
+      } catch (parseErr) {
+        // Fallback: try to parse extracted object block if extra wrapper text exists.
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+          return JSON.parse(text.slice(start, end + 1));
+        }
+        throw parseErr;
+      }
+    };
+
+    const callWithStructuredFallback = async (systemPrompt, userMessage, schema) => {
+      try {
+        return await callClaudeStructured(systemPrompt, userMessage, schema, true);
+      } catch (e) {
+        const msg = String(e?.message || '');
+        if (msg.includes('does not support output format')) {
+          return await callClaudeStructured(systemPrompt, userMessage, schema, false);
+        }
+        throw e;
+      }
+    };
+
+    let resolvedMode = requestedMode;
+    let detectedMeta = null;
+    if (resolvedMode === 'auto') {
+      const rawTokens = String(inputWord || '').trim().split(/\s+/).filter(Boolean);
+      const tokenLooksWordlike = (t) => /[a-zA-Z]/.test(t);
+      const hasNameSuffix = rawTokens.some(t => /^(jr|sr|ii|iii|iv|v)\.?$/i.test(t));
+      const looksLikeFullName = rawTokens.length >= 2 && rawTokens.every(tokenLooksWordlike);
+
+      // Deterministic pre-gate: obvious multi-token names should prefer NAME mode.
+      // This prevents cases like "Tom Holland" dropping into association mode.
+      if (looksLikeFullName || hasNameSuffix) {
+        resolvedMode = 'name';
+        detectedMeta = {
+          mode_candidate: 'name',
+          confidence: 0.95,
+          corrected_input: inputWord,
+          final_mode: 'name',
+          reason: 'deterministic_full_name_gate'
+        };
+      }
+
+      // Deterministic pre-gate: likely single-token celebrity names should prefer NAME mode.
+      // Examples: "zendaya", "beyonce", "oprah".
+      if (resolvedMode === 'auto' && rawTokens.length === 1 && /^[a-zA-Z][a-zA-Z'.-]{2,}$/.test(rawTokens[0])) {
+        try {
+          const tmdbProbe = await fetchJson(tmdbPersonSearchUrl(inputWord, 5));
+          const probeResults = Array.isArray(tmdbProbe?.results) ? tmdbProbe.results : [];
+          const entityAware = chooseEntityAwareTmdbCandidate(inputWord, probeResults);
+          const top = entityAware?.person || probeResults[0] || null;
+          if (top && (entityAware || isCloseNameMatch(inputWord, top.name))) {
+            const normalizedInput = normalizeNameForMatch(inputWord);
+            const normalizedTop = normalizeNameForMatch(top.name);
+            const strongExactish = normalizedInput === normalizedTop || normalizedTop.startsWith(normalizedInput);
+            const strongPopularity = Number(top.popularity || 0) >= 10;
+            const knownPersonDept = ['Acting', 'Directing'].includes(String(top.known_for_department || ''));
+            if ((strongExactish && knownPersonDept) || (strongPopularity && knownPersonDept)) {
+              resolvedMode = 'name';
+              detectedMeta = {
+                mode_candidate: 'name',
+                confidence: entityAware?.confidence || 0.9,
+                corrected_input: String(top.name || inputWord).trim() || inputWord,
+                final_mode: 'name',
+                reason: entityAware ? 'deterministic_single_token_tmdb_entity_correction' : 'deterministic_single_token_tmdb_gate'
+              };
+              inputWord = String(top.name || inputWord).trim() || inputWord;
+            }
+          }
+        } catch {
+          // If TMDB probe fails, keep auto mode and continue to classifier.
+        }
+      }
+
+      if (resolvedMode === 'auto') {
+      const modeSchema = {
+        type: 'object',
+        additionalProperties: false,
+        required: ['mode_candidate', 'confidence', 'corrected_input'],
+        properties: {
+          mode_candidate: { type: 'string', enum: ['name', 'association'] },
+          confidence: { type: 'number' },
+          corrected_input: { type: 'string' },
+          reason: { type: 'string' }
+        }
+      };
+      const modePrompt = 'Classify input as likely notable person/band name or general word/concept. Correct obvious spelling mistakes. Return JSON only.';
+      const modeParsed = await callWithStructuredFallback(modePrompt, inputWord, modeSchema);
+
+      const modeCandidate = modeParsed?.mode_candidate === 'name' ? 'name' : 'association';
+      const baseConfidence = Number.isFinite(Number(modeParsed?.confidence))
+        ? Number(modeParsed.confidence)
+        : 0;
+      let correctedInput = String(modeParsed?.corrected_input || inputWord).trim() || inputWord;
+      let finalConfidence = baseConfidence;
+
+      // Confidence gate with a second-pass verifier for borderline inputs.
+      if (modeCandidate === 'name' && baseConfidence >= 0.75) {
+        resolvedMode = 'name';
+      } else if (modeCandidate === 'association' && baseConfidence >= 0.75) {
+        resolvedMode = 'association';
+      } else {
+        const verifySchema = {
+          type: 'object',
+          additionalProperties: false,
+          required: ['is_name', 'confidence', 'corrected_input'],
+          properties: {
+            is_name: { type: 'boolean' },
+            confidence: { type: 'number' },
+            corrected_input: { type: 'string' },
+            top_candidate: { type: 'string' },
+            runner_up: { type: 'string' },
+            confidence_gap: { type: 'number' }
+          }
+        };
+        const verifyPrompt = 'Given an input, decide if it most likely refers to a notable person/band name. If yes, provide best corrected name and confidence. Return JSON only.';
+        const verifyParsed = await callWithStructuredFallback(verifyPrompt, correctedInput, verifySchema);
+        const verifyConfidence = Number.isFinite(Number(verifyParsed?.confidence))
+          ? Number(verifyParsed.confidence)
+          : 0;
+        finalConfidence = verifyConfidence;
+        correctedInput = String(verifyParsed?.corrected_input || correctedInput).trim() || correctedInput;
+        resolvedMode = verifyParsed?.is_name && verifyConfidence >= 0.72 ? 'name' : 'association';
+      }
+
+      inputWord = correctedInput;
+      detectedMeta = {
+        mode_candidate: modeCandidate,
+        confidence: finalConfidence,
+        corrected_input: correctedInput,
+        final_mode: resolvedMode
+      };
+      }
+    }
+
+    const buildTmdbNameResults = async (nameInput, maxResults) => {
+      const readMoviesFromCredits = (credits) => {
+        const castMovies = (credits.cast || [])
+          .filter(x => x.media_type === 'movie' && (x.title || x.original_title || x.name))
+          .map(x => ({
+            display: String(x.title || x.original_title || x.name).trim(),
+            score: Math.round(computeTmdbScore(x) * 10) / 10,
+            tags: ['film', 'tmdb', 'cast']
+          }))
+          .filter(x => x.display.length > 0);
+
+        const crewMovies = (credits.crew || [])
+          .filter(x => x.media_type === 'movie' && (x.title || x.original_title || x.name))
+          .map(x => ({
+            display: String(x.title || x.original_title || x.name).trim(),
+            score: Math.round(computeTmdbScore(x) * 10) / 10,
+            tags: ['film', 'tmdb', 'crew']
+          }))
+          .filter(x => x.display.length > 0);
+
+        return castMovies.concat(crewMovies);
+      };
+
+      const chooseBestPerson = async (query) => {
+        const searchData = await fetchJson(tmdbPersonSearchUrl(query, Math.max(25, maxResults), tmdbApiKeyOverride));
+        const pool = Array.isArray(searchData?.results) ? searchData.results : [];
+        if (pool.length === 0) return null;
+
+        // Cheap pre-ranking: name-fit (token-level) + TMDB popularity only.
+        // We then fetch credits only for the best candidates, so we don't miss
+        // the correct spelling correction just because it's outside a small slice.
+        const heuristicRanked = pool
+          .filter(p => p?.id && p?.name)
+          .map((p) => {
+            const nameFit = entityNameFitScore(nameInput, p.name);
+            const popularity = Number(p.popularity || 0);
+            const popularityBoost = Math.min(1.2, Math.log10(popularity + 1));
+            return { person: p, nameFit, popularityBoost };
+          })
+          .sort((a, b) => ((b.nameFit * 2.0) + b.popularityBoost) - ((a.nameFit * 2.0) + a.popularityBoost));
+
+        const creditCandidates = heuristicRanked.slice(0, 12);
+        let best = null;
+        let bestScore = -Infinity;
+
+        for (const cand of creditCandidates) {
+          const person = cand.person;
+          try {
+            const credits = await fetchJson(tmdbCombinedCreditsUrl(person.id, tmdbApiKeyOverride));
+            const movies = readMoviesFromCredits(credits);
+            if (!movies || movies.length === 0) continue;
+
+            const creditVolumeBoost = Math.min(1.5, Math.log10((movies.length || 0) + 1));
+            const finalScore = (cand.nameFit * 2.0) + cand.popularityBoost + creditVolumeBoost;
+
+            if (finalScore > bestScore) {
+              bestScore = finalScore;
+              best = { person, movies };
+            }
+          } catch {
+            // Ignore bad candidate and continue.
+          }
+        }
+
+        // If nobody produced usable movie credits, fall back to the top heuristic candidate
+        // (caller will decide whether to treat as empty result).
+        if (!best) {
+          const top = creditCandidates[0];
+          return top ? { person: top.person, movies: [] } : null;
+        }
+
+        return best;
+      };
+
+      // Primary query by full input.
+      let queryUsed = nameInput;
+      let chosenData = await chooseBestPerson(nameInput);
+
+      // Fallback query by last token for misspellings like "Hanz Zimmer".
+      if ((!chosenData || !chosenData.movies || chosenData.movies.length === 0)) {
+        const tokens = normalizeNameForMatch(nameInput).split(' ').filter(Boolean);
+        if (tokens.length >= 2) {
+          const lastToken = tokens[tokens.length - 1];
+          if (lastToken.length >= 3) {
+            queryUsed = lastToken;
+            chosenData = await chooseBestPerson(lastToken);
+          }
+        }
+      }
+
+      if (!chosenData || !chosenData.person?.id) return [];
+      const movies = chosenData.movies || [];
+      if (!detectedMeta) detectedMeta = {};
+      detectedMeta.selected_tmdb_person = {
+        id: chosenData.person.id,
+        name: chosenData.person.name
+      };
+      detectedMeta.selected_tmdb_query_used = queryUsed;
+
+      const byNorm = new Map();
+      for (const m of movies) {
+        const normalized = normalizeForWorkflowWord(m.display);
+        if (!normalized) continue;
+        const prev = byNorm.get(normalized);
+        if (!prev || (m.score || 0) > (prev.score || 0)) {
+          byNorm.set(normalized, { word: normalized, display: m.display, score: m.score, tags: m.tags || ['film', 'tmdb'] });
+        }
+      }
+
+      return Array.from(byNorm.values())
+        .sort((a, b) => (b.score - a.score) || a.display.localeCompare(b.display))
+        .slice(0, maxResults)
+        .map((r, i) => ({ ...r, rank: i + 1 }));
+    };
+
+    // NAME mode: use TMDB directly (deterministic, faster, cheaper than LLM)
+    // NOTE: we run an additional spelling-correction pass ONLY when the caller explicitly requested mode='name'
+    // (i.e. NAME ENGINE), to avoid associative misrouting.
+    if (resolvedMode === 'name') {
+      const maxResults = Math.min(limit, 500);
+      if (!detectedMeta) detectedMeta = {};
+
+      let nameQueryToUse = inputWord;
+      let spellingCorrection = null;
+
+      if (requestedMode === 'name') {
+        const correctionSchema = {
+          type: 'object',
+          additionalProperties: false,
+          required: ['corrected_name', 'confidence'],
+          properties: {
+            corrected_name: { type: 'string' },
+            confidence: { type: 'number' },
+            reason: { type: 'string' }
+          }
+        };
+
+        const correctionSystemPrompt =
+          'You correct spelling of a notable person name for TMDB lookup. ' +
+          'Only fix spelling/capitalization/spacing mistakes. Do not change identity (do not swap people). ' +
+          'If the input does not look like a person name or you are unsure, return the original name with low confidence.';
+
+        const correctionUserMessage = `original_name: "${inputWord}"`;
+
+        try {
+          const correction = await callWithStructuredFallback(
+            correctionSystemPrompt,
+            correctionUserMessage,
+            correctionSchema
+          );
+
+          const corrected = String(correction?.corrected_name ?? '').trim();
+          const confidence = Number.isFinite(Number(correction?.confidence)) ? Number(correction.confidence) : 0;
+          const originalNorm = normalizeNameForMatch(inputWord);
+          const correctedNorm = normalizeNameForMatch(corrected);
+
+          const applied = corrected &&
+            correctedNorm &&
+            correctedNorm !== originalNorm &&
+            confidence >= 0.65;
+
+          spellingCorrection = {
+            original_input: inputWord,
+            corrected_input: applied ? corrected : inputWord,
+            confidence,
+            reason: correction?.reason
+          };
+
+          detectedMeta.spelling_correction = spellingCorrection;
+          detectedMeta.spelling_correction_applied = applied;
+
+          if (applied) nameQueryToUse = corrected;
+        } catch {
+          detectedMeta.spelling_correction_error = true;
+        }
+      }
+
+      // Try corrected/selected query first.
+      let cleanedResults = await buildTmdbNameResults(nameQueryToUse, maxResults);
+
+      // Safety: if correction was applied and it produced no usable credits, retry original input.
+      if (requestedMode === 'name' && cleanedResults.length === 0 && nameQueryToUse !== inputWord) {
+        detectedMeta.spelling_correction_retry_original = true;
+        cleanedResults = await buildTmdbNameResults(inputWord, maxResults);
+      }
+
+      return res.json({
+        input_word: inputWord,
+        engine_version: 'engine-v2.7',
+        mode: 'filmography_name_tmdb',
+        total_candidates: cleanedResults.length,
+        results: cleanedResults,
+        detected: detectedMeta
+      });
+    }
+
+    // ASSOCIATION mode: Datamuse as primary source (fast), optional LLM fallback.
+    const associationLimit = Math.min(limit, 500);
+    const datamuseMaxPerQuery = 250;
+    const weightedQueries = [
+      { params: { rel_trg: inputWord, max: datamuseMaxPerQuery }, weight: 1.0, tag: 'datamuse_rel_trg' },
+      { params: { rel_spc: inputWord, max: datamuseMaxPerQuery }, weight: 0.6, tag: 'datamuse_rel_spc' },
+      { params: { ml: inputWord, max: datamuseMaxPerQuery }, weight: 0.7, tag: 'datamuse_ml' },
+      { params: { topics: inputWord, max: datamuseMaxPerQuery }, weight: 0.5, tag: 'datamuse_topics' },
+      { params: { rel_ant: inputWord, max: 80 }, weight: 0.2, tag: 'datamuse_rel_ant' }
+    ];
+
+    const queryResults = await Promise.all(
+      weightedQueries.map(q => fetchDatamuseWords(q.params).then(items => ({ ...q, items })))
+    );
+
+    const merged = new Map(); // normalized -> { word, display, score, tags:Set }
+    for (const q of queryResults) {
+      for (const item of q.items) {
+        const display = String(item?.word ?? '').trim();
+        if (!display) continue;
+        const normalized = normalizeForWorkflowWord(display);
+        if (!normalized) continue;
+        const rawScore = Number(item?.score || 0);
+        const weighted = q.weight * rawScore;
+        const existing = merged.get(normalized);
+        if (!existing) {
+          merged.set(normalized, {
+            word: normalized,
+            display,
+            score: weighted,
+            tags: new Set(['datamuse', q.tag])
+          });
+        } else {
+          existing.score += weighted;
+          existing.tags.add(q.tag);
+          // Prefer shorter readable display if variants differ.
+          if (display.length < existing.display.length) existing.display = display;
+        }
+
+        // If Datamuse returns compound phrases like "soup spoon",
+        // add constituent tokens (e.g. "spoon") as derived candidates.
+        // This helps keep single-object associations available for workflows.
+        if (display.includes(' ')) {
+          const tokens = display.split(/\s+/).filter(Boolean);
+          if (tokens.length > 1) {
+            for (let i = 0; i < tokens.length; i += 1) {
+              const tokenDisplay = tokens[i];
+              if (!tokenDisplay) continue;
+              if (tokenDisplay.length < 3) continue;
+
+              const tokenNormalized = normalizeForWorkflowWord(tokenDisplay);
+              if (!tokenNormalized) continue;
+              if (tokenNormalized === normalized) continue;
+
+              const tokenFactor = (i === tokens.length - 1) ? 0.85 : 0.45; // last token (e.g. spoon) higher
+              const tokenWeighted = weighted * tokenFactor;
+              const existingTok = merged.get(tokenNormalized);
+              if (!existingTok) {
+                merged.set(tokenNormalized, {
+                  word: tokenNormalized,
+                  display: tokenDisplay,
+                  score: tokenWeighted,
+                  tags: new Set(['datamuse', q.tag, 'datamuse_compound_split'])
+                });
+              } else {
+                existingTok.score += tokenWeighted;
+                existingTok.tags.add('datamuse_compound_split');
+                if (tokenDisplay.length < existingTok.display.length) existingTok.display = tokenDisplay;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    let cleanedResults = Array.from(merged.values())
+      .sort((a, b) => (b.score - a.score) || a.display.localeCompare(b.display))
+      .slice(0, associationLimit)
+      .map((r, i) => ({
+        word: r.word,
+        display: r.display,
+        rank: i + 1,
+        score: Math.round(r.score * 100) / 100,
+        tags: Array.from(r.tags)
+      }));
+
+    // If Datamuse is sparse for a term, top up with LLM fallback.
+    if (cleanedResults.length < 25) {
+      const resultSchema = {
+        type: 'object',
+        additionalProperties: false,
+        required: ['input_word', 'engine_version', 'mode', 'total_candidates', 'results'],
+        properties: {
+          input_word: { type: 'string' },
+          engine_version: { type: 'string' },
+          mode: { type: 'string' },
+          total_candidates: { type: 'integer' },
+          results: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['word', 'rank', 'score'],
+              properties: {
+                word: { type: 'string' },
+                rank: { type: 'integer' },
+                score: { type: 'number' },
+                tags: { type: 'array', items: { type: 'string' } }
+              }
+            }
+          }
+        }
+      };
+      const fallbackLimit = Math.min(40, associationLimit);
+      const systemPrompt = `${ASSOCIATION_ENGINE_SPEC}\n\nIMPORTANT:\n- Return ONLY valid JSON matching the schema.\n- Use descending probability order.\n- Include up to ${fallbackLimit} results.`;
+      const userMessage = `input_word: "${inputWord}"\nlimit: ${fallbackLimit}`;
+      try {
+        const parsed = await callWithStructuredFallback(systemPrompt, userMessage, resultSchema);
+        const existingKeys = new Set(cleanedResults.map(r => r.word));
+        const llmTopUp = (Array.isArray(parsed?.results) ? parsed.results : [])
+          .map((r) => {
+            const display = String(r?.word ?? '').trim();
+            const normalized = normalizeForWorkflowWord(display);
+            return {
+              word: normalized,
+              display,
+              score: Number.isFinite(Number(r?.score)) ? Number(r.score) : 0,
+              tags: ['llm_fallback']
+            };
+          })
+          .filter(r => r.word && r.display && !existingKeys.has(r.word))
+          .slice(0, associationLimit - cleanedResults.length);
+        if (llmTopUp.length > 0) {
+          cleanedResults = cleanedResults.concat(
+            llmTopUp.map((r, i) => ({
+              word: r.word,
+              display: r.display,
+              rank: cleanedResults.length + i + 1,
+              score: r.score,
+              tags: r.tags
+            }))
+          );
+        }
+      } catch {
+        // Keep Datamuse-only output on fallback failure.
+      }
+    }
+
+    return res.json({
+      input_word: inputWord,
+      engine_version: 'engine-v2.7',
+      mode: 'word_association_datamuse',
+      total_candidates: cleanedResults.length,
+      results: cleanedResults,
+      detected: detectedMeta
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Static app
+app.use(express.static(process.cwd(), { extensions: ['html'] }));
+
+// Basic error handler
+app.use((err, req, res, next) => {
+  const status = err.status || 500;
+  res.status(status).json({ error: err.message || 'Server error' });
+});
+
+app.listen(PORT, () => {
+  console.log(`ENGINE server running on http://localhost:${PORT}`);
+});
+

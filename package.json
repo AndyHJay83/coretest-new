@@ -1,0 +1,13 @@
+{
+  "name": "coretest-engine-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express": "^5.1.0"
+  }
+}

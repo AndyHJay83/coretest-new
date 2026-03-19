@@ -1,2 +1,4 @@
 grail-binary/
+.env
+.env.*
 

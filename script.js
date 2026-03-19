@@ -26,6 +26,7 @@ let leastFrequentLetter = null;
 let usedLettersInWorkflow = [];  // Track letters used in current workflow
 let letterFrequencyMap = new Map();  // Store frequency of all letters
 let scrabble1ExactMatchSet = new Set();  // Words with exact SCRABBLE1 score (highlighted blue)
+let engineDisplayMap = null; // normalized word -> human-readable title
 
 // SOLOGRAM: last submitted Y/N string and whether current workflow includes SOLOGRAM (for overlay)
 let lastSologramYnString = null;
@@ -204,6 +205,9 @@ const DEFAULT_SETTINGS = {
     // 'custom' = user-defined string then Most Frequent after it is exhausted
     muteLetterMode: 'az',
     muteCustomSequence: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    // ENGINE API keys (stored locally in this browser)
+    tmdbApiKey: '',
+    anthropicApiKey: '',
 };
 
 const DEFAULT_LETTER_LYING_STRING = 'NTRLCSAIEUO';
@@ -1160,6 +1164,7 @@ function setupButtonListeners() {
             newPerformButton.click();
         }, { passive: false });
     }
+
 }
 
 // Function to add feature to selected features list
@@ -1836,6 +1841,11 @@ async function loadWordList() {
             case 'months_starsigns':
                 wordlistPath = 'words/MONTHS_STARSIGNS.txt';
                 break;
+            case 'engine':
+                // ENGINE wordlist is generated at runtime in executeWorkflow pre-step.
+                wordlistPath = 'words/4000.txt';
+                gzippedPath = 'words/4000.txt.gz';
+                break;
         }
         console.log('Selected wordlist path:', wordlistPath);
         console.log('Gzipped path:', gzippedPath);
@@ -2033,6 +2043,110 @@ let lastDictionaryAlphaSection = null;
 // NUMBER START: section (low/mid/high) when that step ran in this workflow
 let lastNumberStartSection = null;
 
+function normalizeEngineWorkflowWord(raw) {
+    const digitMap = {
+        '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
+        '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine'
+    };
+    const withWords = String(raw || '').replace(/\d/g, (d) => digitMap[d] || '');
+    return withWords
+        .toLowerCase()
+        .replace(/[()]/g, '')
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\s/g, '');
+}
+
+async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode) {
+    if (!featureArea) throw new Error('Feature area not found for ENGINE pre-step');
+    const mode = engineMode === 'name' ? 'name' : 'association';
+    const title = mode === 'name' ? 'NAME ENGINE WORDLIST' : 'WORD ENGINE WORDLIST';
+    const placeholder = mode === 'name' ? 'Enter a name...' : 'Enter a word...';
+    const statusText = mode === 'name'
+        ? 'NAME ENGINE selected. Enter a name to generate a TMDB-based starting list.'
+        : 'WORD ENGINE selected. Enter a word to generate an association-based starting list.';
+
+    featureArea.innerHTML = '';
+    const pre = document.createElement('div');
+    pre.id = 'enginePrefilterFeature';
+    pre.className = 'feature-section';
+    pre.style.display = 'block';
+    pre.innerHTML = `
+        <div class="feature-title">${title}</div>
+        <div class="position-input">
+            <input type="text" id="enginePrefilterInput" placeholder="${placeholder}">
+            <button id="enginePrefilterButton">DONE</button>
+        </div>
+    `;
+    featureArea.appendChild(pre);
+    if (resultsContainer) {
+        resultsContainer.innerHTML = `<p>${statusText}</p>`;
+    }
+
+    const inputEl = pre.querySelector('#enginePrefilterInput');
+    const btnEl = pre.querySelector('#enginePrefilterButton');
+    if (!inputEl || !btnEl) throw new Error('ENGINE pre-step UI failed to initialize');
+
+    return await new Promise((resolve, reject) => {
+        let inFlight = false;
+        const submit = async () => {
+            const input = (inputEl.value || '').trim();
+            if (!input) {
+                alert('Please enter a word or name');
+                return;
+            }
+            if (inFlight) return;
+            inFlight = true;
+            btnEl.disabled = true;
+            if (resultsContainer) resultsContainer.innerHTML = '<p>Generating ENGINE wordlist...</p>';
+
+            try {
+                const resp = await fetch('/api/claude', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        input_word: input,
+                        limit: 500,
+                        mode,
+                        tmdb_api_key: (appSettings && appSettings.tmdbApiKey) || '',
+                        anthropic_api_key: (appSettings && appSettings.anthropicApiKey) || ''
+                    })
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data?.error || 'ENGINE generation failed');
+
+                const raw = Array.isArray(data.results) ? data.results : [];
+                const map = new Map();
+                for (const item of raw) {
+                    const display = String(item?.display || item?.word || '').trim();
+                    const normalized = normalizeEngineWorkflowWord(item?.word || display);
+                    if (!normalized || !display) continue;
+                    if (!map.has(normalized)) map.set(normalized, display);
+                }
+
+                const words = Array.from(map.keys());
+                if (words.length === 0) {
+                    throw new Error('ENGINE returned no usable words');
+                }
+
+                resolve({ words, displayMap: map });
+            } catch (e) {
+                reject(e);
+            } finally {
+                inFlight = false;
+                btnEl.disabled = false;
+            }
+        };
+
+        btnEl.addEventListener('click', submit);
+        btnEl.addEventListener('touchstart', (e) => { e.preventDefault(); submit(); }, { passive: false });
+        inputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submit();
+        });
+    });
+}
+
 // Function to execute workflow
 async function executeWorkflow(steps) {
     try {
@@ -2043,13 +2157,16 @@ async function executeWorkflow(steps) {
         const wordlistSelect = document.getElementById('wordlistSelect');
         const selectedWordlist = wordlistSelect.value;
         console.log('Selected wordlist:', selectedWordlist);
+        const usingWordEngineWordlist = selectedWordlist === 'wordengine';
+        const usingNameEngineWordlist = selectedWordlist === 'nameengine';
+        const usingEngineWordlist = usingWordEngineWordlist || usingNameEngineWordlist;
         
         // Check if we need to load a new wordlist
         const needsReload = !wordListLoaded || 
                            wordList.length === 0 || 
                            lastLoadedWordlist !== selectedWordlist;
         
-        if (needsReload) {
+        if (needsReload && !usingEngineWordlist) {
             await loadWordList();
             wordListLoaded = true;
             lastLoadedWordlist = selectedWordlist;
@@ -2061,7 +2178,7 @@ async function executeWorkflow(steps) {
         console.log('Workflow state reset');
         
         // Reset all feature states
-        currentFilteredWords = [...wordList]; // Start with the full wordlist
+        currentFilteredWords = usingEngineWordlist ? [] : [...wordList]; // Start with selected wordlist
         lexiconCompleted = false;
         originalLexCompleted = false;
         eeeCompleted = false;
@@ -2073,6 +2190,7 @@ async function executeWorkflow(steps) {
         currentFilteredWordsForVowels = [];
         currentPosition1Word = '';
         leastFrequentLetter = null;  // Reset least frequent letter state
+        engineDisplayMap = null;
         
         // Reset used letters at the start of a new workflow
         usedLettersInWorkflow = [];
@@ -2302,6 +2420,18 @@ async function executeWorkflow(steps) {
             hydraLabelContainer.style.display = 'none';
             const hydraLabelValue = document.getElementById('hydraLabelValue');
             if (hydraLabelValue) hydraLabelValue.textContent = '';
+        }
+
+        // ENGINE wordlist mode: generate a fresh pre-workflow list from user input.
+        if (usingEngineWordlist) {
+            const engineMode = usingNameEngineWordlist ? 'name' : 'association';
+            const generated = await runEnginePrefilterStep(featureArea, resultsContainer, engineMode);
+            wordList = [...generated.words];
+            currentFilteredWords = [...generated.words];
+            currentWordlistForVowels = [...generated.words];
+            engineDisplayMap = generated.displayMap;
+            wordListLoaded = true;
+            lastLoadedWordlist = selectedWordlist;
         }
         
         // Display initial wordlist
@@ -10905,6 +11035,7 @@ function displayResults(words) {
     
     // Capture SCRABBLE1 exact-match set for highlighting (used in list build and load-more)
     const exactHighlightSet = new Set(scrabble1ExactMatchSet);
+    const getDisplayWord = (word) => (engineDisplayMap && engineDisplayMap.get(word)) || word;
     
     if (words.length === 0) {
         resultsContainer.innerHTML = '<p>No words match the current criteria.</p>';
@@ -10938,15 +11069,16 @@ function displayResults(words) {
         
         // Create HTML string for initial words (SCRABBLE1 exact-match highlight; T9 if tap-to-hold)
         const wordListHTML = initialWords.map(word => {
+            const displayWord = getDisplayWord(word);
             const scrabble1Cls = exactHighlightSet.has(word) ? ' scrabble1-exact' : '';
             if (userShowT9ByLongPress) {
                 const t9String = t9StringsMap.get(word) || wordToT9(word);
                 const firstFour = t9String.substring(0, 4);
                 const rest = t9String.substring(4);
-                return `<li class="word-with-t9${scrabble1Cls}" data-word="${word}"><div style="font-weight: bold; margin-bottom: 8px;">${word}</div><div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;"><span style="color: red; font-weight: bold;">${firstFour}</span>${rest}</div></li>`;
+                return `<li class="word-with-t9${scrabble1Cls}" data-word="${word}"><div style="font-weight: bold; margin-bottom: 8px;">${displayWord}</div><div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;"><span style="color: red; font-weight: bold;">${firstFour}</span>${rest}</div></li>`;
             }
             const cls = exactHighlightSet.has(word) ? ' class="scrabble1-exact"' : '';
-            return `<li${cls}>${word}</li>`;
+            return `<li${cls}>${displayWord}</li>`;
         }).join('');
         
         resultsContainer.innerHTML = `
@@ -10966,15 +11098,16 @@ function displayResults(words) {
             loadMoreBtn.addEventListener('click', () => {
                 // Show all words (preserve SCRABBLE1 highlight; T9 if tap-to-hold)
                 const allWordsHTML = words.map(word => {
+                    const displayWord = getDisplayWord(word);
                     const scrabble1Cls = exactHighlightSet.has(word) ? ' scrabble1-exact' : '';
                     if (userShowT9ByLongPress) {
                         const t9String = t9StringsMap.get(word) || wordToT9(word);
                         const firstFour = t9String.substring(0, 4);
                         const rest = t9String.substring(4);
-                        return `<li class="word-with-t9${scrabble1Cls}" data-word="${word}"><div style="font-weight: bold; margin-bottom: 8px;">${word}</div><div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;"><span style="color: red; font-weight: bold;">${firstFour}</span>${rest}</div></li>`;
+                        return `<li class="word-with-t9${scrabble1Cls}" data-word="${word}"><div style="font-weight: bold; margin-bottom: 8px;">${displayWord}</div><div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;"><span style="color: red; font-weight: bold;">${firstFour}</span>${rest}</div></li>`;
                     }
                     const cls = exactHighlightSet.has(word) ? ' class="scrabble1-exact"' : '';
-                    return `<li${cls}>${word}</li>`;
+                    return `<li${cls}>${displayWord}</li>`;
                 }).join('');
                 resultsContainer.innerHTML = `
                     <ul class="word-list">
@@ -10989,6 +11122,7 @@ function displayResults(words) {
     } else {
         // For smaller lists, show all words at once using innerHTML
         const wordListHTML = words.map(word => {
+            const displayWord = getDisplayWord(word);
             const scrabble1Cls = exactHighlightSet.has(word) ? ' scrabble1-exact' : '';
             if (shouldAutoShowT9 || userShowT9ByLongPress) {
                 // Auto-display or tap-to-hold: word and T9 string (first 4 digits in red)
@@ -10997,18 +11131,18 @@ function displayResults(words) {
                 const rest = t9String.substring(4);
                 
                 return `<li class="word-with-t9${scrabble1Cls}" data-word="${word}" style="cursor: pointer;">
-                    <div style="font-weight: bold; margin-bottom: 8px;">${word}</div>
+                    <div style="font-weight: bold; margin-bottom: 8px;">${displayWord}</div>
                     <div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;">
                         <span style="color: red; font-weight: bold;">${firstFour}</span>${rest}
                     </div>
                 </li>`;
             } else if (shouldShowT9) {
                 // Make clickable for 11-20 words (click to reveal T9)
-                return `<li class="word-clickable${scrabble1Cls}" data-word="${word}" style="cursor: pointer;">${word}</li>`;
+                return `<li class="word-clickable${scrabble1Cls}" data-word="${word}" style="cursor: pointer;">${displayWord}</li>`;
             } else {
                 // Just show word for 21+ words or no T9 features
                 const cls = scrabble1Cls ? ` class="${scrabble1Cls.trim()}"` : '';
-                return `<li${cls}>${word}</li>`;
+                return `<li${cls}>${displayWord}</li>`;
             }
         }).join('');
         
@@ -13502,6 +13636,24 @@ function initSettingsUI() {
     const lengthToggle = document.getElementById('lengthBuffer1Toggle');
     const t9LengthToggle = document.getElementById('t9LengthBuffer1Toggle');
     const e21Toggle = document.getElementById('e21AnywhereToggle');
+
+    // ENGINE API keys (persisted in localStorage)
+    const tmdbApiKeyInput = document.getElementById('tmdbApiKeyInput');
+    if (tmdbApiKeyInput) {
+        tmdbApiKeyInput.value = (appSettings && appSettings.tmdbApiKey) || '';
+        tmdbApiKeyInput.addEventListener('input', () => {
+            appSettings.tmdbApiKey = tmdbApiKeyInput.value.trim();
+            saveAppSettings();
+        });
+    }
+    const anthropicApiKeyInput = document.getElementById('anthropicApiKeyInput');
+    if (anthropicApiKeyInput) {
+        anthropicApiKeyInput.value = (appSettings && appSettings.anthropicApiKey) || '';
+        anthropicApiKeyInput.addEventListener('input', () => {
+            appSettings.anthropicApiKey = anthropicApiKeyInput.value.trim();
+            saveAppSettings();
+        });
+    }
     
     if (lengthToggle) {
         lengthToggle.checked = !!appSettings.lengthBuffer1;

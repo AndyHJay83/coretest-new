@@ -62,6 +62,8 @@
                             <option value="allnames">All Names</option>
                             <option value="colouritems">Colour Items</option>
                             <option value="months_starsigns">Months & Starsigns</option>
+                            <option value="wordengine">WORD ENGINE</option>
+                            <option value="nameengine">NAME ENGINE</option>
                         </select>
                         <div class="custom-select">
                             <div class="selected-text">4000 Wordlist</div>
@@ -1005,6 +1007,28 @@
                 <button type="button" id="settingsBackButton" class="settings-back-btn" title="Back to Home">BACK</button>
                 <h2 class="settings-page-title">Settings</h2>
                 <div class="settings-sections">
+                    <div class="settings-section">
+                        <h3 class="settings-section-title">API KEYS (ENGINE)</h3>
+                        <p class="settings-section-subtitle">Paste your TMDB + Anthropic keys once. Saved locally in your browser.</p>
+                        <label for="tmdbApiKeyInput">TMDB API Key:</label>
+                        <input
+                            type="password"
+                            id="tmdbApiKeyInput"
+                            placeholder="TMDB_API_KEY"
+                            autocomplete="off"
+                            spellcheck="false"
+                            style="width: 100%;"
+                        >
+                        <label for="anthropicApiKeyInput" style="margin-top: 12px; display: block;">Anthropic API Key:</label>
+                        <input
+                            type="password"
+                            id="anthropicApiKeyInput"
+                            placeholder="ANTHROPIC_API_KEY"
+                            autocomplete="off"
+                            spellcheck="false"
+                            style="width: 100%;"
+                        >
+                    </div>
                     <div class="settings-section">
                         <h3 class="settings-section-title">BINARY (MUTE / MUTE DUO)</h3>
                         <p class="settings-section-subtitle">Letter selection mode</p>

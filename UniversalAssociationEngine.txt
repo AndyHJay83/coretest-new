@@ -1,0 +1,187 @@
+{
+  "engine_name": "Universal Association Engine",
+  "engine_version": "v2.7",
+  "mode": "maximum_general_recall",
+  "status": "validated",
+
+  "purpose": {
+    "primary_goal": "Maximise recall so that a reasonable human-associated word is almost certainly present in the generated list.",
+    "secondary_goal": "Maintain sensible probability ranking so high-likelihood associations surface first.",
+    "non_goals": [
+      "Dictionary definition",
+      "Synonym generation",
+      "Compact or minimal output"
+    ]
+  },
+
+  "generation_strategy": {
+    "hard_cap": null,
+    "expected_output_size": {
+      "concrete_words": "25000-30000",
+      "abstract_words": "30000-50000"
+    },
+    "passes": [
+      {
+        "name": "core_high_probability",
+        "target_size": 3500,
+        "description": "Dominant, culturally central, emotionally salient associations."
+      },
+      {
+        "name": "long_tail_expansion",
+        "target_size": 11500,
+        "description": "Less dominant but clearly plausible associations."
+      },
+      {
+        "name": "max_recall_tail",
+        "target_size": "no_fixed_limit",
+        "description": "Lower-probability but reasonable associations added until semantic saturation."
+      }
+    ]
+  },
+
+  "inclusion_rules": {
+    "description": "A candidate word may be included if it satisfies at least one rule.",
+    "rules": [
+      "strong_phrase_or_collocation_binding",
+      "primary_function_cause_effect_or_outcome",
+      "canonical_object_role_or_phenomenon",
+      "high_emotional_or_cultural_salience",
+      "conceptual_polarity_or_contrast",
+      "trajectory_destination_or_state_transition",
+      "generalised_personal_significance",
+      "high_frequency_scene_colocation",
+      "controlled_idiom_or_trope_chain_2_to_3_hops",
+      "misuse_risk_or_safety_affordance_non_instructional",
+      "containment_representation_or_model_artefact",
+      "idiomatic_outcome_or_implied_emotional_state",
+      "social_pressure_to_collective_action_or_compliance",
+      "constraint_or_pressure_as_catalyst_for_improvement",
+      "phonetic_or_sound_based_association_low_weight",
+      "common_misconception_or_simplified_mental_model",
+      "brand_dominated_genericisation",
+      "emotionally_intense_shared_episodic_flashpoint",
+      "oppositional_identity_or_worldview_reaction",
+      "meta_game_or_test_aware_reasoning"
+    ]
+  },
+
+  "exclusion_rules": {
+    "exclude_unless_justified": [
+      "grammatical_glue_words",
+      "generic_unbound_adjectives",
+      "words_interchangeable_across_most_inputs",
+      "obscure_or_ultra_niche_jargon_without_cultural_footprint",
+      "explicit_violent_action_verbs_or_actionable_harm_instructions"
+    ],
+    "notes": "Conceptual risk or danger terms are allowed; instructional or explicit violence is not."
+  },
+
+  "cognitive_dimensions": [
+    "direct_factual_traits",
+    "conceptual_abstractions",
+    "functional_and_usage_context",
+    "category_neighbors",
+    "narrative_roles",
+    "mythic_or_archetypal_framing",
+
+    "phrase_completion_and_collocations",
+    "derivative_concept_formation",
+    "linguistic_variants",
+    "polarity_and_contrast",
+    "metaphorical_extensions",
+
+    "sensory_cues",
+    "environmental_context",
+    "elemental_and_primal_phenomena",
+    "scientific_substrate",
+    "aesthetic_and_visual_identity",
+
+    "emotional_associations",
+    "memory_and_nostalgia_triggers",
+    "personal_memory_archetypes",
+    "psychological_reactions",
+
+    "cultural_and_media_context",
+    "brand_and_proper_nouns",
+    "internet_and_meme_culture",
+    "slang_and_informal_register",
+    "social_role_projections",
+
+    "behavioral_and_lifestyle_projection",
+    "developmental_and_life_stage_context",
+    "commercial_and_branding_layer",
+    "moral_and_value_associations",
+
+    "temporal_experience_and_state_actions",
+    "object_subtype_expansion",
+    "process_causation_and_temporal_effects",
+    "compound_fusion_and_concept_blending",
+    "material_fabric_and_texture_association",
+
+    "conceptual_trajectory_and_state_mapping",
+    "hidden_or_symbolic_personal_meaning",
+
+    "scene_colocation_and_common_setting",
+    "idiom_and_trope_chain_expansion",
+    "misuse_risk_and_safety_affordance",
+    "containment_and_representation_artefacts",
+    "idiomatic_emotional_outcomes",
+
+    "social_pressure_action_outcomes",
+    "pressure_as_growth_catalyst",
+
+    "phonetic_association",
+    "false_belief_or_misconception",
+    "meta_game_awareness"
+  ],
+
+  "scoring_and_ranking": {
+    "method": "recall_probability_scoring",
+    "ordering": "descending_probability",
+    "constraints": [
+      "core_associations_must_dominate_top_ranks",
+      "low_confidence_dimensions_never_dominate",
+      "duplicates_removed"
+    ]
+  },
+
+  "personalisation": {
+    "strategy": "re_rank_only",
+    "never_remove_words": true,
+    "high_roi_signals": [
+      "region_or_language_variant",
+      "age_band",
+      "intended_word_type_object_action_feeling_place_idea"
+    ],
+    "optional_signals": [
+      "context_frame",
+      "interest_domains",
+      "tone_preference",
+      "game_vs_thinking_mode"
+    ]
+  },
+
+  "confidence_model": {
+    "minimum_viable_output": 25000,
+    "ideal_output_range": "30000-35000",
+    "upper_bound": 50000,
+    "expected_recall": ">=99.9_percent_general_population"
+  },
+
+  "output_contract": {
+    "format": "json",
+    "required_fields": [
+      "input_word",
+      "engine_version",
+      "mode",
+      "total_candidates",
+      "results"
+    ],
+    "result_item_schema": {
+      "word": "string",
+      "rank": "integer",
+      "score": "float",
+      "tags": "array_optional"
+    }
+  }
+}
