@@ -957,12 +957,35 @@ app.post('/api/claude', async (req, res, next) => {
     // ASSOCIATION mode: Datamuse as primary source (fast), optional LLM fallback.
     const associationLimit = Math.min(limit, 500);
     const datamuseMaxPerQuery = 250;
+    // If Datamuse thinks the input is a noun, we restrict generated candidates to nouns only.
+    // (User preference: adjectives/verbs are fine to ignore; noun-only is the priority.)
+    let nounsOnly = false;
+    try {
+      const nounProbeItems = await fetchDatamuseWords({
+        ml: inputWord,
+        // Query-echo lets Datamuse return metadata for the input itself.
+        qe: 'ml',
+        md: 'p',
+        max: 3
+      });
+      nounsOnly = Array.isArray(nounProbeItems) && nounProbeItems.some(it => {
+        const tags = it?.tags;
+        return Array.isArray(tags) && tags.includes('n');
+      });
+    } catch {
+      // Best-effort probe only; fall back to normal behavior on failure.
+      nounsOnly = false;
+    }
+
+    const buildPosParams = (baseParams) => {
+      return nounsOnly ? { ...baseParams, md: 'p' } : baseParams;
+    };
     const weightedQueries = [
-      { params: { rel_trg: inputWord, max: datamuseMaxPerQuery }, weight: 1.0, tag: 'datamuse_rel_trg' },
-      { params: { rel_spc: inputWord, max: datamuseMaxPerQuery }, weight: 0.6, tag: 'datamuse_rel_spc' },
-      { params: { ml: inputWord, max: datamuseMaxPerQuery }, weight: 0.7, tag: 'datamuse_ml' },
-      { params: { topics: inputWord, max: datamuseMaxPerQuery }, weight: 0.5, tag: 'datamuse_topics' },
-      { params: { rel_ant: inputWord, max: 80 }, weight: 0.2, tag: 'datamuse_rel_ant' }
+      { params: buildPosParams({ rel_trg: inputWord, max: datamuseMaxPerQuery }), weight: 1.0, tag: 'datamuse_rel_trg' },
+      { params: buildPosParams({ rel_spc: inputWord, max: datamuseMaxPerQuery }), weight: 0.6, tag: 'datamuse_rel_spc' },
+      { params: buildPosParams({ ml: inputWord, max: datamuseMaxPerQuery }), weight: 0.7, tag: 'datamuse_ml' },
+      { params: buildPosParams({ topics: inputWord, max: datamuseMaxPerQuery }), weight: 0.5, tag: 'datamuse_topics' },
+      { params: buildPosParams({ rel_ant: inputWord, max: 80 }), weight: 0.2, tag: 'datamuse_rel_ant' }
     ];
 
     const queryResults = await Promise.all(
@@ -1000,7 +1023,7 @@ app.post('/api/claude', async (req, res, next) => {
       // If Datamuse returns compound phrases like "soup spoon",
       // add constituent tokens (e.g. "spoon") as derived candidates.
       // This helps keep single-object associations available for workflows.
-      if (d.includes(' ')) {
+      if (!nounsOnly && d.includes(' ')) {
         const tokens = d.split(/\s+/).filter(Boolean);
         if (tokens.length > 1) {
           for (let i = 0; i < tokens.length; i += 1) {
@@ -1037,6 +1060,11 @@ app.post('/api/claude', async (req, res, next) => {
       for (const item of q.items) {
         const display = String(item?.word ?? '').trim();
         if (!display) continue;
+        if (nounsOnly) {
+          const tags = item?.tags;
+          const isNoun = Array.isArray(tags) && tags.includes('n');
+          if (!isNoun) continue;
+        }
         addDatamuseCandidate(display, item?.score, q.weight, ['datamuse', q.tag]);
       }
     }
@@ -1062,7 +1090,7 @@ app.post('/api/claude', async (req, res, next) => {
         const bestAdjScore = adjCandidates[0].score || 1;
 
         const hop2Results = await Promise.all(adjCandidates.map(adj => {
-          return fetchDatamuseWords({ rel_jja: adj.word, max: hop2Max })
+          return fetchDatamuseWords({ rel_jja: adj.word, max: hop2Max, ...(nounsOnly ? { md: 'p' } : {}) })
             .then(items => ({ adjective: adj, items }));
         }));
 
@@ -1074,6 +1102,11 @@ app.post('/api/claude', async (req, res, next) => {
           for (const item of (hop2.items || [])) {
             const nounDisplay = String(item?.word ?? '').trim();
             if (!nounDisplay) continue;
+            if (nounsOnly) {
+              const tags = item?.tags;
+              const isNoun = Array.isArray(tags) && tags.includes('n');
+              if (!isNoun) continue;
+            }
             addDatamuseCandidate(nounDisplay, item?.score, perAdjWeight, [
               'datamuse_twohop',
               'datamuse_twohop_jjb_jja'
@@ -1124,8 +1157,9 @@ app.post('/api/claude', async (req, res, next) => {
         }
       };
       const fallbackLimit = Math.min(40, associationLimit);
-      const systemPrompt = `${ASSOCIATION_ENGINE_SPEC}\n\nIMPORTANT:\n- Return ONLY valid JSON matching the schema.\n- Use descending probability order.\n- Include up to ${fallbackLimit} results.`;
-      const userMessage = `input_word: "${inputWord}"\nlimit: ${fallbackLimit}`;
+      const nounBullet = nounsOnly ? '\n- All results must be NOUNS only (no verbs/adjectives/adverbs).' : '';
+      const systemPrompt = `${ASSOCIATION_ENGINE_SPEC}\n\nIMPORTANT:\n- Return ONLY valid JSON matching the schema.\n- Use descending probability order.\n- Include up to ${fallbackLimit} results.${nounBullet}`;
+      const userMessage = `input_word: "${inputWord}"\nlimit: ${fallbackLimit}${nounsOnly ? '\nonly_nouns: true' : ''}`;
       try {
         const parsed = await callWithStructuredFallback(systemPrompt, userMessage, resultSchema);
         const existingKeys = new Set(cleanedResults.map(r => r.word));
