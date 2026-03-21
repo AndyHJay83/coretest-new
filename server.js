@@ -293,6 +293,17 @@ function inferCreditMediaType(x) {
   return null;
 }
 
+// TMDB TV genre IDs (see https://developer.themoviedb.org/reference/genre-tv-list)
+const TMDB_TV_GENRE_NEWS = 10763;
+const TMDB_TV_GENRE_TALK = 10767;
+
+/** Drop TV credits tagged as News or Talk; keep Reality (10764) and everything else. */
+function isTvNewsOrTalkShow(credit) {
+  const ids = credit?.genre_ids;
+  if (!Array.isArray(ids) || ids.length === 0) return false;
+  return ids.includes(TMDB_TV_GENRE_NEWS) || ids.includes(TMDB_TV_GENRE_TALK);
+}
+
 /** Movies + TV from TMDB combined_credits (cast + crew). */
 function readFilmAndTvCredits(credits) {
   const titleOf = (x) => {
@@ -310,6 +321,7 @@ function readFilmAndTvCredits(credits) {
   const mapRow = (x, role) => {
     const mt = inferCreditMediaType(x);
     if (!mt) return null;
+    if (mt === 'tv' && isTvNewsOrTalkShow(x)) return null;
     const display = titleOf(x);
     if (!display) return null;
     return {
