@@ -1115,8 +1115,9 @@ app.post('/api/claude', async (req, res, next) => {
       });
     }
 
-    // ASSOCIATION mode: Datamuse as primary source (fast), optional LLM fallback.
-    const associationLimit = Math.min(limit, 500);
+    // ASSOCIATION mode: Datamuse as primary source, LLM refine (UniversalAssociationEngine rules), optional LLM top-up if sparse.
+    const associationLimit = Math.min(limit, 250);
+    const datamusePoolForRefine = 400; // max candidates sent to LLM for filtering/ranking
     const datamuseMaxPerQuery = 250;
     // If Datamuse thinks the input is a noun, we restrict generated candidates to nouns only.
     // (User preference: adjectives/verbs are fine to ignore; noun-only is the priority.)
@@ -1279,18 +1280,120 @@ app.post('/api/claude', async (req, res, next) => {
       // Two-hop enrichment is best-effort; never block the main associations.
     }
 
-    let cleanedResults = Array.from(merged.values())
-      .sort((a, b) => (b.score - a.score) || a.display.localeCompare(b.display))
-      .slice(0, associationLimit)
-      .map((r, i) => ({
+    const sortedMerged = Array.from(merged.values())
+      .sort((a, b) => (b.score - a.score) || a.display.localeCompare(b.display));
+
+    const datamuseOnlyResults = (rows) => rows.slice(0, associationLimit).map((r, i) => ({
+      word: r.word,
+      display: r.display,
+      rank: i + 1,
+      score: Math.round(r.score * 100) / 100,
+      tags: Array.from(r.tags)
+    }));
+
+    const poolForLlm = sortedMerged.slice(0, datamusePoolForRefine);
+    const candidateMap = new Map(poolForLlm.map(r => [r.word, r]));
+
+    if (!detectedMeta) detectedMeta = {};
+    detectedMeta.association_limit = associationLimit;
+
+    let cleanedResults = datamuseOnlyResults(sortedMerged);
+
+    const associationRefineSchema = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['results'],
+      properties: {
+        results: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['word', 'rank', 'score'],
+            properties: {
+              word: { type: 'string' },
+              rank: { type: 'integer' },
+              score: { type: 'number' },
+              tags: { type: 'array', items: { type: 'string' } }
+            }
+          }
+        }
+      }
+    };
+
+    if (apiKey && poolForLlm.length > 0) {
+      const candidatesPayload = poolForLlm.map(r => ({
         word: r.word,
         display: r.display,
-        rank: i + 1,
         score: Math.round(r.score * 100) / 100,
         tags: Array.from(r.tags)
       }));
+      const nounRefineBullet = nounsOnly
+        ? '\n- The input was classified as noun-like: keep ONLY noun associations (drop clear verbs/adjectives used as non-nouns).'
+        : '';
+      const refineSystemPrompt =
+        `${ASSOCIATION_ENGINE_SPEC}\n\n` +
+        'You are refining a statistical association candidate list (from Datamuse). ' +
+        'Apply the engine inclusion and exclusion rules strictly: remove weak glue words, generic unbound adjectives, ' +
+        'and candidates that violate exclusion_rules; prioritize strong human associations per inclusion_rules.\n\n' +
+        'HARD CONSTRAINTS:\n' +
+        `- Return at most ${associationLimit} results.\n` +
+        '- Every `word` in your output MUST match the `word` field of an entry in `candidates_json` exactly (same string). ' +
+        'Do not invent new words or spellings.\n' +
+        '- Re-rank best-first (rank 1 = strongest association after applying the spec).\n' +
+        '- You may assign new `score` values (0–100) reflecting confidence after refinement; keep descending order.\n' +
+        '- Preserve useful provenance by copying relevant tags from the chosen candidate into each result `tags` array, ' +
+        'and add the tag "llm_refined".' +
+        nounRefineBullet;
+      const refineUserMessage =
+        `input_word: "${inputWord}"\n` +
+        `max_output: ${associationLimit}\n` +
+        `only_nouns_preference: ${nounsOnly}\n\n` +
+        `candidates_json:\n${JSON.stringify(candidatesPayload)}`;
 
-    // If Datamuse is sparse for a term, top up with LLM fallback.
+      try {
+        const refined = await callWithStructuredFallback(refineSystemPrompt, refineUserMessage, associationRefineSchema);
+        const rows = Array.isArray(refined?.results)
+          ? [...refined.results].sort((a, b) => (Number(a?.rank) || 0) - (Number(b?.rank) || 0))
+          : [];
+        const out = [];
+        const seen = new Set();
+        for (const row of rows) {
+          const key = String(row?.word ?? '').trim();
+          if (!key) continue;
+          const base = candidateMap.get(key);
+          if (!base || seen.has(base.word)) continue;
+          seen.add(base.word);
+          const llmTags = Array.isArray(row?.tags) ? row.tags.filter(t => typeof t === 'string') : [];
+          out.push({
+            word: base.word,
+            display: base.display,
+            rank: out.length + 1,
+            score: Number.isFinite(Number(row?.score)) ? Math.round(Number(row.score) * 100) / 100 : Math.round(base.score * 100) / 100,
+            tags: Array.from(new Set([...Array.from(base.tags), ...llmTags, 'llm_refined']))
+          });
+          if (out.length >= associationLimit) break;
+        }
+        if (out.length > 0) {
+          cleanedResults = out;
+          detectedMeta.llm_association_refine = true;
+          detectedMeta.llm_association_refine_in_count = candidatesPayload.length;
+          detectedMeta.llm_association_refine_out_count = out.length;
+        } else {
+          detectedMeta.llm_association_refine = false;
+          detectedMeta.llm_association_refine_error = 'empty_or_invalid_output';
+        }
+      } catch {
+        cleanedResults = datamuseOnlyResults(sortedMerged);
+        detectedMeta.llm_association_refine = false;
+        detectedMeta.llm_association_refine_error = true;
+      }
+    } else {
+      detectedMeta.llm_association_refine = false;
+      if (!apiKey) detectedMeta.llm_association_refine_skipped = 'no_anthropic_key';
+    }
+
+    // If still sparse for a term, top up with LLM fallback (new words allowed).
     if (cleanedResults.length < 25) {
       const resultSchema = {
         type: 'object',
@@ -1355,7 +1458,7 @@ app.post('/api/claude', async (req, res, next) => {
 
     return res.json({
       input_word: inputWord,
-      engine_version: 'engine-v2.7',
+      engine_version: 'engine-v2.9',
       mode: 'word_association_datamuse',
       total_candidates: cleanedResults.length,
       results: cleanedResults,

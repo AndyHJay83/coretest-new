@@ -2189,7 +2189,7 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             input_word: input,
-                            limit: 500,
+                            limit: mode === 'name' ? 500 : 250,
                             mode,
                             tmdb_api_key: (appSettings && appSettings.tmdbApiKey) || '',
                             anthropic_api_key: (appSettings && appSettings.anthropicApiKey) || '',
