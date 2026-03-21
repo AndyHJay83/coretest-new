@@ -575,6 +575,32 @@ function getEngineClaudeApiUrl() {
     return `${getEngineApiBaseUrl()}/api/claude`;
 }
 
+/**
+ * Parse ENGINE API fetch body as JSON. If the server returns HTML (SPA, 404 page, wrong host),
+ * throw a clear error instead of "Unexpected token '<'".
+ */
+async function parseEngineApiJsonResponse(resp, endpointLabel) {
+    const text = await resp.text();
+    const trimmed = text.trim();
+    if (!trimmed) {
+        throw new Error(`${endpointLabel}: empty response (HTTP ${resp.status}).`);
+    }
+    if (trimmed.startsWith('<')) {
+        const base = getEngineApiBaseUrl();
+        throw new Error(
+            `${endpointLabel}: received HTML instead of JSON — ${base} is not the Node API. ` +
+            'Open Settings → ENGINE API and set the base URL where you run `node server.js` (e.g. http://localhost:3000), ' +
+            'or your hosted API. Do not use the GitHub Pages site URL here.'
+        );
+    }
+    try {
+        return JSON.parse(trimmed);
+    } catch (e) {
+        const snippet = trimmed.length > 120 ? `${trimmed.slice(0, 120)}…` : trimmed;
+        throw new Error(`${endpointLabel}: invalid JSON (${e.message}). HTTP ${resp.status}. Body starts: ${snippet}`);
+    }
+}
+
 // Global workflow state management
 let workflowState = {
     confirmedLetters: new Set(), // Letters we KNOW are in the word
@@ -2222,7 +2248,7 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
                             ...extraBody
                         })
                     });
-                    data = await resp.json();
+                    data = await parseEngineApiJsonResponse(resp, 'ENGINE API');
                     if (!resp.ok) throw new Error(data?.error || 'ENGINE generation failed');
 
                     if (mode === 'name' && data.needs_person_picker) {
