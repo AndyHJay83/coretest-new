@@ -2143,7 +2143,7 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
     const title = mode === 'name' ? 'NAME ENGINE WORDLIST' : 'WORD ENGINE WORDLIST';
     const placeholder = mode === 'name' ? 'Enter a name...' : 'Enter a word...';
     const statusText = mode === 'name'
-        ? 'NAME ENGINE selected. Enter a name to generate a TMDB-based starting list.'
+        ? 'Enter a name.'
         : 'WORD ENGINE selected. Enter a word to generate an association-based starting list.';
 
     featureArea.innerHTML = '';
