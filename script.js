@@ -2502,6 +2502,7 @@ async function executeWorkflow(steps) {
             shapeFeature: createShapeFeature(),
             curvedFeature: createCurvedFeature(),
             lengthFeature: createLengthFeature(),
+            letterShapesFeature: createLetterShapesFeature(),
             scrabbleFeature: createScrabbleFeature(),
             scrabble1Feature: createScrabble1Feature(),
             sologramFeature: createSologramFeature(),
@@ -2634,6 +2635,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 'length':
                     featureElement = createLengthFeature();
+                    break;
+                case 'letterShapes':
+                    featureElement = createLetterShapesFeature();
                     break;
                 case 'notIn':
                     featureElement = createNotInFeature();
@@ -3803,6 +3807,41 @@ function createLengthFeature() {
             <input type="text" id="lengthInput" placeholder="Enter length (3+)" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
             <button id="lengthButton">SUBMIT</button>
             <button id="lengthSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+/** LETTER SHAPES pre-filter: position 1–6 + STRAIGHT / MIXED / CURVED letter sets (distinct from lexicon shapeFeature). */
+function createLetterShapesFeature() {
+    const div = document.createElement('div');
+    div.id = 'letterShapesFeature';
+    div.className = 'feature-section';
+    div.dataset.selectedPosition = '';
+    div.innerHTML = `
+        <h2 class="feature-title">LETTER SHAPES</h2>
+        <p class="letter-shapes-hint">Pick a position (1–6), then STRAIGHT, MIXED, or CURVED. Only words long enough are kept.</p>
+        <div class="letter-shapes-section">
+            <div class="letter-shapes-label">Position</div>
+            <div class="letter-shapes-pos-buttons">
+                <button type="button" class="letter-shapes-pos-btn" data-pos="1">1</button>
+                <button type="button" class="letter-shapes-pos-btn" data-pos="2">2</button>
+                <button type="button" class="letter-shapes-pos-btn" data-pos="3">3</button>
+                <button type="button" class="letter-shapes-pos-btn" data-pos="4">4</button>
+                <button type="button" class="letter-shapes-pos-btn" data-pos="5">5</button>
+                <button type="button" class="letter-shapes-pos-btn" data-pos="6">6</button>
+            </div>
+        </div>
+        <div class="letter-shapes-section">
+            <div class="letter-shapes-label">Shape at that position</div>
+            <div class="letter-shapes-shape-buttons">
+                <button type="button" class="letter-shapes-shape-btn" data-shape="straight">STRAIGHT</button>
+                <button type="button" class="letter-shapes-shape-btn" data-shape="mixed">MIXED</button>
+                <button type="button" class="letter-shapes-shape-btn" data-shape="curved">CURVED</button>
+            </div>
+        </div>
+        <div class="letter-shapes-skip-wrap">
+            <button type="button" id="letterShapesSkipButton" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
@@ -7827,6 +7866,66 @@ function setupFeatureListeners(feature, callback, options) {
             break;
         }
 
+        case 'letterShapes': {
+            const letterShapesRoot = document.getElementById('letterShapesFeature');
+            const posBtns = letterShapesRoot ? letterShapesRoot.querySelectorAll('.letter-shapes-pos-btn') : [];
+            const shapeBtns = letterShapesRoot ? letterShapesRoot.querySelectorAll('.letter-shapes-shape-btn') : [];
+            const skipBtn = document.getElementById('letterShapesSkipButton');
+
+            const setSelectedPosition = (n) => {
+                if (!letterShapesRoot) return;
+                letterShapesRoot.dataset.selectedPosition = String(n);
+                posBtns.forEach((b) => {
+                    b.classList.toggle('letter-shapes-pos-btn--selected', b.getAttribute('data-pos') === String(n));
+                });
+            };
+
+            const applyShape = (shape) => {
+                if (!letterShapesRoot) return;
+                const posStr = letterShapesRoot.dataset.selectedPosition || '';
+                const pos = parseInt(posStr, 10);
+                if (!Number.isFinite(pos) || pos < 1 || pos > 6) {
+                    alert('Choose a position from 1 to 6 first.');
+                    return;
+                }
+                const filtered = filterWordsByLetterShapesPrefilter(currentFilteredWords, pos, shape);
+                callback(filtered);
+                letterShapesRoot.dispatchEvent(new Event('completed'));
+            };
+
+            posBtns.forEach((btn) => {
+                const onPick = (e) => {
+                    e.preventDefault();
+                    const p = parseInt(btn.getAttribute('data-pos') || '0', 10);
+                    if (p >= 1 && p <= 6) setSelectedPosition(p);
+                };
+                btn.addEventListener('click', onPick);
+                btn.addEventListener('touchstart', (e) => { e.preventDefault(); onPick(e); }, { passive: false });
+            });
+
+            shapeBtns.forEach((btn) => {
+                const onShape = (e) => {
+                    e.preventDefault();
+                    const shape = btn.getAttribute('data-shape');
+                    if (shape === 'straight' || shape === 'mixed' || shape === 'curved') applyShape(shape);
+                };
+                btn.addEventListener('click', onShape);
+                btn.addEventListener('touchstart', (e) => { e.preventDefault(); onShape(e); }, { passive: false });
+            });
+
+            if (skipBtn) {
+                skipBtn.onclick = () => {
+                    callback(currentFilteredWords);
+                    if (letterShapesRoot) letterShapesRoot.dispatchEvent(new Event('completed'));
+                };
+                skipBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    skipBtn.click();
+                }, { passive: false });
+            }
+            break;
+        }
+
         case 'length': {
             const lengthButton = document.getElementById('lengthButton');
             const lengthSkipButton = document.getElementById('lengthSkipButton');
@@ -11796,6 +11895,7 @@ function showNextFeature() {
         'eeeFeature',
         'eeeFirstFeature',
         'lengthFeature',
+        'letterShapesFeature',
         'mostFrequentFeature',
         'leastFrequentFeature',
         'notInFeature',
@@ -11832,6 +11932,9 @@ function showNextFeature() {
     }
     else if (!document.getElementById('lengthFeature').classList.contains('completed')) {
         document.getElementById('lengthFeature').style.display = 'block';
+    }
+    else if (document.getElementById('letterShapesFeature') && !document.getElementById('letterShapesFeature').classList.contains('completed')) {
+        document.getElementById('letterShapesFeature').style.display = 'block';
     }
     else if (!document.getElementById('mostFrequentFeature').classList.contains('completed')) {
         document.getElementById('mostFrequentFeature').style.display = 'block';
@@ -11894,6 +11997,7 @@ function resetApp() {
         'eeeFeature',
         'eeeFirstFeature',
         'lengthFeature',
+        'letterShapesFeature',
         'mostFrequentFeature',
         'leastFrequentFeature',
         'notInFeature',
@@ -13282,6 +13386,10 @@ function initializeModeButtons() {
                     <button class="info-button" data-feature="length"><i class="fas fa-info-circle"></i></button>
                 </div>
                 <div class="feature-group">
+                    <button class="feature-button" data-feature="letterShapes" draggable="true">LETTER SHAPES</button>
+                    <button class="info-button" data-feature="letterShapes"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
                     <button class="feature-button" data-feature="vowel2" draggable="true">VOWEL2</button>
                     <button class="info-button" data-feature="vowel2"><i class="fas fa-info-circle"></i></button>
                 </div>
@@ -13802,6 +13910,28 @@ document.head.appendChild(workflowDropdownCSS);
 // Add filtering function
 function filterWordsByLength(words, length) {
     return words.filter(word => word.length === length);
+}
+
+/**
+ * LETTER SHAPES pre-filter sets (workflow): not the same as `letterShapes` used by Curved Pos / shape UI.
+ * CURVED list per spec: C, O, S, G, Q, U (deduped from user list).
+ */
+const letterShapesPrefilterSets = {
+    straight: new Set(['A', 'E', 'F', 'H', 'I', 'K', 'L', 'M', 'N', 'T', 'V', 'W', 'X', 'Y', 'Z']),
+    mixed: new Set(['B', 'D', 'G', 'J', 'P', 'Q', 'R', 'U']),
+    curved: new Set(['C', 'O', 'S', 'G', 'Q', 'U'])
+};
+
+function filterWordsByLetterShapesPrefilter(words, positionOneBased, category) {
+    const set = letterShapesPrefilterSets[category];
+    if (!set || positionOneBased < 1 || positionOneBased > 6) return words;
+    const idx = positionOneBased - 1;
+    return words.filter((word) => {
+        if (idx >= word.length) return false;
+        const ch = word.charAt(idx);
+        if (!/[a-zA-Z]/.test(ch)) return false;
+        return set.has(ch.toUpperCase());
+    });
 }
 
 function initSettingsUI() {

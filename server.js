@@ -44,6 +44,11 @@ const FILMOGRAPHY_PROMPT_SPEC = extractJsonObjectBlock(readFirstExistingFile([
   resolve(process.cwd(), 'prompt.txt'),
   resolve(homedir(), 'prompt.txt')
 ]));
+/** Plain-English WORD ENGINE instructions (repo or ~); used when association mode bypasses Datamuse. */
+const ASSOCIATION_ENGINE_PROMPT_PLAIN = readFirstExistingFile([
+  resolve(process.cwd(), 'UniversalAssociationEngine-Noncode.txt'),
+  resolve(homedir(), 'UniversalAssociationEngine-Noncode.txt')
+]);
 
 app.use(express.json({ limit: '1mb' }));
 
@@ -1115,191 +1120,21 @@ app.post('/api/claude', async (req, res, next) => {
       });
     }
 
-    // ASSOCIATION mode: Datamuse as primary source, LLM refine (UniversalAssociationEngine rules), optional LLM top-up if sparse.
+    // ASSOCIATION mode (WORD ENGINE): LLM-only using UniversalAssociationEngine-Noncode.txt — Datamuse bypassed (testing).
     const associationLimit = Math.min(limit, 250);
-    const datamusePoolForRefine = 400; // max candidates sent to LLM for filtering/ranking
-    const datamuseMaxPerQuery = 250;
-    // If Datamuse thinks the input is a noun, we restrict generated candidates to nouns only.
-    // (User preference: adjectives/verbs are fine to ignore; noun-only is the priority.)
-    let nounsOnly = false;
-    try {
-      const nounProbeItems = await fetchDatamuseWords({
-        ml: inputWord,
-        // Query-echo lets Datamuse return metadata for the input itself.
-        qe: 'ml',
-        md: 'p',
-        max: 3
-      });
-      nounsOnly = Array.isArray(nounProbeItems) && nounProbeItems.some(it => {
-        const tags = it?.tags;
-        return Array.isArray(tags) && tags.includes('n');
-      });
-    } catch {
-      // Best-effort probe only; fall back to normal behavior on failure.
-      nounsOnly = false;
-    }
-
-    const buildPosParams = (baseParams) => {
-      return nounsOnly ? { ...baseParams, md: 'p' } : baseParams;
-    };
-    const weightedQueries = [
-      { params: buildPosParams({ rel_trg: inputWord, max: datamuseMaxPerQuery }), weight: 1.0, tag: 'datamuse_rel_trg' },
-      { params: buildPosParams({ rel_spc: inputWord, max: datamuseMaxPerQuery }), weight: 0.6, tag: 'datamuse_rel_spc' },
-      { params: buildPosParams({ ml: inputWord, max: datamuseMaxPerQuery }), weight: 0.7, tag: 'datamuse_ml' },
-      { params: buildPosParams({ topics: inputWord, max: datamuseMaxPerQuery }), weight: 0.5, tag: 'datamuse_topics' },
-      { params: buildPosParams({ rel_ant: inputWord, max: 80 }), weight: 0.2, tag: 'datamuse_rel_ant' }
-    ];
-
-    const queryResults = await Promise.all(
-      weightedQueries.map(q => fetchDatamuseWords(q.params).then(items => ({ ...q, items })))
-    );
-
-    const merged = new Map(); // normalized -> { word, display, score, tags:Set }
-    const addDatamuseCandidate = (display, rawScore, weight, tagsToAdd) => {
-      const d = String(display || '').trim();
-      if (!d) return;
-      const normalized = normalizeForWorkflowWord(d);
-      if (!normalized) return;
-
-      const rs = Number(rawScore || 0);
-      if (!Number.isFinite(rs)) return;
-      const w = Number(weight || 0);
-      const weighted = w * rs;
-      if (!Number.isFinite(weighted)) return;
-
-      const existing = merged.get(normalized);
-      if (!existing) {
-        merged.set(normalized, {
-          word: normalized,
-          display: d,
-          score: weighted,
-          tags: new Set(tagsToAdd || [])
-        });
-      } else {
-        existing.score += weighted;
-        (tagsToAdd || []).forEach(t => existing.tags.add(t));
-        // Prefer shorter readable display if variants differ.
-        if (d.length < existing.display.length) existing.display = d;
-      }
-
-      // If Datamuse returns compound phrases like "soup spoon",
-      // add constituent tokens (e.g. "spoon") as derived candidates.
-      // This helps keep single-object associations available for workflows.
-      if (!nounsOnly && d.includes(' ')) {
-        const tokens = d.split(/\s+/).filter(Boolean);
-        if (tokens.length > 1) {
-          for (let i = 0; i < tokens.length; i += 1) {
-            const tokenDisplay = tokens[i];
-            if (!tokenDisplay) continue;
-            if (tokenDisplay.length < 3) continue;
-
-            const tokenNormalized = normalizeForWorkflowWord(tokenDisplay);
-            if (!tokenNormalized) continue;
-            if (tokenNormalized === normalized) continue;
-
-            const tokenFactor = (i === tokens.length - 1) ? 0.85 : 0.45; // last token higher
-            const tokenWeighted = weighted * tokenFactor;
-
-            const existingTok = merged.get(tokenNormalized);
-            if (!existingTok) {
-              merged.set(tokenNormalized, {
-                word: tokenNormalized,
-                display: tokenDisplay,
-                score: tokenWeighted,
-                tags: new Set([...(tagsToAdd || []), 'datamuse_compound_split'])
-              });
-            } else {
-              existingTok.score += tokenWeighted;
-              existingTok.tags.add('datamuse_compound_split');
-              if (tokenDisplay.length < existingTok.display.length) existingTok.display = tokenDisplay;
-            }
-          }
-        }
-      }
-    };
-
-    for (const q of queryResults) {
-      for (const item of q.items) {
-        const display = String(item?.word ?? '').trim();
-        if (!display) continue;
-        if (nounsOnly) {
-          const tags = item?.tags;
-          const isNoun = Array.isArray(tags) && tags.includes('n');
-          if (!isNoun) continue;
-        }
-        addDatamuseCandidate(display, item?.score, q.weight, ['datamuse', q.tag]);
-      }
-    }
-
-    // Two-hop enrichment:
-    // hop1: noun -> adjectives (rel_jjb)
-    // hop2: adjectives -> nouns (rel_jja)
-    // This approximates aesthetic/color/texture-style associations.
-    const hop1Max = 60;
-    const topAdjectives = 5;
-    const hop2Max = 120;
-    const hop2BaseWeight = 0.45;
-
-    try {
-      const hop1Items = await fetchDatamuseWords({ rel_jjb: inputWord, max: hop1Max });
-      const adjCandidates = (Array.isArray(hop1Items) ? hop1Items : [])
-        .map(a => ({ word: String(a?.word || '').trim(), score: Number(a?.score || 0) }))
-        .filter(a => a.word && Number.isFinite(a.score) && a.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, topAdjectives);
-
-      if (adjCandidates.length > 0) {
-        const bestAdjScore = adjCandidates[0].score || 1;
-
-        const hop2Results = await Promise.all(adjCandidates.map(adj => {
-          return fetchDatamuseWords({ rel_jja: adj.word, max: hop2Max, ...(nounsOnly ? { md: 'p' } : {}) })
-            .then(items => ({ adjective: adj, items }));
-        }));
-
-        for (const hop2 of hop2Results) {
-          const adjScore = hop2.adjective.score || 0;
-          const factor = bestAdjScore > 0 ? (adjScore / bestAdjScore) : 0;
-          const perAdjWeight = hop2BaseWeight * factor;
-
-          for (const item of (hop2.items || [])) {
-            const nounDisplay = String(item?.word ?? '').trim();
-            if (!nounDisplay) continue;
-            if (nounsOnly) {
-              const tags = item?.tags;
-              const isNoun = Array.isArray(tags) && tags.includes('n');
-              if (!isNoun) continue;
-            }
-            addDatamuseCandidate(nounDisplay, item?.score, perAdjWeight, [
-              'datamuse_twohop',
-              'datamuse_twohop_jjb_jja'
-            ]);
-          }
-        }
-      }
-    } catch {
-      // Two-hop enrichment is best-effort; never block the main associations.
-    }
-
-    const sortedMerged = Array.from(merged.values())
-      .sort((a, b) => (b.score - a.score) || a.display.localeCompare(b.display));
-
-    const datamuseOnlyResults = (rows) => rows.slice(0, associationLimit).map((r, i) => ({
-      word: r.word,
-      display: r.display,
-      rank: i + 1,
-      score: Math.round(r.score * 100) / 100,
-      tags: Array.from(r.tags)
-    }));
-
-    const poolForLlm = sortedMerged.slice(0, datamusePoolForRefine);
-    const candidateMap = new Map(poolForLlm.map(r => [r.word, r]));
 
     if (!detectedMeta) detectedMeta = {};
     detectedMeta.association_limit = associationLimit;
+    detectedMeta.association_source = 'llm_plain';
+    detectedMeta.datamuse_bypass = true;
 
-    let cleanedResults = datamuseOnlyResults(sortedMerged);
+    if (!apiKey) {
+      const err = new Error('ANTHROPIC_API_KEY is not set (required for WORD ENGINE in LLM-only mode)');
+      err.status = 500;
+      throw err;
+    }
 
-    const associationRefineSchema = {
+    const associationGenerateSchema = {
       type: 'object',
       additionalProperties: false,
       required: ['results'],
@@ -1321,145 +1156,60 @@ app.post('/api/claude', async (req, res, next) => {
       }
     };
 
-    if (apiKey && poolForLlm.length > 0) {
-      const candidatesPayload = poolForLlm.map(r => ({
-        word: r.word,
-        display: r.display,
-        score: Math.round(r.score * 100) / 100,
-        tags: Array.from(r.tags)
-      }));
-      const nounRefineBullet = nounsOnly
-        ? '\n- The input was classified as noun-like: keep ONLY noun associations (drop clear verbs/adjectives used as non-nouns).'
-        : '';
-      const refineSystemPrompt =
-        `${ASSOCIATION_ENGINE_SPEC}\n\n` +
-        'You are refining a statistical association candidate list (from Datamuse). ' +
-        'Apply the engine inclusion and exclusion rules strictly: remove weak glue words, generic unbound adjectives, ' +
-        'and candidates that violate exclusion_rules; prioritize strong human associations per inclusion_rules.\n\n' +
-        'HARD CONSTRAINTS:\n' +
-        `- Return at most ${associationLimit} results.\n` +
-        '- Every `word` in your output MUST match the `word` field of an entry in `candidates_json` exactly (same string). ' +
-        'Do not invent new words or spellings.\n' +
-        '- Re-rank best-first (rank 1 = strongest association after applying the spec).\n' +
-        '- You may assign new `score` values (0–100) reflecting confidence after refinement; keep descending order.\n' +
-        '- Preserve useful provenance by copying relevant tags from the chosen candidate into each result `tags` array, ' +
-        'and add the tag "llm_refined".' +
-        nounRefineBullet;
-      const refineUserMessage =
-        `input_word: "${inputWord}"\n` +
-        `max_output: ${associationLimit}\n` +
-        `only_nouns_preference: ${nounsOnly}\n\n` +
-        `candidates_json:\n${JSON.stringify(candidatesPayload)}`;
+    const apiContract = `
 
-      try {
-        const refined = await callWithStructuredFallback(refineSystemPrompt, refineUserMessage, associationRefineSchema);
-        const rows = Array.isArray(refined?.results)
-          ? [...refined.results].sort((a, b) => (Number(a?.rank) || 0) - (Number(b?.rank) || 0))
-          : [];
-        const out = [];
-        const seen = new Set();
-        for (const row of rows) {
-          const key = String(row?.word ?? '').trim();
-          if (!key) continue;
-          const base = candidateMap.get(key);
-          if (!base || seen.has(base.word)) continue;
-          seen.add(base.word);
-          const llmTags = Array.isArray(row?.tags) ? row.tags.filter(t => typeof t === 'string') : [];
-          out.push({
-            word: base.word,
-            display: base.display,
-            rank: out.length + 1,
-            score: Number.isFinite(Number(row?.score)) ? Math.round(Number(row.score) * 100) / 100 : Math.round(base.score * 100) / 100,
-            tags: Array.from(new Set([...Array.from(base.tags), ...llmTags, 'llm_refined']))
-          });
-          if (out.length >= associationLimit) break;
-        }
-        if (out.length > 0) {
-          cleanedResults = out;
-          detectedMeta.llm_association_refine = true;
-          detectedMeta.llm_association_refine_in_count = candidatesPayload.length;
-          detectedMeta.llm_association_refine_out_count = out.length;
-        } else {
-          detectedMeta.llm_association_refine = false;
-          detectedMeta.llm_association_refine_error = 'empty_or_invalid_output';
-        }
-      } catch {
-        cleanedResults = datamuseOnlyResults(sortedMerged);
-        detectedMeta.llm_association_refine = false;
-        detectedMeta.llm_association_refine_error = true;
-      }
-    } else {
-      detectedMeta.llm_association_refine = false;
-      if (!apiKey) detectedMeta.llm_association_refine_skipped = 'no_anthropic_key';
+## Mandatory API contract (overrides numeric targets in the document above)
+
+The document describes thoroughness in the abstract. **For this HTTP request you must obey all of the following:**
+
+1. Return **only** structured JSON matching the schema the API provides (no markdown fences, no plain-text list).
+2. Return **at most ${associationLimit}** entries in \`results\`. You cannot output tens of thousands of words in one response—return the **best ${associationLimit}** associations by human recall probability.
+3. Each \`word\` should be one **lexical item** for a word-list workflow: prefer a **single token** (letters A–Z; avoid sentences and punctuation-only entries).
+4. \`rank\`: 1 = strongest association, then 2, 3, … with no gaps or duplicate ranks in your array.
+5. \`score\`: descending (e.g. 0–100); higher = stronger association to the input word.
+6. Apply **inclusion** and **exclusion** rules from the document when choosing and ordering words.
+7. **No duplicate** words (case-insensitive). Do not repeat the input word as an association unless unavoidable (prefer to omit it).
+`;
+
+    const systemPrompt = `${ASSOCIATION_ENGINE_PROMPT_PLAIN}${apiContract}`;
+    const userMessage =
+      `input_word: "${inputWord}"\n` +
+      `max_associations: ${associationLimit}\n` +
+      'Generate the associations as JSON matching the schema now.';
+
+    let cleanedResults = [];
+    const parsed = await callWithStructuredFallback(systemPrompt, userMessage, associationGenerateSchema);
+    const rows = Array.isArray(parsed?.results)
+      ? [...parsed.results].sort((a, b) => (Number(a?.rank) || 0) - (Number(b?.rank) || 0))
+      : [];
+    const seenNorm = new Set();
+    const inputNorm = normalizeForWorkflowWord(inputWord);
+    for (const row of rows) {
+      const display = String(row?.word ?? '').trim();
+      if (!display) continue;
+      const normalized = normalizeForWorkflowWord(display);
+      if (!normalized || normalized.length < 2) continue;
+      if (inputNorm && normalized === inputNorm) continue;
+      if (seenNorm.has(normalized)) continue;
+      seenNorm.add(normalized);
+      const tagList = Array.isArray(row?.tags) ? row.tags.filter(t => typeof t === 'string') : [];
+      if (!tagList.includes('llm_plain')) tagList.push('llm_plain');
+      cleanedResults.push({
+        word: normalized,
+        display,
+        rank: cleanedResults.length + 1,
+        score: Number.isFinite(Number(row?.score)) ? Math.round(Number(row.score) * 100) / 100 : Math.max(0, 100 - cleanedResults.length),
+        tags: tagList
+      });
+      if (cleanedResults.length >= associationLimit) break;
     }
 
-    // If still sparse for a term, top up with LLM fallback (new words allowed).
-    if (cleanedResults.length < 25) {
-      const resultSchema = {
-        type: 'object',
-        additionalProperties: false,
-        required: ['input_word', 'engine_version', 'mode', 'total_candidates', 'results'],
-        properties: {
-          input_word: { type: 'string' },
-          engine_version: { type: 'string' },
-          mode: { type: 'string' },
-          total_candidates: { type: 'integer' },
-          results: {
-            type: 'array',
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['word', 'rank', 'score'],
-              properties: {
-                word: { type: 'string' },
-                rank: { type: 'integer' },
-                score: { type: 'number' },
-                tags: { type: 'array', items: { type: 'string' } }
-              }
-            }
-          }
-        }
-      };
-      const fallbackLimit = Math.min(40, associationLimit);
-      const nounBullet = nounsOnly ? '\n- All results must be NOUNS only (no verbs/adjectives/adverbs).' : '';
-      const systemPrompt = `${ASSOCIATION_ENGINE_SPEC}\n\nIMPORTANT:\n- Return ONLY valid JSON matching the schema.\n- Use descending probability order.\n- Include up to ${fallbackLimit} results.${nounBullet}`;
-      const userMessage = `input_word: "${inputWord}"\nlimit: ${fallbackLimit}${nounsOnly ? '\nonly_nouns: true' : ''}`;
-      try {
-        const parsed = await callWithStructuredFallback(systemPrompt, userMessage, resultSchema);
-        const existingKeys = new Set(cleanedResults.map(r => r.word));
-        const llmTopUp = (Array.isArray(parsed?.results) ? parsed.results : [])
-          .map((r) => {
-            const display = String(r?.word ?? '').trim();
-            const normalized = normalizeForWorkflowWord(display);
-            return {
-              word: normalized,
-              display,
-              score: Number.isFinite(Number(r?.score)) ? Number(r.score) : 0,
-              tags: ['llm_fallback']
-            };
-          })
-          .filter(r => r.word && r.display && !existingKeys.has(r.word))
-          .slice(0, associationLimit - cleanedResults.length);
-        if (llmTopUp.length > 0) {
-          cleanedResults = cleanedResults.concat(
-            llmTopUp.map((r, i) => ({
-              word: r.word,
-              display: r.display,
-              rank: cleanedResults.length + i + 1,
-              score: r.score,
-              tags: r.tags
-            }))
-          );
-        }
-      } catch {
-        // Keep Datamuse-only output on fallback failure.
-      }
-    }
+    detectedMeta.llm_association_generate_count = cleanedResults.length;
 
     return res.json({
       input_word: inputWord,
-      engine_version: 'engine-v2.9',
-      mode: 'word_association_datamuse',
+      engine_version: 'engine-v3.0',
+      mode: 'word_association_llm_plain',
       total_candidates: cleanedResults.length,
       results: cleanedResults,
       detected: detectedMeta
