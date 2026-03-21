@@ -208,6 +208,8 @@ const DEFAULT_SETTINGS = {
     // ENGINE API keys (stored locally in this browser)
     tmdbApiKey: '',
     anthropicApiKey: '',
+    /** Empty = auto: localhost:3000 when app is opened from localhost/127.0.0.1, else production Render URL */
+    engineApiBaseUrl: '',
     // NAME ENGINE: after loading filmography, optional step to filter by number of words in each title
     nameEngineWordCount: false,
     // NAME ENGINE Word Count: when ON, allow titles with (N-1)..(N+1) words like LENGTH 1 buffer
@@ -547,6 +549,30 @@ function saveAppSettings() {
     } catch (e) {
         console.warn('Failed to save settings', e);
     }
+}
+
+const DEFAULT_ENGINE_API_PRODUCTION = 'https://coretest-new.onrender.com';
+const DEFAULT_ENGINE_API_LOCAL = 'http://localhost:3000';
+
+/** Base URL for ENGINE requests (no trailing slash). Used by NAME / WORD ENGINE pre-step. */
+function getEngineApiBaseUrl() {
+    const custom = (appSettings && typeof appSettings.engineApiBaseUrl === 'string')
+        ? appSettings.engineApiBaseUrl.trim()
+        : '';
+    if (custom) {
+        return custom.replace(/\/+$/, '');
+    }
+    if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+        const h = window.location.hostname;
+        if (h === 'localhost' || h === '127.0.0.1') {
+            return DEFAULT_ENGINE_API_LOCAL;
+        }
+    }
+    return DEFAULT_ENGINE_API_PRODUCTION;
+}
+
+function getEngineClaudeApiUrl() {
+    return `${getEngineApiBaseUrl()}/api/claude`;
 }
 
 // Global workflow state management
@@ -2184,7 +2210,7 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
                 let data;
                 let extraBody = {};
                 for (;;) {
-                    const resp = await fetch('https://coretest-new.onrender.com/api/claude', {
+                    const resp = await fetch(getEngineClaudeApiUrl(), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -13935,6 +13961,17 @@ function filterWordsByLetterShapesPrefilter(words, positionOneBased, category) {
 }
 
 function initSettingsUI() {
+    const engineApiBaseUrlInput = document.getElementById('engineApiBaseUrlInput');
+    if (engineApiBaseUrlInput) {
+        engineApiBaseUrlInput.value = (appSettings && appSettings.engineApiBaseUrl != null) ? appSettings.engineApiBaseUrl : '';
+        const persistEngineUrl = () => {
+            appSettings.engineApiBaseUrl = engineApiBaseUrlInput.value.trim();
+            saveAppSettings();
+        };
+        engineApiBaseUrlInput.addEventListener('change', persistEngineUrl);
+        engineApiBaseUrlInput.addEventListener('blur', persistEngineUrl);
+    }
+
     const lengthToggle = document.getElementById('lengthBuffer1Toggle');
     const t9LengthToggle = document.getElementById('t9LengthBuffer1Toggle');
     const e21Toggle = document.getElementById('e21AnywhereToggle');
