@@ -31,18 +31,18 @@ Access at: `http://localhost:8000`
 
 ### API server (`server.js`) — WORD ENGINE (Anthropic)
 
-WORD ENGINE (`/api/claude`, `mode: association`) uses **Anthropic only** (no Datamuse). It asks the model for up to **250** association words per submit, using the Universal Association Engine spec loaded from the repo.
+WORD ENGINE (`/api/claude`, `mode: association`) uses **Anthropic only** (no Datamuse). It asks the model for up to **1000** association words per submit, using the Universal Association Engine spec loaded from the repo.
 
 1. Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`).
 2. Start the Node API: `node server.js`.
+3. Optional: `ASSOCIATION_MAX_OUTPUT_TOKENS` (default **64000**) if the API rejects the default max output size for large JSON.
 
 NAME ENGINE and other Claude paths use the same Anthropic key.
 
 ### Frontend: where API requests go
 
-- **Settings → ENGINE API:** optional **API base URL** (e.g. `http://localhost:3000`).
-- If left **blank**: opening the app from **`localhost` / `127.0.0.1`** uses **`http://localhost:3000`** automatically; **GitHub Pages / production** uses **Render**.
-- See **`.env.example`** for server-side variables (`ANTHROPIC_*`, `TMDB_API_KEY`, `PORT`).
+- Opening the app from **`localhost` / `127.0.0.1`** sends ENGINE calls to **`http://localhost:3000`**; **GitHub Pages / production** uses the **Render** API URL baked into the app.
+- See **`.env.example`** for server-side variables (`ANTHROPIC_*`, `TMDB_API_KEY`, `PORT`, `ASSOCIATION_MAX_OUTPUT_TOKENS`).
 
 ## PWA Installation
 

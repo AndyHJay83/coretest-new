@@ -658,7 +658,7 @@ function normalizeForWorkflowWord(raw) {
 app.post('/api/claude', async (req, res, next) => {
   try {
     let inputWord = requireString(req.body?.input_word, 'input_word');
-    const limit = clampInt(req.body?.limit, 1, 500, 500);
+    const limit = clampInt(req.body?.limit, 1, 1000, 1000);
     const requestedModeRaw = (req.body?.mode || 'auto').toString().toLowerCase();
     const requestedMode = ['auto', 'name', 'association'].includes(requestedModeRaw) ? requestedModeRaw : 'auto';
 
@@ -666,7 +666,7 @@ app.post('/api/claude', async (req, res, next) => {
     const tmdbApiKeyOverride = req.body?.tmdb_api_key || req.body?.tmdbApiKey;
 
     const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
-    const callClaudeStructured = async (systemPrompt, userMessage, schema, useStructuredOutput = true) => {
+    const callClaudeStructured = async (systemPrompt, userMessage, schema, useStructuredOutput = true, maxTokens = 12000) => {
       if (!apiKey) {
         const err = new Error('ANTHROPIC_API_KEY is not set');
         err.status = 500;
@@ -674,7 +674,7 @@ app.post('/api/claude', async (req, res, next) => {
       }
       const requestBody = {
         model,
-        max_tokens: 12000,
+        max_tokens: maxTokens,
         temperature: 0.2,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }]
@@ -721,13 +721,13 @@ app.post('/api/claude', async (req, res, next) => {
       }
     };
 
-    const callWithStructuredFallback = async (systemPrompt, userMessage, schema) => {
+    const callWithStructuredFallback = async (systemPrompt, userMessage, schema, maxTokens = 12000) => {
       try {
-        return await callClaudeStructured(systemPrompt, userMessage, schema, true);
+        return await callClaudeStructured(systemPrompt, userMessage, schema, true, maxTokens);
       } catch (e) {
         const msg = String(e?.message || '');
         if (msg.includes('does not support output format')) {
-          return await callClaudeStructured(systemPrompt, userMessage, schema, false);
+          return await callClaudeStructured(systemPrompt, userMessage, schema, false, maxTokens);
         }
         throw e;
       }
@@ -1121,13 +1121,16 @@ app.post('/api/claude', async (req, res, next) => {
     }
 
     // ASSOCIATION mode (WORD ENGINE): Anthropic only — UniversalAssociationEngine-Noncode.txt; no Datamuse.
-    const associationLimit = Math.min(limit, 250);
+    const associationLimit = Math.min(limit, 1000);
+    const assocTok = Number(process.env.ASSOCIATION_MAX_OUTPUT_TOKENS);
+    const associationMaxTokens = Number.isFinite(assocTok) && assocTok > 0 ? assocTok : 64000;
 
     if (!detectedMeta) detectedMeta = {};
     detectedMeta.association_limit = associationLimit;
     detectedMeta.association_source = 'llm_plain';
     detectedMeta.datamuse_bypass = true;
     detectedMeta.word_engine_llm = 'anthropic';
+    detectedMeta.association_max_output_tokens = associationMaxTokens;
 
     if (!apiKey) {
       const err = new Error('ANTHROPIC_API_KEY is not set (required for WORD ENGINE)');
@@ -1179,7 +1182,12 @@ The document describes thoroughness in the abstract. **For this HTTP request you
       'Generate the associations as JSON matching the schema now.';
 
     let cleanedResults = [];
-    const parsed = await callWithStructuredFallback(systemPrompt, userMessage, associationGenerateSchema);
+    const parsed = await callWithStructuredFallback(
+      systemPrompt,
+      userMessage,
+      associationGenerateSchema,
+      associationMaxTokens
+    );
     const rows = Array.isArray(parsed?.results)
       ? [...parsed.results].sort((a, b) => (Number(a?.rank) || 0) - (Number(b?.rank) || 0))
       : [];

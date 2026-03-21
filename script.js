@@ -205,11 +205,9 @@ const DEFAULT_SETTINGS = {
     // 'custom' = user-defined string then Most Frequent after it is exhausted
     muteLetterMode: 'az',
     muteCustomSequence: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-    // ENGINE API keys (stored locally in this browser)
+    // TMDB / Anthropic keys (stored locally in this browser)
     tmdbApiKey: '',
     anthropicApiKey: '',
-    /** Empty = auto: localhost:3000 when app is opened from localhost/127.0.0.1, else production Render URL */
-    engineApiBaseUrl: '',
     // NAME ENGINE: after loading filmography, optional step to filter by number of words in each title
     nameEngineWordCount: false,
     // NAME ENGINE Word Count: when ON, allow titles with (N-1)..(N+1) words like LENGTH 1 buffer
@@ -556,12 +554,6 @@ const DEFAULT_ENGINE_API_LOCAL = 'http://localhost:3000';
 
 /** Base URL for ENGINE requests (no trailing slash). Used by NAME / WORD ENGINE pre-step. */
 function getEngineApiBaseUrl() {
-    const custom = (appSettings && typeof appSettings.engineApiBaseUrl === 'string')
-        ? appSettings.engineApiBaseUrl.trim()
-        : '';
-    if (custom) {
-        return custom.replace(/\/+$/, '');
-    }
     if (typeof window !== 'undefined' && window.location && window.location.hostname) {
         const h = window.location.hostname;
         if (h === 'localhost' || h === '127.0.0.1') {
@@ -589,8 +581,8 @@ async function parseEngineApiJsonResponse(resp, endpointLabel) {
         const base = getEngineApiBaseUrl();
         throw new Error(
             `${endpointLabel}: received HTML instead of JSON — ${base} is not the Node API. ` +
-            'Open Settings → ENGINE API and set the base URL where you run `node server.js` (e.g. http://localhost:3000), ' +
-            'or your hosted API. Do not use the GitHub Pages site URL here.'
+            'Run `node server.js` locally (e.g. http://localhost:3000) or use your deployed API host. ' +
+            'Do not point at the static GitHub Pages URL.'
         );
     }
     try {
@@ -2241,7 +2233,7 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             input_word: input,
-                            limit: mode === 'name' ? 500 : 250,
+                            limit: mode === 'name' ? 500 : 1000,
                             mode,
                             tmdb_api_key: (appSettings && appSettings.tmdbApiKey) || '',
                             anthropic_api_key: (appSettings && appSettings.anthropicApiKey) || '',
@@ -13987,16 +13979,6 @@ function filterWordsByLetterShapesPrefilter(words, positionOneBased, category) {
 }
 
 function initSettingsUI() {
-    const engineApiBaseUrlInput = document.getElementById('engineApiBaseUrlInput');
-    if (engineApiBaseUrlInput) {
-        engineApiBaseUrlInput.value = (appSettings && appSettings.engineApiBaseUrl != null) ? appSettings.engineApiBaseUrl : '';
-        const persistEngineUrl = () => {
-            appSettings.engineApiBaseUrl = engineApiBaseUrlInput.value.trim();
-            saveAppSettings();
-        };
-        engineApiBaseUrlInput.addEventListener('change', persistEngineUrl);
-        engineApiBaseUrlInput.addEventListener('blur', persistEngineUrl);
-    }
 
     const lengthToggle = document.getElementById('lengthBuffer1Toggle');
     const t9LengthToggle = document.getElementById('t9LengthBuffer1Toggle');
