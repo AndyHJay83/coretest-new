@@ -102,6 +102,11 @@ function tmdbCombinedCreditsUrl(personId, apiKeyOverride) {
   return `https://api.themoviedb.org/3/person/${encodeURIComponent(personId)}/combined_credits?api_key=${encodeURIComponent(key)}&language=en-US`;
 }
 
+function tmdbPersonDetailUrl(personId, apiKeyOverride) {
+  const key = tmdbKey(apiKeyOverride);
+  return `https://api.themoviedb.org/3/person/${encodeURIComponent(personId)}?api_key=${encodeURIComponent(key)}&language=en-US`;
+}
+
 function tmdbImageUrl(path) {
   if (!path) return null;
   return `https://image.tmdb.org/t/p/w185${path}`;
@@ -268,6 +273,72 @@ function computeTmdbScore(item) {
   const recency = Number.isFinite(year) ? Math.max(0, 1 - Math.min(30, Math.max(0, nowYear - year)) / 30) : 0;
   const recencyBoost = recency * 10;
   return 0.65 * popularity + 0.25 * voteBoost + 0.10 * recencyBoost;
+}
+
+/**
+ * TMDB combined_credits usually sets media_type; infer when missing so TV isn't dropped.
+ */
+function inferCreditMediaType(x) {
+  const mt = x?.media_type;
+  if (mt === 'movie' || mt === 'tv') return mt;
+  const hasTvSignals = (x?.first_air_date != null && String(x.first_air_date).trim() !== '') ||
+    (x?.name || x?.original_name);
+  const hasMovieSignals = (x?.release_date != null && String(x.release_date).trim() !== '') ||
+    (x?.title || x?.original_title);
+  if (hasTvSignals && !hasMovieSignals) return 'tv';
+  if (hasMovieSignals && !hasTvSignals) return 'movie';
+  if (hasTvSignals && hasMovieSignals) {
+    return (x?.name || x?.original_name) ? 'tv' : 'movie';
+  }
+  return null;
+}
+
+/** Movies + TV from TMDB combined_credits (cast + crew). */
+function readFilmAndTvCredits(credits) {
+  const titleOf = (x) => {
+    const mt = inferCreditMediaType(x);
+    if (mt === 'tv') {
+      return String(x.name || x.original_name || x.title || x.original_title || '').trim();
+    }
+    if (mt === 'movie') {
+      return String(x.title || x.original_title || x.name || '').trim();
+    }
+    return '';
+  };
+  const tagKind = (media) => (media === 'tv' ? 'tv' : 'film');
+
+  const mapRow = (x, role) => {
+    const mt = inferCreditMediaType(x);
+    if (!mt) return null;
+    const display = titleOf(x);
+    if (!display) return null;
+    return {
+      display,
+      score: Math.round(computeTmdbScore(x) * 10) / 10,
+      tags: [tagKind(mt), 'tmdb', role]
+    };
+  };
+
+  const cast = (credits.cast || [])
+    .map(x => mapRow(x, 'cast'))
+    .filter(Boolean);
+
+  const crew = (credits.crew || [])
+    .map(x => mapRow(x, 'crew'))
+    .filter(Boolean);
+
+  return cast.concat(crew);
+}
+
+function tmdbPersonSubtitle(person) {
+  const dept = String(person?.known_for_department || '').trim();
+  const kf = Array.isArray(person?.known_for) ? person.known_for : [];
+  const bits = kf.slice(0, 3).map(k => k.title || k.name).filter(Boolean);
+  const known = bits.length ? bits.join(', ') : '';
+  const parts = [];
+  if (dept) parts.push(dept);
+  if (known) parts.push(`e.g. ${known}`);
+  return parts.join(' · ') || 'TMDB profile';
 }
 
 // --- MusicBrainz ---
@@ -758,105 +829,7 @@ app.post('/api/claude', async (req, res, next) => {
       }
     }
 
-    const buildTmdbNameResults = async (nameInput, maxResults) => {
-      const readMoviesFromCredits = (credits) => {
-        const castMovies = (credits.cast || [])
-          .filter(x => x.media_type === 'movie' && (x.title || x.original_title || x.name))
-          .map(x => ({
-            display: String(x.title || x.original_title || x.name).trim(),
-            score: Math.round(computeTmdbScore(x) * 10) / 10,
-            tags: ['film', 'tmdb', 'cast']
-          }))
-          .filter(x => x.display.length > 0);
-
-        const crewMovies = (credits.crew || [])
-          .filter(x => x.media_type === 'movie' && (x.title || x.original_title || x.name))
-          .map(x => ({
-            display: String(x.title || x.original_title || x.name).trim(),
-            score: Math.round(computeTmdbScore(x) * 10) / 10,
-            tags: ['film', 'tmdb', 'crew']
-          }))
-          .filter(x => x.display.length > 0);
-
-        return castMovies.concat(crewMovies);
-      };
-
-      const chooseBestPerson = async (query) => {
-        const searchData = await fetchJson(tmdbPersonSearchUrl(query, Math.max(25, maxResults), tmdbApiKeyOverride));
-        const pool = Array.isArray(searchData?.results) ? searchData.results : [];
-        if (pool.length === 0) return null;
-
-        // Cheap pre-ranking: name-fit (token-level) + TMDB popularity only.
-        // We then fetch credits only for the best candidates, so we don't miss
-        // the correct spelling correction just because it's outside a small slice.
-        const heuristicRanked = pool
-          .filter(p => p?.id && p?.name)
-          .map((p) => {
-            const nameFit = entityNameFitScore(nameInput, p.name);
-            const popularity = Number(p.popularity || 0);
-            const popularityBoost = Math.min(1.2, Math.log10(popularity + 1));
-            return { person: p, nameFit, popularityBoost };
-          })
-          .sort((a, b) => ((b.nameFit * 2.0) + b.popularityBoost) - ((a.nameFit * 2.0) + a.popularityBoost));
-
-        const creditCandidates = heuristicRanked.slice(0, 12);
-        let best = null;
-        let bestScore = -Infinity;
-
-        for (const cand of creditCandidates) {
-          const person = cand.person;
-          try {
-            const credits = await fetchJson(tmdbCombinedCreditsUrl(person.id, tmdbApiKeyOverride));
-            const movies = readMoviesFromCredits(credits);
-            if (!movies || movies.length === 0) continue;
-
-            const creditVolumeBoost = Math.min(1.5, Math.log10((movies.length || 0) + 1));
-            const finalScore = (cand.nameFit * 2.0) + cand.popularityBoost + creditVolumeBoost;
-
-            if (finalScore > bestScore) {
-              bestScore = finalScore;
-              best = { person, movies };
-            }
-          } catch {
-            // Ignore bad candidate and continue.
-          }
-        }
-
-        // If nobody produced usable movie credits, fall back to the top heuristic candidate
-        // (caller will decide whether to treat as empty result).
-        if (!best) {
-          const top = creditCandidates[0];
-          return top ? { person: top.person, movies: [] } : null;
-        }
-
-        return best;
-      };
-
-      // Primary query by full input.
-      let queryUsed = nameInput;
-      let chosenData = await chooseBestPerson(nameInput);
-
-      // Fallback query by last token for misspellings like "Hanz Zimmer".
-      if ((!chosenData || !chosenData.movies || chosenData.movies.length === 0)) {
-        const tokens = normalizeNameForMatch(nameInput).split(' ').filter(Boolean);
-        if (tokens.length >= 2) {
-          const lastToken = tokens[tokens.length - 1];
-          if (lastToken.length >= 3) {
-            queryUsed = lastToken;
-            chosenData = await chooseBestPerson(lastToken);
-          }
-        }
-      }
-
-      if (!chosenData || !chosenData.person?.id) return [];
-      const movies = chosenData.movies || [];
-      if (!detectedMeta) detectedMeta = {};
-      detectedMeta.selected_tmdb_person = {
-        id: chosenData.person.id,
-        name: chosenData.person.name
-      };
-      detectedMeta.selected_tmdb_query_used = queryUsed;
-
+    const dedupeWorksToRankedResults = (movies, maxResults) => {
       const byNorm = new Map();
       for (const m of movies) {
         const normalized = normalizeForWorkflowWord(m.display);
@@ -866,11 +839,159 @@ app.post('/api/claude', async (req, res, next) => {
           byNorm.set(normalized, { word: normalized, display: m.display, score: m.score, tags: m.tags || ['film', 'tmdb'] });
         }
       }
-
       return Array.from(byNorm.values())
-        .sort((a, b) => (b.score - a.score) || a.display.localeCompare(b.display))
+        .sort((a, b) => (b.score || 0) - (a.score || 0) || a.display.localeCompare(b.display))
         .slice(0, maxResults)
         .map((r, i) => ({ ...r, rank: i + 1 }));
+    };
+
+    const buildTmdbNameResultsForPersonId = async (personId, maxResults) => {
+      try {
+        const person = await fetchJson(tmdbPersonDetailUrl(personId, tmdbApiKeyOverride));
+        const credits = await fetchJson(tmdbCombinedCreditsUrl(personId, tmdbApiKeyOverride));
+        const works = readFilmAndTvCredits(credits);
+        if (!detectedMeta) detectedMeta = {};
+        detectedMeta.selected_tmdb_person = {
+          id: personId,
+          name: String(person?.name || '').trim() || `Person ${personId}`
+        };
+        detectedMeta.name_engine_includes_tv = true;
+        detectedMeta.tmdb_person_picked = true;
+        return dedupeWorksToRankedResults(works, maxResults);
+      } catch {
+        return [];
+      }
+    };
+
+    const resolveNameEngineOnce = async (nameInputForFit, searchQuery, maxResults) => {
+      const PICKER_SCORE_GAP = 0.16;
+      const MIN_RUNNER_NAME_FIT = 0.68;
+      const MIN_RUNNER_WORKS = 1;
+
+      const searchData = await fetchJson(tmdbPersonSearchUrl(searchQuery, Math.max(25, maxResults), tmdbApiKeyOverride));
+      const pool = Array.isArray(searchData?.results) ? searchData.results : [];
+      if (pool.length === 0) {
+        return { needsPicker: false, pickerCandidates: [], results: [] };
+      }
+
+      const heuristicRanked = pool
+        .filter(p => p?.id && p?.name)
+        .map((p) => {
+          const nameFit = entityNameFitScore(nameInputForFit, p.name);
+          const popularity = Number(p.popularity || 0);
+          const popularityBoost = Math.min(1.2, Math.log10(popularity + 1));
+          return { person: p, nameFit, popularityBoost };
+        })
+        .sort((a, b) => ((b.nameFit * 2.0) + b.popularityBoost) - ((a.nameFit * 2.0) + a.popularityBoost));
+
+      const creditCandidates = heuristicRanked.slice(0, 12);
+      const scoredList = [];
+
+      for (const cand of creditCandidates) {
+        const person = cand.person;
+        try {
+          const credits = await fetchJson(tmdbCombinedCreditsUrl(person.id, tmdbApiKeyOverride));
+          const works = readFilmAndTvCredits(credits);
+          const creditVolumeBoost = Math.min(1.5, Math.log10((works.length || 0) + 1));
+          const finalScore = (cand.nameFit * 2.0) + cand.popularityBoost + creditVolumeBoost;
+          scoredList.push({
+            person,
+            nameFit: cand.nameFit,
+            popularityBoost: cand.popularityBoost,
+            creditVolumeBoost,
+            finalScore,
+            works
+          });
+        } catch {
+          // Ignore bad candidate and continue.
+        }
+      }
+
+      scoredList.sort((a, b) => b.finalScore - a.finalScore);
+
+      if (scoredList.length === 0) {
+        return { needsPicker: false, pickerCandidates: [], results: [] };
+      }
+
+      const top = scoredList[0];
+      const second = scoredList[1];
+
+      const ambiguousByGap = second &&
+        (second.works || []).length >= MIN_RUNNER_WORKS &&
+        second.nameFit >= MIN_RUNNER_NAME_FIT &&
+        (top.finalScore - second.finalScore) < PICKER_SCORE_GAP;
+
+      const ambiguousByCloseFit = second &&
+        (second.works || []).length >= MIN_RUNNER_WORKS &&
+        top.nameFit >= 0.84 &&
+        second.nameFit >= 0.84 &&
+        Math.abs(top.nameFit - second.nameFit) < 0.1 &&
+        (top.finalScore - second.finalScore) < 0.32;
+
+      const needsPicker = !!(ambiguousByGap || ambiguousByCloseFit);
+
+      if (needsPicker) {
+        const pickerCandidates = scoredList
+          .filter(s => (s.works || []).length > 0)
+          .slice(0, 5)
+          .map(s => ({
+            id: s.person.id,
+            name: String(s.person.name || '').trim(),
+            subtitle: tmdbPersonSubtitle(s.person),
+            final_score: Math.round(s.finalScore * 1000) / 1000
+          }));
+        if (pickerCandidates.length >= 2) {
+          return { needsPicker: true, pickerCandidates, results: [] };
+        }
+      }
+
+      const winner = top;
+      if (!winner.person?.id) return { needsPicker: false, pickerCandidates: [], results: [] };
+
+      if (!detectedMeta) detectedMeta = {};
+      detectedMeta.selected_tmdb_person = {
+        id: winner.person.id,
+        name: winner.person.name
+      };
+
+      const movies = winner.works || [];
+      if (movies.length === 0) {
+        return { needsPicker: false, pickerCandidates: [], results: [] };
+      }
+
+      return {
+        needsPicker: false,
+        pickerCandidates: [],
+        results: dedupeWorksToRankedResults(movies, maxResults)
+      };
+    };
+
+    const resolveNameEngine = async (nameInputForFit, maxResults) => {
+      let queryUsed = nameInputForFit;
+      let out = await resolveNameEngineOnce(nameInputForFit, nameInputForFit, maxResults);
+      if (out.needsPicker) return { ...out, queryUsed };
+      if (out.results.length > 0) {
+        if (!detectedMeta) detectedMeta = {};
+        detectedMeta.selected_tmdb_query_used = queryUsed;
+        detectedMeta.name_engine_includes_tv = true;
+        return { ...out, queryUsed };
+      }
+      const tokens = normalizeNameForMatch(nameInputForFit).split(' ').filter(Boolean);
+      if (tokens.length >= 2) {
+        const lastToken = tokens[tokens.length - 1];
+        if (lastToken.length >= 3) {
+          queryUsed = lastToken;
+          out = await resolveNameEngineOnce(nameInputForFit, lastToken, maxResults);
+          if (!detectedMeta) detectedMeta = {};
+          detectedMeta.selected_tmdb_query_used = queryUsed;
+          detectedMeta.name_engine_includes_tv = true;
+          return { ...out, queryUsed };
+        }
+      }
+      if (!detectedMeta) detectedMeta = {};
+      detectedMeta.selected_tmdb_query_used = queryUsed;
+      detectedMeta.name_engine_includes_tv = true;
+      return { ...out, queryUsed };
     };
 
     // NAME mode: use TMDB directly (deterministic, faster, cheaper than LLM)
@@ -880,10 +1001,13 @@ app.post('/api/claude', async (req, res, next) => {
       const maxResults = Math.min(limit, 500);
       if (!detectedMeta) detectedMeta = {};
 
+      const selectedTmdbPersonId = Number(req.body?.tmdb_person_id);
+      const hasSelectedPerson = Number.isFinite(selectedTmdbPersonId) && selectedTmdbPersonId > 0;
+
       let nameQueryToUse = inputWord;
       let spellingCorrection = null;
 
-      if (requestedMode === 'name') {
+      if (requestedMode === 'name' && !hasSelectedPerson) {
         const correctionSchema = {
           type: 'object',
           additionalProperties: false,
@@ -935,18 +1059,43 @@ app.post('/api/claude', async (req, res, next) => {
         }
       }
 
-      // Try corrected/selected query first.
-      let cleanedResults = await buildTmdbNameResults(nameQueryToUse, maxResults);
+      const respondPicker = (pickerCandidates) => res.json({
+        input_word: inputWord,
+        engine_version: 'engine-v2.8',
+        mode: 'filmography_name_tmdb',
+        needs_person_picker: true,
+        picker_candidates: pickerCandidates,
+        total_candidates: 0,
+        results: [],
+        detected: { ...detectedMeta, name_engine_includes_tv: true }
+      });
 
-      // Safety: if correction was applied and it produced no usable credits, retry original input.
-      if (requestedMode === 'name' && cleanedResults.length === 0 && nameQueryToUse !== inputWord) {
-        detectedMeta.spelling_correction_retry_original = true;
-        cleanedResults = await buildTmdbNameResults(inputWord, maxResults);
+      let cleanedResults;
+      if (hasSelectedPerson) {
+        cleanedResults = await buildTmdbNameResultsForPersonId(selectedTmdbPersonId, maxResults);
+      } else {
+        let resolved = await resolveNameEngine(nameQueryToUse, maxResults);
+        if (resolved.needsPicker) {
+          return respondPicker(resolved.pickerCandidates || []);
+        }
+        cleanedResults = resolved.results;
+
+        // Safety: if correction was applied and it produced no usable credits, retry original input.
+        if (requestedMode === 'name' && cleanedResults.length === 0 && nameQueryToUse !== inputWord) {
+          detectedMeta.spelling_correction_retry_original = true;
+          const resolvedOrig = await resolveNameEngine(inputWord, maxResults);
+          if (resolvedOrig.needsPicker) {
+            return respondPicker(resolvedOrig.pickerCandidates || []);
+          }
+          cleanedResults = resolvedOrig.results;
+        }
       }
+
+      if (!detectedMeta.name_engine_includes_tv) detectedMeta.name_engine_includes_tv = true;
 
       return res.json({
         input_word: inputWord,
-        engine_version: 'engine-v2.7',
+        engine_version: 'engine-v2.8',
         mode: 'filmography_name_tmdb',
         total_candidates: cleanedResults.length,
         results: cleanedResults,

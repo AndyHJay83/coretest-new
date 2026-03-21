@@ -208,6 +208,10 @@ const DEFAULT_SETTINGS = {
     // ENGINE API keys (stored locally in this browser)
     tmdbApiKey: '',
     anthropicApiKey: '',
+    // NAME ENGINE: after loading filmography, optional step to filter by number of words in each title
+    nameEngineWordCount: false,
+    // NAME ENGINE Word Count: when ON, allow titles with (N-1)..(N+1) words like LENGTH 1 buffer
+    nameEngineWordCountBuffer1: false,
 };
 
 const DEFAULT_LETTER_LYING_STRING = 'NTRLCSAIEUO';
@@ -2043,6 +2047,42 @@ let lastDictionaryAlphaSection = null;
 // NUMBER START: section (low/mid/high) when that step ran in this workflow
 let lastNumberStartSection = null;
 
+/**
+ * Count "words" in a displayed title for NAME ENGINE word-count filter:
+ * whitespace-separated tokens that contain at least one letter or digit.
+ * Standalone punctuation (e.g. a lone "-") does not count — so
+ * "Mission Impossible - The Final Reckoning" → 5 words.
+ */
+function countDisplayTitleWords(displayTitle) {
+    const s = String(displayTitle || '').trim();
+    if (!s) return 0;
+    return s.split(/\s+/).filter(tok => /[a-zA-Z0-9]/.test(tok)).length;
+}
+
+/**
+ * Keep titles whose display word count matches targetCount, or if buffer1, count in [N-1, N+1] (min 1).
+ * Word count uses countDisplayTitleWords (same rules as LENGTH-style buffer).
+ */
+function filterNameEngineByTitleWordCount(words, displayMap, targetCount, buffer1) {
+    const n = parseInt(String(targetCount), 10);
+    if (!Number.isFinite(n) || n < 1) {
+        return { words: [...words], displayMap: new Map(displayMap) };
+    }
+    const minW = buffer1 ? Math.max(1, n - 1) : n;
+    const maxW = buffer1 ? n + 1 : n;
+    const nextWords = [];
+    const nextMap = new Map();
+    for (const w of words) {
+        const disp = displayMap.get(w);
+        const c = countDisplayTitleWords(disp);
+        if (c >= minW && c <= maxW) {
+            nextWords.push(w);
+            nextMap.set(w, disp);
+        }
+    }
+    return { words: nextWords, displayMap: nextMap };
+}
+
 function normalizeEngineWorkflowWord(raw) {
     const digitMap = {
         '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
@@ -2056,6 +2096,45 @@ function normalizeEngineWorkflowWord(raw) {
         .replace(/\s+/g, ' ')
         .trim()
         .replace(/\s/g, '');
+}
+
+/** NAME ENGINE: user chose among TMDB people after ambiguous search. */
+function waitForNameEnginePersonPick(featurePre, candidates, searchLabel) {
+    return new Promise((resolve) => {
+        const listItems = Array.isArray(candidates) ? candidates : [];
+        featurePre.innerHTML = `
+        <div class="feature-title">NAME ENGINE – WHO DID YOU MEAN?</div>
+        <p class="name-engine-picker-hint">Several people matched <span class="name-engine-picker-query"></span>. Choose one:</p>
+        <div class="name-engine-picker-list"></div>`;
+        const qEl = featurePre.querySelector('.name-engine-picker-query');
+        if (qEl) qEl.textContent = `"${searchLabel}"`;
+        const list = featurePre.querySelector('.name-engine-picker-list');
+        if (!list) {
+            resolve(null);
+            return;
+        }
+        for (const c of listItems) {
+            const id = Number(c.id);
+            if (!Number.isFinite(id)) continue;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'name-engine-picker-btn';
+            const strong = document.createElement('strong');
+            strong.textContent = String(c.name || `Person ${id}`);
+            const sub = document.createElement('span');
+            sub.className = 'name-engine-picker-sub';
+            sub.textContent = String(c.subtitle || '');
+            btn.appendChild(strong);
+            btn.appendChild(document.createElement('br'));
+            btn.appendChild(sub);
+            btn.addEventListener('click', () => resolve(id));
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                resolve(id);
+            }, { passive: false });
+            list.appendChild(btn);
+        }
+    });
 }
 
 async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode) {
@@ -2102,19 +2181,44 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
             if (resultsContainer) resultsContainer.innerHTML = '<p>Generating ENGINE wordlist...</p>';
 
             try {
-                const resp = await fetch('https://coretest-new.onrender.com/api/claude', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        input_word: input,
-                        limit: 500,
-                        mode,
-                        tmdb_api_key: (appSettings && appSettings.tmdbApiKey) || '',
-                        anthropic_api_key: (appSettings && appSettings.anthropicApiKey) || ''
-                    })
-                });
-                const data = await resp.json();
-                if (!resp.ok) throw new Error(data?.error || 'ENGINE generation failed');
+                let data;
+                let extraBody = {};
+                for (;;) {
+                    const resp = await fetch('https://coretest-new.onrender.com/api/claude', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            input_word: input,
+                            limit: 500,
+                            mode,
+                            tmdb_api_key: (appSettings && appSettings.tmdbApiKey) || '',
+                            anthropic_api_key: (appSettings && appSettings.anthropicApiKey) || '',
+                            ...extraBody
+                        })
+                    });
+                    data = await resp.json();
+                    if (!resp.ok) throw new Error(data?.error || 'ENGINE generation failed');
+
+                    if (mode === 'name' && data.needs_person_picker) {
+                        const cands = Array.isArray(data.picker_candidates) ? data.picker_candidates : [];
+                        if (cands.length < 1) {
+                            throw new Error('NAME ENGINE could not disambiguate people (no candidates).');
+                        }
+                        if (resultsContainer) {
+                            resultsContainer.innerHTML = '<p>Choose the correct person below.</p>';
+                        }
+                        const picked = await waitForNameEnginePersonPick(pre, cands, input);
+                        if (picked == null || !Number.isFinite(picked)) {
+                            throw new Error('NAME ENGINE: person selection failed.');
+                        }
+                        extraBody = { tmdb_person_id: picked };
+                        if (resultsContainer) {
+                            resultsContainer.innerHTML = '<p>Loading credits…</p>';
+                        }
+                        continue;
+                    }
+                    break;
+                }
 
                 const raw = Array.isArray(data.results) ? data.results : [];
                 const map = new Map();
@@ -2125,12 +2229,80 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
                     if (!map.has(normalized)) map.set(normalized, display);
                 }
 
-                const words = Array.from(map.keys());
+                let words = Array.from(map.keys());
                 if (words.length === 0) {
                     throw new Error('ENGINE returned no usable words');
                 }
 
-                resolve({ words, displayMap: map });
+                let finalWords = words;
+                let finalMap = map;
+
+                const wordCountOn = mode === 'name' && !!(appSettings && appSettings.nameEngineWordCount);
+                if (wordCountOn) {
+                    engineDisplayMap = map;
+                    displayResults(words);
+                    const wcBuf = !!(appSettings && appSettings.nameEngineWordCountBuffer1);
+                    const wcBufHintText = wcBuf
+                        ? ' <strong>±1 word buffer is ON</strong> (keeps titles with (N−1) through (N+1) words, N = your number).'
+                        : '';
+
+                    const step2 = await new Promise((innerResolve) => {
+                        pre.innerHTML = `
+        <div class="feature-title">NAME ENGINE – AMOUNT OF WORDS</div>
+        <p style="text-align:center;margin:8px 16px;font-size:14px;color:#666;">${words.length} title(s) loaded. Enter how many words each kept title must have (tokens with letters or numbers only; punctuation alone does not count).${wcBufHintText}</p>
+        <div class="position-input" style="flex-wrap:wrap;justify-content:center;">
+            <input type="number" id="nameEngineWordCountInput" min="1" max="99" placeholder="e.g. 5" inputmode="numeric" style="max-width:120px;">
+            <button type="button" id="nameEngineWordCountFilterBtn">FILTER</button>
+            <button type="button" id="nameEngineWordCountSkipBtn" class="skip-button">SKIP</button>
+        </div>
+    `;
+                        const wcInput = pre.querySelector('#nameEngineWordCountInput');
+                        const filterBtn = pre.querySelector('#nameEngineWordCountFilterBtn');
+                        const skipBtn = pre.querySelector('#nameEngineWordCountSkipBtn');
+
+                        const finishSkip = () => {
+                            innerResolve({ words, displayMap: map });
+                        };
+                        const finishFilter = () => {
+                            const rawN = (wcInput && wcInput.value != null) ? wcInput.value.trim() : '';
+                            const n = parseInt(rawN, 10);
+                            if (!Number.isFinite(n) || n < 1) {
+                                alert('Enter a positive whole number (e.g. 5).');
+                                return;
+                            }
+                            const filtered = filterNameEngineByTitleWordCount(words, map, n, wcBuf);
+                            if (filtered.words.length === 0) {
+                                const rangeMsg = wcBuf
+                                    ? `between ${Math.max(1, n - 1)} and ${n + 1} words`
+                                    : `exactly ${n} word(s)`;
+                                alert(`No titles with ${rangeMsg}. Try another number or SKIP.`);
+                                return;
+                            }
+                            engineDisplayMap = filtered.displayMap;
+                            displayResults(filtered.words);
+                            innerResolve({ words: filtered.words, displayMap: filtered.displayMap });
+                        };
+
+                        if (filterBtn) {
+                            filterBtn.addEventListener('click', finishFilter);
+                            filterBtn.addEventListener('touchstart', (e) => { e.preventDefault(); finishFilter(); }, { passive: false });
+                        }
+                        if (skipBtn) {
+                            skipBtn.addEventListener('click', finishSkip);
+                            skipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); finishSkip(); }, { passive: false });
+                        }
+                        if (wcInput) {
+                            wcInput.addEventListener('keypress', (e) => {
+                                if (e.key === 'Enter') finishFilter();
+                            });
+                        }
+                    });
+
+                    finalWords = step2.words;
+                    finalMap = new Map(step2.displayMap);
+                }
+
+                resolve({ words: finalWords, displayMap: finalMap });
             } catch (e) {
                 reject(e);
             } finally {
@@ -14311,6 +14483,35 @@ function initSettingsUI() {
         zeroCurvesApproxToggle.addEventListener('change', () => {
             appSettings.zeroCurvesApprox = zeroCurvesApproxToggle.checked;
             saveAppSettings();
+        });
+    }
+
+    const nameEngineWordCountToggle = document.getElementById('nameEngineWordCountToggle');
+    const nameEngineWordCountBufferFields = document.getElementById('nameEngineWordCountBufferFields');
+    const nameEngineWordCountBuffer1Toggle = document.getElementById('nameEngineWordCountBuffer1Toggle');
+
+    function syncNameEngineWordCountBufferUI() {
+        const wcOn = !!(appSettings && appSettings.nameEngineWordCount);
+        if (nameEngineWordCountBufferFields) {
+            nameEngineWordCountBufferFields.style.display = wcOn ? '' : 'none';
+        }
+    }
+
+    if (nameEngineWordCountBuffer1Toggle) {
+        nameEngineWordCountBuffer1Toggle.checked = !!(appSettings && appSettings.nameEngineWordCountBuffer1);
+        nameEngineWordCountBuffer1Toggle.addEventListener('change', () => {
+            appSettings.nameEngineWordCountBuffer1 = nameEngineWordCountBuffer1Toggle.checked;
+            saveAppSettings();
+        });
+    }
+
+    if (nameEngineWordCountToggle) {
+        nameEngineWordCountToggle.checked = !!(appSettings && appSettings.nameEngineWordCount);
+        syncNameEngineWordCountBufferUI();
+        nameEngineWordCountToggle.addEventListener('change', () => {
+            appSettings.nameEngineWordCount = nameEngineWordCountToggle.checked;
+            saveAppSettings();
+            syncNameEngineWordCountBufferUI();
         });
     }
 

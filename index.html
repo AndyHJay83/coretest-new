@@ -1023,6 +1023,23 @@
                         </div>
                     </div>
                     <div class="settings-section">
+                        <h3 class="settings-section-title">NAME ENGINE</h3>
+                        <p class="settings-section-subtitle">Word Count — after you enter a name and filmography loads, ask for a number and keep only titles with that many words (punctuation-only tokens don’t count).</p>
+                        <label class="toggle-switch" style="margin-top: 8px;">
+                            <input type="checkbox" id="nameEngineWordCountToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Word Count</span>
+                        <div id="nameEngineWordCountBufferFields" style="margin-top: 12px; display: none;">
+                            <p class="settings-section-subtitle" style="margin-bottom: 6px;">1 Buffer (same idea as LENGTH): when filtering by word count, keep titles with (N−1) through (N+1) words.</p>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="nameEngineWordCountBuffer1Toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">1 Buffer</span>
+                        </div>
+                    </div>
+                    <div class="settings-section">
                         <h3 class="settings-section-title">LENGTH</h3>
                         <p class="settings-section-subtitle">1 Buffer</p>
                         <label class="toggle-switch">
