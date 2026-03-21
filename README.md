@@ -31,7 +31,7 @@ Access at: `http://localhost:8000`
 
 ### API server (`server.js`) — WORD ENGINE (Anthropic)
 
-WORD ENGINE (`/api/claude`, `mode: association`) uses **Anthropic only** (no Datamuse). It asks the model for up to **1000** association words per submit, using the Universal Association Engine spec loaded from the repo.
+WORD ENGINE (`/api/claude`, `mode: association`) uses **Anthropic only** (no Datamuse). It asks the model for up to **1500** association words per submit, using the Universal Association Engine spec loaded from the repo.
 
 1. Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`).
 2. Start the Node API: `node server.js`.

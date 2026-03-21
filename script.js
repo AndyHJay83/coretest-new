@@ -2233,7 +2233,7 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             input_word: input,
-                            limit: mode === 'name' ? 500 : 1000,
+                            limit: mode === 'name' ? 500 : 1500,
                             mode,
                             tmdb_api_key: (appSettings && appSettings.tmdbApiKey) || '',
                             anthropic_api_key: (appSettings && appSettings.anthropicApiKey) || '',
@@ -11377,10 +11377,10 @@ function displayResults(words) {
     }
     
     // For large lists, use virtual scrolling approach
-    if (words.length > 1000) {
-        // Show first 1000 words with a "show more" option
-        const initialWords = words.slice(0, 1000);
-        const remainingCount = words.length - 1000;
+    if (words.length > 1500) {
+        // Show first 1500 words with a "show more" option
+        const initialWords = words.slice(0, 1500);
+        const remainingCount = words.length - 1500;
         
         // Create HTML string for initial words (SCRABBLE1 exact-match highlight; T9 if tap-to-hold)
         const wordListHTML = initialWords.map(word => {
