@@ -29,36 +29,20 @@ npx serve .
 
 Access at: `http://localhost:8000`
 
-### API server (`server.js`) — WORD ENGINE + Ollama (local)
+### API server (`server.js`) — WORD ENGINE (Anthropic)
 
-WORD ENGINE (`/api/claude`, `mode: association`) can use **Anthropic** (default) or **Ollama** on your machine.
+WORD ENGINE (`/api/claude`, `mode: association`) uses **Anthropic only** (no Datamuse). It asks the model for up to **250** association words per submit, using the Universal Association Engine spec loaded from the repo.
 
-1. Install and run [Ollama](https://ollama.com), then pull a model, e.g. `ollama pull llama3.1:8b`.
-2. Start the Node API (e.g. `node server.js` or your process manager).
-3. Set environment variables:
+1. Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`).
+2. Start the Node API: `node server.js`.
 
-| Variable | Purpose |
-|----------|---------|
-| `WORD_ENGINE_LLM_PROVIDER` | `anthropic` (default) or `ollama` |
-| `OLLAMA_HOST` | Ollama API base (default `http://127.0.0.1:11434`) |
-| `OLLAMA_MODEL` | Model tag (default `llama3.1:8b`) |
-| `OLLAMA_TIMEOUT_MS` | Request timeout ms (default `480000`) |
-
-Example (local testing):
-
-```bash
-export WORD_ENGINE_LLM_PROVIDER=ollama
-export OLLAMA_MODEL=llama3.1:8b
-node server.js
-```
-
-NAME ENGINE and other Claude paths still use `ANTHROPIC_API_KEY` when calling Anthropic.
+NAME ENGINE and other Claude paths use the same Anthropic key.
 
 ### Frontend: where API requests go
 
 - **Settings → ENGINE API:** optional **API base URL** (e.g. `http://localhost:3000`).
 - If left **blank**: opening the app from **`localhost` / `127.0.0.1`** uses **`http://localhost:3000`** automatically; **GitHub Pages / production** uses **Render**.
-- See **`.env.example`** for server-side variables (`WORD_ENGINE_LLM_PROVIDER`, `OLLAMA_*`, etc.).
+- See **`.env.example`** for server-side variables (`ANTHROPIC_*`, `TMDB_API_KEY`, `PORT`).
 
 ## PWA Installation
 

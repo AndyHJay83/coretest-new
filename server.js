@@ -654,74 +654,6 @@ function normalizeForWorkflowWord(raw) {
     .replace(/\s/g, '');
 }
 
-/**
- * Parse JSON from model text (handles occasional preamble / fences).
- */
-function parseJsonFromModelText(text) {
-  const t = String(text || '').trim();
-  try {
-    return JSON.parse(t);
-  } catch {
-    const start = t.indexOf('{');
-    const end = t.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      return JSON.parse(t.slice(start, end + 1));
-    }
-    throw new Error('Model returned non-JSON output');
-  }
-}
-
-/**
- * WORD ENGINE via Ollama (/api/chat, format json). Requires Ollama running (e.g. ollama serve / app).
- * Env: OLLAMA_HOST (default http://127.0.0.1:11434), OLLAMA_MODEL (e.g. llama3.1:8b)
- */
-async function callOllamaAssociationJson(host, model, systemPrompt, userMessage, associationLimit) {
-  const base = String(host || 'http://127.0.0.1:11434').replace(/\/$/, '');
-  const url = `${base}/api/chat`;
-  const schemaReminder = `\n\nYou MUST respond with a single JSON object only (no markdown code fences). Exact shape:\n{"results":[{"word":"string","rank":1,"score":100,"tags":["optional"]},...]}\nInclude at most ${associationLimit} items in "results". Each item must have "word", "rank", and "score".`;
-  const body = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt + schemaReminder },
-      { role: 'user', content: userMessage }
-    ],
-    stream: false,
-    format: 'json',
-    options: {
-      temperature: 0.25,
-      num_predict: 8192
-    }
-  };
-  const ac = new AbortController();
-  const timeoutMs = Number(process.env.OLLAMA_TIMEOUT_MS) || 480000;
-  const timer = setTimeout(() => ac.abort(), timeoutMs);
-  let res;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: ac.signal
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = typeof data?.error === 'string' ? data.error : (data?.error?.message || `Ollama HTTP ${res.status}`);
-    const err = new Error(msg || 'Ollama request failed');
-    err.status = 502;
-    throw err;
-  }
-  const text = data?.message?.content;
-  if (text == null || text === '') {
-    const err = new Error('Ollama returned no message content');
-    err.status = 502;
-    throw err;
-  }
-  return parseJsonFromModelText(text);
-}
-
 // --- Claude route (auto: name->filmography prompt, word->association engine) ---
 app.post('/api/claude', async (req, res, next) => {
   try {
@@ -1188,29 +1120,19 @@ app.post('/api/claude', async (req, res, next) => {
       });
     }
 
-    // ASSOCIATION mode (WORD ENGINE): LLM-only using UniversalAssociationEngine-Noncode.txt — Datamuse bypassed (testing).
+    // ASSOCIATION mode (WORD ENGINE): Anthropic only — UniversalAssociationEngine-Noncode.txt; no Datamuse.
     const associationLimit = Math.min(limit, 250);
 
     if (!detectedMeta) detectedMeta = {};
     detectedMeta.association_limit = associationLimit;
     detectedMeta.association_source = 'llm_plain';
     detectedMeta.datamuse_bypass = true;
+    detectedMeta.word_engine_llm = 'anthropic';
 
-    const wordEngineProvider = (process.env.WORD_ENGINE_LLM_PROVIDER || 'anthropic').toLowerCase().trim();
-    const ollamaHost = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
-    const ollamaModel = process.env.OLLAMA_MODEL || 'llama3.1:8b';
-
-    if (wordEngineProvider === 'ollama') {
-      detectedMeta.word_engine_llm = 'ollama';
-      detectedMeta.ollama_host = ollamaHost;
-      detectedMeta.ollama_model = ollamaModel;
-    } else {
-      detectedMeta.word_engine_llm = 'anthropic';
-      if (!apiKey) {
-        const err = new Error('ANTHROPIC_API_KEY is not set (required for WORD ENGINE when WORD_ENGINE_LLM_PROVIDER=anthropic)');
-        err.status = 500;
-        throw err;
-      }
+    if (!apiKey) {
+      const err = new Error('ANTHROPIC_API_KEY is not set (required for WORD ENGINE)');
+      err.status = 500;
+      throw err;
     }
 
     const associationGenerateSchema = {
@@ -1257,12 +1179,7 @@ The document describes thoroughness in the abstract. **For this HTTP request you
       'Generate the associations as JSON matching the schema now.';
 
     let cleanedResults = [];
-    let parsed;
-    if (wordEngineProvider === 'ollama') {
-      parsed = await callOllamaAssociationJson(ollamaHost, ollamaModel, systemPrompt, userMessage, associationLimit);
-    } else {
-      parsed = await callWithStructuredFallback(systemPrompt, userMessage, associationGenerateSchema);
-    }
+    const parsed = await callWithStructuredFallback(systemPrompt, userMessage, associationGenerateSchema);
     const rows = Array.isArray(parsed?.results)
       ? [...parsed.results].sort((a, b) => (Number(a?.rank) || 0) - (Number(b?.rank) || 0))
       : [];
@@ -1278,7 +1195,6 @@ The document describes thoroughness in the abstract. **For this HTTP request you
       seenNorm.add(normalized);
       const tagList = Array.isArray(row?.tags) ? row.tags.filter(t => typeof t === 'string') : [];
       if (!tagList.includes('llm_plain')) tagList.push('llm_plain');
-      if (wordEngineProvider === 'ollama' && !tagList.includes('ollama')) tagList.push('ollama');
       cleanedResults.push({
         word: normalized,
         display,
