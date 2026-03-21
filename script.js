@@ -2144,7 +2144,7 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
     const placeholder = mode === 'name' ? 'Enter a name...' : 'Enter a word...';
     const statusText = mode === 'name'
         ? 'Enter a name.'
-        : 'WORD ENGINE selected. Enter a word to generate an association-based starting list.';
+        : 'Enter a word.';
 
     featureArea.innerHTML = '';
     const pre = document.createElement('div');
