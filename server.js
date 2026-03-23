@@ -658,7 +658,7 @@ function normalizeForWorkflowWord(raw) {
 app.post('/api/claude', async (req, res, next) => {
   try {
     let inputWord = requireString(req.body?.input_word, 'input_word');
-    const limit = clampInt(req.body?.limit, 1, 1500, 1500);
+    const limit = clampInt(req.body?.limit, 1, 500, 500);
     const requestedModeRaw = (req.body?.mode || 'auto').toString().toLowerCase();
     const requestedMode = ['auto', 'name', 'association'].includes(requestedModeRaw) ? requestedModeRaw : 'auto';
 
@@ -1121,7 +1121,7 @@ app.post('/api/claude', async (req, res, next) => {
     }
 
     // ASSOCIATION mode (WORD ENGINE): Anthropic only — UniversalAssociationEngine-Noncode.txt; no Datamuse.
-    const associationLimit = Math.min(limit, 1500);
+    const associationLimit = Math.min(limit, 100);
     const assocTok = Number(process.env.ASSOCIATION_MAX_OUTPUT_TOKENS);
     const associationMaxTokens = Number.isFinite(assocTok) && assocTok > 0 ? assocTok : 64000;
 

@@ -3824,6 +3824,11 @@ input:checked + .slider:before {
     display: none;
 }
 
+/* Short Word, Vowel, Vowel Pos, Consonants: hidden on main palette only (features still in app / workflows) */
+#availableFeatures .feature-group[data-main-page-hidden="true"] {
+    display: none;
+}
+
 .info-button {
     background: none;
     border: none;

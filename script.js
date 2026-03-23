@@ -212,6 +212,10 @@ const DEFAULT_SETTINGS = {
     nameEngineWordCount: false,
     // NAME ENGINE Word Count: when ON, allow titles with (N-1)..(N+1) words like LENGTH 1 buffer
     nameEngineWordCountBuffer1: false,
+    // CONNECTIVE pre-filter: when ON, Y is treated as a vowel
+    connectiveYIsVowel: false,
+    // CONNECTIVE pre-filter default minimum word length
+    connectiveMinLength: 7,
 };
 
 const DEFAULT_LETTER_LYING_STRING = 'NTRLCSAIEUO';
@@ -2233,7 +2237,7 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             input_word: input,
-                            limit: mode === 'name' ? 500 : 1500,
+                            limit: mode === 'name' ? 500 : 100,
                             mode,
                             tmdb_api_key: (appSettings && appSettings.tmdbApiKey) || '',
                             anthropic_api_key: (appSettings && appSettings.anthropicApiKey) || '',
@@ -2716,6 +2720,9 @@ async function executeWorkflow(steps) {
                 case 'vowel2':
                     featureElement = createVowel2Feature();
                     break;
+                case 'connective':
+                    featureElement = createConnectiveFeature();
+                    break;
                 case 'vowelPos':
                     featureElement = createVowelPosFeature();
                     break;
@@ -3153,6 +3160,24 @@ function createVowel2Feature() {
             <button class="vowel-btn yes-btn">YES</button>
             <button class="vowel-btn no-btn">NO</button>
             <button id="vowel2SkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+function createConnectiveFeature() {
+    const div = document.createElement('div');
+    div.id = 'connectiveFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">CONNECTIVE</h2>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">
+            Enter a word to extract consonants, then keep words that start with one of those consonants.
+        </p>
+        <div class="position-input">
+            <input type="text" id="connectiveInput" placeholder="Enter a word">
+            <button id="connectiveButton">SUBMIT</button>
+            <button id="connectiveSkipButton" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
@@ -6290,6 +6315,66 @@ function setupFeatureListeners(feature, callback, options) {
             break;
         }
             
+
+        case 'connective': {
+            const connectiveFeature = document.getElementById('connectiveFeature');
+            const connectiveInput = document.getElementById('connectiveInput');
+            const connectiveButton = document.getElementById('connectiveButton');
+            const connectiveSkipButton = document.getElementById('connectiveSkipButton');
+
+            const complete = () => {
+                if (!connectiveFeature) return;
+                connectiveFeature.classList.add('completed');
+                connectiveFeature.dispatchEvent(new Event('completed'));
+            };
+
+            if (connectiveButton) {
+                connectiveButton.onclick = () => {
+                    const input = (connectiveInput?.value || '').trim();
+                    if (!input) {
+                        alert('Please enter a word');
+                        return;
+                    }
+
+                    const yIsVowel = !!(appSettings && appSettings.connectiveYIsVowel);
+                    const consonants = getConnectiveConsonantSet(input, yIsVowel);
+                    if (consonants.length === 0) {
+                        alert('No consonants found in that input.');
+                        return;
+                    }
+
+                    const rawMinLen = Number(appSettings && appSettings.connectiveMinLength);
+                    const minLen = Number.isFinite(rawMinLen) ? Math.max(1, Math.floor(rawMinLen)) : 7;
+                    const filteredWords = filterWordsByConnective(currentFilteredWords, consonants, minLen);
+                    callback(filteredWords);
+                    complete();
+                };
+
+                connectiveButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    connectiveButton.click();
+                }, { passive: false });
+            }
+
+            if (connectiveSkipButton) {
+                connectiveSkipButton.onclick = () => {
+                    callback(currentFilteredWords);
+                    complete();
+                };
+                connectiveSkipButton.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    connectiveSkipButton.click();
+                }, { passive: false });
+            }
+
+            if (connectiveInput) {
+                connectiveInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') connectiveButton?.click();
+                });
+            }
+            break;
+        }
+
         case 'vowelPos': {
             const vowelPosYesBtn = document.querySelector('#vowelPosFeature .yes-btn');
             const vowelPosNoBtn = document.querySelector('#vowelPosFeature .no-btn');
@@ -11377,10 +11462,10 @@ function displayResults(words) {
     }
     
     // For large lists, use virtual scrolling approach
-    if (words.length > 1500) {
-        // Show first 1500 words with a "show more" option
-        const initialWords = words.slice(0, 1500);
-        const remainingCount = words.length - 1500;
+    if (words.length > 1000) {
+        // Show first 1000 words with a "show more" option
+        const initialWords = words.slice(0, 1000);
+        const remainingCount = words.length - 1000;
         
         // Create HTML string for initial words (SCRABBLE1 exact-match highlight; T9 if tap-to-hold)
         const wordListHTML = initialWords.map(word => {
@@ -11925,6 +12010,41 @@ function filterWordsByVowel2(words, answer) {
         return words.filter(word => word.length < 2 || !VOWEL2_VOWELS.has(word[1].toLowerCase()));
     }
     return words;
+}
+
+
+/**
+ * CONNECTIVE helper: build unique consonants in input order (A-Z only).
+ * If yIsVowel is ON, Y still counts when explicitly present in the input.
+ */
+function getConnectiveConsonantSet(str, yIsVowel) {
+    const vowelSet = new Set(yIsVowel
+        ? ['a', 'e', 'i', 'o', 'u', 'y']
+        : ['a', 'e', 'i', 'o', 'u']
+    );
+    const out = [];
+    const seen = new Set();
+    const word = String(str || '').toLowerCase();
+    for (let i = 0; i < word.length; i++) {
+        const ch = word[i];
+        if (!/[a-z]/.test(ch)) continue;
+        if (vowelSet.has(ch) && !(yIsVowel && ch === 'y')) continue;
+        if (seen.has(ch)) continue;
+        seen.add(ch);
+        out.push(ch);
+    }
+    return out;
+}
+
+/** CONNECTIVE filter: keep words whose first letter is in consonantSet and length >= minLen. */
+function filterWordsByConnective(words, consonantSet, minLen) {
+    const allowed = new Set((consonantSet || []).map(c => String(c).toLowerCase()));
+    const safeMinLen = Number.isFinite(Number(minLen)) ? Math.max(1, Math.floor(Number(minLen))) : 7;
+    if (allowed.size === 0) return words;
+    return words.filter((word) => {
+        const first = String(word || '').charAt(0).toLowerCase();
+        return /^[a-z]$/.test(first) && allowed.has(first) && String(word || '').length >= safeMinLen;
+    });
 }
 
 // Function to show next feature
@@ -13438,6 +13558,10 @@ function initializeModeButtons() {
                     <button class="info-button" data-feature="vowel2"><i class="fas fa-info-circle"></i></button>
                 </div>
                 <div class="feature-group">
+                    <button class="feature-button" data-feature="connective" draggable="true">CONNECTIVE</button>
+                    <button class="info-button" data-feature="connective"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
                     <button class="feature-button" data-feature="oCurves" draggable="true">O-CURVES</button>
                     <button class="info-button" data-feature="oCurves"><i class="fas fa-info-circle"></i></button>
                 </div>
@@ -13983,6 +14107,8 @@ function initSettingsUI() {
     const lengthToggle = document.getElementById('lengthBuffer1Toggle');
     const t9LengthToggle = document.getElementById('t9LengthBuffer1Toggle');
     const e21Toggle = document.getElementById('e21AnywhereToggle');
+    const connectiveYIsVowelToggle = document.getElementById('connectiveYIsVowelToggle');
+    const connectiveMinLengthInput = document.getElementById('connectiveMinLengthInput');
     
     if (lengthToggle) {
         lengthToggle.checked = !!appSettings.lengthBuffer1;
@@ -14005,6 +14131,25 @@ function initSettingsUI() {
         e21Toggle.addEventListener('change', () => {
             appSettings.e21CheckAnywhere = e21Toggle.checked;
             saveAppSettings();
+        });
+    }
+
+    if (connectiveYIsVowelToggle) {
+        connectiveYIsVowelToggle.checked = !!appSettings.connectiveYIsVowel;
+        connectiveYIsVowelToggle.addEventListener('change', () => {
+            appSettings.connectiveYIsVowel = connectiveYIsVowelToggle.checked;
+            saveAppSettings();
+        });
+    }
+    if (connectiveMinLengthInput) {
+        const n = parseInt((appSettings && appSettings.connectiveMinLength) || 7, 10);
+        connectiveMinLengthInput.value = String(Math.max(1, isNaN(n) ? 7 : n));
+        connectiveMinLengthInput.addEventListener('input', () => {
+            const v = parseInt(connectiveMinLengthInput.value, 10);
+            if (!isNaN(v) && v >= 1) {
+                appSettings.connectiveMinLength = v;
+                saveAppSettings();
+            }
         });
     }
 

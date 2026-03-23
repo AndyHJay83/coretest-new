@@ -130,7 +130,7 @@
                                 <button class="feature-button alphanumeric-mode-button" id="alphanumericModeButton" draggable="false">Alpha-Numeric</button>
                                 <button class="info-button" data-feature="alphanumericMode"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
+                            <div class="feature-group" data-main-page-hidden="true">
                                 <button class="feature-button" data-feature="position1" draggable="true">Short Word</button>
                                 <button class="info-button" data-feature="position1"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -142,11 +142,11 @@
                                 <button class="feature-button" data-feature="consMid2" draggable="true">Cons MID</button>
                                 <button class="info-button" data-feature="consMid2"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
+                            <div class="feature-group" data-main-page-hidden="true">
                                 <button class="feature-button" data-feature="vowel" draggable="true">Vowel</button>
                                 <button class="info-button" data-feature="vowel"><i class="fas fa-info-circle"></i></button>
                             </div>
-                            <div class="feature-group">
+                            <div class="feature-group" data-main-page-hidden="true">
                                 <button class="feature-button" data-feature="vowelPos" draggable="true">VOWEL POS</button>
                                 <button class="info-button" data-feature="vowelPos"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -205,7 +205,7 @@
                                 <button class="info-button" data-feature="leastFrequent"><i class="fas fa-info-circle"></i></button>
                             </div>
                             
-                            <div class="feature-group">
+                            <div class="feature-group" data-main-page-hidden="true">
                                 <button class="feature-button" data-feature="consonants" draggable="true">CONSONANTS</button>
                                 <button class="info-button" data-feature="consonants"><i class="fas fa-info-circle"></i></button>
                             </div>
@@ -1064,6 +1064,18 @@
                         </label>
                     </div>
                     <div class="settings-section">
+                        <h3 class="settings-section-title">CONNECTIVE</h3>
+                        <p class="settings-section-subtitle">Is Y a vowel?</p>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="connectiveYIsVowelToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <div style="margin-top: 10px;">
+                            <label for="connectiveMinLengthInput">Minimum word length:</label>
+                            <input type="number" id="connectiveMinLengthInput" min="1" max="99" value="7" style="width: 90px; margin-left: 8px;">
+                        </div>
+                    </div>
+                    <div class="settings-section">
                         <h3 class="settings-section-title">SCRABBLE</h3>
                         <p class="settings-section-subtitle">1 Buffer (score ±1, like SCRABBLE1)</p>
                         <label class="toggle-switch">
@@ -1386,6 +1398,13 @@
             <div class="feature-info-content">
                 <h3>VOWEL2</h3>
                 <p><strong>Vowel in position 2</strong><br>YES: keep only words whose second letter is a vowel (A, E, I, O, U). NO: remove all words with a vowel in the second position. SKIP: leave the wordlist unchanged.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="connectiveInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>CONNECTIVE</h3>
+                <p><strong>CONNECTIVE</strong><br>Enter a word. The app extracts unique consonants in order and keeps only words that start with one of those consonants. Example: "sunglasses" gives S, N, G, L. In Settings, toggle whether Y is treated as a vowel.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
