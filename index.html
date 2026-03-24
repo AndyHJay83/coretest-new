@@ -1235,7 +1235,7 @@
                     </div>
                     <div class="settings-section">
                         <h3 class="settings-section-title">ALPHA</h3>
-                        <p class="settings-section-subtitle">Directional filter: Left = toward A, Right = toward Z (or swap in Swap POV). First letter from Dictionary (Alpha).</p>
+                        <p class="settings-section-subtitle">Directional filter: Left = toward A, Right = toward Z (or swap in Swap POV). If Dictionary (Alpha) ran earlier in the workflow, the first letter is limited to that band; otherwise any A–Z.</p>
                         <label for="alphaDirectionsCountInput">Number of directions (0 = until SUBMIT):</label>
                         <input type="number" id="alphaDirectionsCountInput" min="0" max="99" value="0" style="width: 4em;">
                         <p id="alphaEfficiencySubtitle" class="alpha-efficiency-subtitle" aria-live="polite"></p>
@@ -1778,7 +1778,21 @@
         <div id="alphaInfo" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>ALPHA</h3>
-                <p><strong>Directional alphabet filter</strong><br>The spectator imagines the alphabet in front of them and mentally spells the word by pointing to each letter. You enter directional movements: Left (toward A), Right (toward Z), or Repeat (same letter as previous). The first letter’s range comes from Dictionary (Alpha) if that step ran earlier. Set “Number of directions” in Settings to auto-submit after N entries, or 0 to submit manually.</p>
+                <p><strong>Directional alphabet filter</strong><br>The spectator imagines the alphabet in front of them and mentally spells the word by pointing to each letter. You enter directional movements: Left (toward A), Right (toward Z), or Repeat (same letter as previous). If Dictionary (Alpha) ran earlier, the first letter is limited to that Beginning/Middle/End band; if not, the first letter may be any A–Z. Set “Number of directions” in Settings to auto-submit after N entries, or 0 to submit manually.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="alphaWordInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>ALPHA-WORD</h3>
+                <p><strong>ALPHA + possible last letters</strong><br>Same directional spelling as ALPHA. Word length must be exactly one more than the number of directions. Enter possible last letters in the box (letters only; duplicates are ignored, e.g. SHEEP → S, H, E, P). Only words whose final letter is in that set are kept. First-letter band matches Dictionary (Alpha) if that step ran earlier; otherwise any A–Z. Uses the same Settings as ALPHA (direction count, Swap POV).</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="alphaRepeatInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>ALPHA-REPEAT</h3>
+                <p><strong>Repeated letters in the spelling</strong><br>First choose YES or NO for consecutive identical letters in the word. <strong>NO:</strong> words with any double letter (AA, LL, …) are removed; directions apply letter-by-letter; length = 1 + directions. <strong>YES:</strong> only words with at least one such double; consecutive runs collapse to one letter for the directional path (e.g. BUSSES → BUSES for the path), and collapsed length must be 1 + directions. Same first-letter rules and Settings as ALPHA (Dictionary band if that step ran, else any A–Z).</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

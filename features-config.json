@@ -411,7 +411,21 @@
       "name": "ALPHA (SHORT)",
       "displayName": "ALPHA (SHORT)",
       "requiresParam": true,
-      "analyzeFunction": "return [{ param: 'Directional filter (Left/Right/Repeat). First letter from Dictionary (Alpha).', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+      "analyzeFunction": "return [{ param: 'Directional filter (L/R/Repeat). First letter: Dictionary band if that step ran, else any A–Z.', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
+      "id": "alphaWord",
+      "name": "ALPHA-WORD",
+      "displayName": "ALPHA-WORD",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'ALPHA + possible last letters (set from text). Exact length 1 + directions.', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
+      "id": "alphaRepeat",
+      "name": "ALPHA-REPEAT",
+      "displayName": "ALPHA-REPEAT",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'ALPHA with Y/N consecutive repeats; YES = collapse doubles; NO = exclude doubles.', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "smlLength",

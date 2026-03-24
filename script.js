@@ -2090,7 +2090,7 @@ async function loadAdvLexWordList() {
 let wordListLoaded = false;
 let lastLoadedWordlist = '';
 
-// ALPHA: first-letter range comes from Dictionary (Alpha) when that step ran in this workflow
+// ALPHA: if Dictionary (Alpha) ran, first letter is limited to that B/M/E band; else any A–Z
 let lastDictionaryAlphaSection = null;
 // NUMBER START: section (low/mid/high) when that step ran in this workflow
 let lastNumberStartSection = null;
@@ -2438,7 +2438,7 @@ async function executeWorkflow(steps) {
         // OMEGA: reset state
         omegaSelections = [];
         omegaActiveMapping = {};
-        // ALPHA: reset so first-letter range is taken from Dictionary (Alpha) only if that step ran
+        // ALPHA: reset; Dictionary (Alpha) later sets B/M/E, else any A–Z for first letter
         lastDictionaryAlphaSection = null;
         lastNumberStartSection = null;
 
@@ -2875,6 +2875,12 @@ async function executeWorkflow(steps) {
                     break;
                 case 'alpha':
                     featureElement = createAlphaFeature();
+                    break;
+                case 'alphaWord':
+                    featureElement = createAlphaWordFeature();
+                    break;
+                case 'alphaRepeat':
+                    featureElement = createAlphaRepeatFeature();
                     break;
                 case 'smlLength':
                     featureElement = createSmlLengthFeature();
@@ -4753,6 +4759,55 @@ function createAlphaFeature() {
     return div;
 }
 
+function createAlphaWordFeature() {
+    const div = document.createElement('div');
+    div.id = 'alphaWordFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">ALPHA-WORD</h2>
+        <p class="alpha-sequence-display" id="alphaWordSequenceDisplay">—</p>
+        <div class="alpha-direction-buttons">
+            <button type="button" class="alpha-btn alpha-left" id="alphaWordLeftBtn" aria-label="Left (toward A)">← Left</button>
+            <button type="button" class="alpha-btn alpha-repeat" id="alphaWordRepeatBtn" aria-label="Repeat (same letter)">Repeat</button>
+            <button type="button" class="alpha-btn alpha-right" id="alphaWordRightBtn" aria-label="Right (toward Z)">Right →</button>
+        </div>
+        <div class="alpha-word-last-row" style="margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; max-width: 320px;">
+            <label for="alphaWordLastLettersInput">Possible last letters (letters only; duplicates ignored, e.g. SHEEP → S,H,E,P)</label>
+            <input type="text" id="alphaWordLastLettersInput" autocomplete="off" autocapitalize="characters" style="width: 100%; padding: 8px; text-transform: uppercase;">
+        </div>
+        <div class="alpha-actions">
+            <button type="button" id="alphaWordSubmitBtn" class="alpha-submit-btn">SUBMIT</button>
+            <button type="button" id="alphaWordSkipBtn" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
+function createAlphaRepeatFeature() {
+    const div = document.createElement('div');
+    div.id = 'alphaRepeatFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">ALPHA-REPEAT</h2>
+        <p class="alpha-repeat-prompt" style="text-align: center; margin-bottom: 10px;">Consecutive identical letters in the word?</p>
+        <div class="alpha-repeat-yn" style="display: flex; justify-content: center; gap: 12px; margin-bottom: 16px;">
+            <button type="button" id="alphaRepeatYesBtn" class="yes-btn">YES</button>
+            <button type="button" id="alphaRepeatNoBtn" class="no-btn">NO</button>
+        </div>
+        <p class="alpha-sequence-display" id="alphaRepeatSequenceDisplay">—</p>
+        <div class="alpha-direction-buttons">
+            <button type="button" class="alpha-btn alpha-left" id="alphaRepeatLeftBtn" aria-label="Left (toward A)">← Left</button>
+            <button type="button" class="alpha-btn alpha-repeat" id="alphaRepeatRepeatBtn" aria-label="Repeat (same letter)">Repeat</button>
+            <button type="button" class="alpha-btn alpha-right" id="alphaRepeatRightBtn" aria-label="Right (toward Z)">Right →</button>
+        </div>
+        <div class="alpha-actions">
+            <button type="button" id="alphaRepeatSubmitBtn" class="alpha-submit-btn">SUBMIT</button>
+            <button type="button" id="alphaRepeatSkipBtn" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
 // --- S/M/L (Length) Feature Logic ---
 function createSmlLengthFeature() {
     const div = document.createElement('div');
@@ -5814,34 +5869,121 @@ function filterWordsByDictionaryAlpha(words, section) {
     });
 }
 
+// --- ALPHA helpers (shared by ALPHA, ALPHA-WORD, ALPHA-REPEAT) ---
+function hasConsecutiveDuplicateLetters(word) {
+    const w = (word || '').toUpperCase();
+    for (let i = 1; i < w.length; i++) {
+        if (w[i] === w[i - 1]) return true;
+    }
+    return false;
+}
+
+function collapseConsecutiveDuplicateLetters(word) {
+    const w = (word || '').toUpperCase();
+    if (!w) return '';
+    let out = w[0];
+    for (let i = 1; i < w.length; i++) {
+        if (w[i] !== w[i - 1]) out += w[i];
+    }
+    return out;
+}
+
+function parseAlphaWordLastLettersInput(input) {
+    const set = new Set();
+    const s = String(input || '').toUpperCase();
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (c >= 'A' && c <= 'Z') set.add(c);
+    }
+    return set;
+}
+
+/** Spelling length must be exactly 1 + directions.length.
+ *  firstLetterSection: 'begin' | 'mid' | 'end' from Dictionary (Alpha), or null/undefined if that step did not run (any A–Z). */
+function alphaDirectionsMatchSpelling(spelling, directions, firstLetterSection, swapPov) {
+    const dirs = directions || [];
+    const needLen = 1 + dirs.length;
+    const w = (spelling || '').toUpperCase();
+    if (w.length !== needLen) return false;
+    const code0 = w.charCodeAt(0);
+    if (firstLetterSection != null && firstLetterSection !== '') {
+        const ranges = getDictionaryAlphaRanges();
+        const range = ranges[firstLetterSection];
+        if (!range) return false;
+        const [minCode, maxCode] = range;
+        if (code0 < minCode || code0 > maxCode) return false;
+    } else {
+        if (code0 < 65 || code0 > 90) return false;
+    }
+    for (let i = 0; i < dirs.length; i++) {
+        const d = dirs[i];
+        const cPrev = w.charCodeAt(i);
+        const cCur = w.charCodeAt(i + 1);
+        if (d === 'Repeat') {
+            if (cCur !== cPrev) return false;
+        } else {
+            const towardA = (d === 'L' && !swapPov) || (d === 'R' && swapPov);
+            if (towardA) {
+                if (cCur >= cPrev) return false;
+            } else {
+                if (cCur <= cPrev) return false;
+            }
+        }
+    }
+    return true;
+}
+
+function alphaDirectionsMatchSpellingPrefix(wUpper, directions, firstLetterSection, swapPov) {
+    const dirs = directions || [];
+    const needLen = 1 + dirs.length;
+    if (wUpper.length < needLen) return false;
+    return alphaDirectionsMatchSpelling(wUpper.slice(0, needLen), dirs, firstLetterSection, swapPov);
+}
+
 // --- ALPHA: directional filter (Left/Right/Repeat); first letter from Dictionary (Alpha) ---
 function filterWordsByAlpha(words, directions, firstLetterSection, swapPov) {
     if (!directions || directions.length === 0) return words;
-    const ranges = getDictionaryAlphaRanges();
-    const range = ranges[firstLetterSection] || ranges.begin;
-    const [minCode, maxCode] = range;
-    const needLen = 1 + directions.length;
+    return words.filter(word => alphaDirectionsMatchSpellingPrefix((word || '').toUpperCase(), directions, firstLetterSection, swapPov));
+}
+
+function filterWordsByAlphaWord(words, directions, firstLetterSection, swapPov, lastLetterSet) {
+    const dirs = directions || [];
+    const set = lastLetterSet instanceof Set ? lastLetterSet : new Set();
+    if (set.size === 0) return words.filter(() => false);
+    if (dirs.length === 0) {
+        return words.filter(word => {
+            const w = (word || '').toUpperCase();
+            if (w.length !== 1) return false;
+            if (!set.has(w[0])) return false;
+            return alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
+        });
+    }
     return words.filter(word => {
         const w = (word || '').toUpperCase();
-        if (w.length < needLen) return false;
-        const code0 = w.charCodeAt(0);
-        if (code0 < minCode || code0 > maxCode) return false;
-        for (let i = 0; i < directions.length; i++) {
-            const d = directions[i];
-            const cPrev = w.charCodeAt(i);
-            const cCur = w.charCodeAt(i + 1);
-            if (d === 'Repeat') {
-                if (cCur !== cPrev) return false;
-            } else {
-                const towardA = (d === 'L' && !swapPov) || (d === 'R' && swapPov);
-                if (towardA) {
-                    if (cCur >= cPrev) return false;
-                } else {
-                    if (cCur <= cPrev) return false;
-                }
-            }
-        }
-        return true;
+        if (w.length !== 1 + dirs.length) return false;
+        if (!set.has(w[w.length - 1])) return false;
+        return alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
+    });
+}
+
+function filterWordsByAlphaRepeatNo(words, directions, firstLetterSection, swapPov) {
+    const dirs = directions || [];
+    return words.filter(word => {
+        const w = (word || '').toUpperCase();
+        if (hasConsecutiveDuplicateLetters(w)) return false;
+        if (w.length !== 1 + dirs.length) return false;
+        return alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
+    });
+}
+
+function filterWordsByAlphaRepeatYes(words, directions, firstLetterSection, swapPov) {
+    const dirs = directions || [];
+    return words.filter(word => {
+        const w = (word || '').toUpperCase();
+        if (!hasConsecutiveDuplicateLetters(w)) return false;
+        const collapsed = collapseConsecutiveDuplicateLetters(w);
+        if (collapsed.length !== 1 + dirs.length) return false;
+        return alphaDirectionsMatchSpelling(collapsed, dirs, firstLetterSection, swapPov);
     });
 }
 
@@ -5872,7 +6014,7 @@ function computeAlphaEfficiency(words, nDirections, swapPov) {
     let minWords = words.length + 1;
     let zeroCount = 0;
     const totalCount = sequences.length;
-    const section = 'begin'; // use beginning range for efficiency estimate
+    const section = null; // no Dictionary: efficiency over any first letter
     for (const seq of sequences) {
         const filtered = filterWordsByAlpha(words, seq, section, swapPov);
         if (filtered.length === 0) zeroCount++;
@@ -10654,7 +10796,7 @@ function setupFeatureListeners(feature, callback, options) {
             }
 
             function alphaSubmit() {
-                const section = lastDictionaryAlphaSection || 'begin';
+                const section = lastDictionaryAlphaSection;
                 const filtered = filterWordsByAlpha(currentFilteredWords, alphaDirections, section, alphaSwapPov);
                 callback(filtered);
                 document.getElementById('alphaFeature').classList.add('completed');
@@ -10702,6 +10844,154 @@ function setupFeatureListeners(feature, callback, options) {
                     document.getElementById('alphaFeature').dispatchEvent(new Event('completed'));
                 };
                 alphaSkipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaSkipBtn.click(); }, { passive: false });
+            }
+            break;
+        }
+
+        case 'alphaWord': {
+            const alphaWordLeftBtn = document.getElementById('alphaWordLeftBtn');
+            const alphaWordRepeatBtn = document.getElementById('alphaWordRepeatBtn');
+            const alphaWordRightBtn = document.getElementById('alphaWordRightBtn');
+            const alphaWordSubmitBtn = document.getElementById('alphaWordSubmitBtn');
+            const alphaWordSkipBtn = document.getElementById('alphaWordSkipBtn');
+            const alphaWordSequenceDisplay = document.getElementById('alphaWordSequenceDisplay');
+            const alphaWordLastLettersInput = document.getElementById('alphaWordLastLettersInput');
+            const alphaDirectionsCount = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
+            const alphaSwapPov = !!(appSettings && appSettings.alphaSwapPov);
+            let alphaWordDirections = [];
+
+            function alphaWordUpdateDisplay() {
+                if (alphaWordSequenceDisplay) {
+                    alphaWordSequenceDisplay.textContent = alphaWordDirections.length
+                        ? alphaWordDirections.map(d => d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat').join(', ')
+                        : '—';
+                }
+            }
+
+            function alphaWordSubmit() {
+                const section = lastDictionaryAlphaSection;
+                const lastSet = parseAlphaWordLastLettersInput(alphaWordLastLettersInput && alphaWordLastLettersInput.value);
+                if (lastSet.size === 0) {
+                    alert('Enter at least one letter for possible last letters (A–Z).');
+                    return;
+                }
+                const filtered = filterWordsByAlphaWord(currentFilteredWords, alphaWordDirections, section, alphaSwapPov, lastSet);
+                callback(filtered);
+                document.getElementById('alphaWordFeature').classList.add('completed');
+                document.getElementById('alphaWordFeature').dispatchEvent(new Event('completed'));
+            }
+
+            function alphaWordPush(dir) {
+                alphaWordDirections.push(dir);
+                alphaWordUpdateDisplay();
+                if (alphaDirectionsCount > 0 && alphaWordDirections.length >= alphaDirectionsCount) alphaWordSubmit();
+            }
+
+            if (alphaWordLeftBtn) {
+                alphaWordLeftBtn.onclick = () => alphaWordPush('L');
+                alphaWordLeftBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaWordLeftBtn.click(); }, { passive: false });
+            }
+            if (alphaWordRepeatBtn) {
+                alphaWordRepeatBtn.onclick = () => alphaWordPush('Repeat');
+                alphaWordRepeatBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaWordRepeatBtn.click(); }, { passive: false });
+            }
+            if (alphaWordRightBtn) {
+                alphaWordRightBtn.onclick = () => alphaWordPush('R');
+                alphaWordRightBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaWordRightBtn.click(); }, { passive: false });
+            }
+            if (alphaWordSubmitBtn) {
+                alphaWordSubmitBtn.onclick = () => alphaWordSubmit();
+                alphaWordSubmitBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaWordSubmitBtn.click(); }, { passive: false });
+            }
+            if (alphaWordSkipBtn) {
+                alphaWordSkipBtn.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('alphaWordFeature').classList.add('completed');
+                    document.getElementById('alphaWordFeature').dispatchEvent(new Event('completed'));
+                };
+                alphaWordSkipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaWordSkipBtn.click(); }, { passive: false });
+            }
+            break;
+        }
+
+        case 'alphaRepeat': {
+            const arLeft = document.getElementById('alphaRepeatLeftBtn');
+            const arRep = document.getElementById('alphaRepeatRepeatBtn');
+            const arRight = document.getElementById('alphaRepeatRightBtn');
+            const arSubmit = document.getElementById('alphaRepeatSubmitBtn');
+            const arSkip = document.getElementById('alphaRepeatSkipBtn');
+            const arDisplay = document.getElementById('alphaRepeatSequenceDisplay');
+            const arYes = document.getElementById('alphaRepeatYesBtn');
+            const arNo = document.getElementById('alphaRepeatNoBtn');
+            const alphaDirectionsCount = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
+            const alphaSwapPov = !!(appSettings && appSettings.alphaSwapPov);
+            let arDirections = [];
+            let arHasRepeats = null;
+
+            function arUpdateDisplay() {
+                if (arDisplay) {
+                    arDisplay.textContent = arDirections.length
+                        ? arDirections.map(d => d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat').join(', ')
+                        : '—';
+                }
+            }
+
+            function arHighlightYn() {
+                if (arYes) arYes.classList.toggle('active', arHasRepeats === true);
+                if (arNo) arNo.classList.toggle('active', arHasRepeats === false);
+            }
+
+            function arSubmitFn() {
+                if (arHasRepeats !== true && arHasRepeats !== false) {
+                    alert('Choose YES or NO: are there consecutive identical letters in the word?');
+                    return;
+                }
+                const section = lastDictionaryAlphaSection;
+                const filtered = arHasRepeats
+                    ? filterWordsByAlphaRepeatYes(currentFilteredWords, arDirections, section, alphaSwapPov)
+                    : filterWordsByAlphaRepeatNo(currentFilteredWords, arDirections, section, alphaSwapPov);
+                callback(filtered);
+                document.getElementById('alphaRepeatFeature').classList.add('completed');
+                document.getElementById('alphaRepeatFeature').dispatchEvent(new Event('completed'));
+            }
+
+            function arPush(dir) {
+                arDirections.push(dir);
+                arUpdateDisplay();
+                if (alphaDirectionsCount > 0 && arDirections.length >= alphaDirectionsCount) arSubmitFn();
+            }
+
+            if (arYes) {
+                arYes.onclick = () => { arHasRepeats = true; arHighlightYn(); };
+                arYes.addEventListener('touchstart', (e) => { e.preventDefault(); arYes.click(); }, { passive: false });
+            }
+            if (arNo) {
+                arNo.onclick = () => { arHasRepeats = false; arHighlightYn(); };
+                arNo.addEventListener('touchstart', (e) => { e.preventDefault(); arNo.click(); }, { passive: false });
+            }
+            if (arLeft) {
+                arLeft.onclick = () => arPush('L');
+                arLeft.addEventListener('touchstart', (e) => { e.preventDefault(); arLeft.click(); }, { passive: false });
+            }
+            if (arRep) {
+                arRep.onclick = () => arPush('Repeat');
+                arRep.addEventListener('touchstart', (e) => { e.preventDefault(); arRep.click(); }, { passive: false });
+            }
+            if (arRight) {
+                arRight.onclick = () => arPush('R');
+                arRight.addEventListener('touchstart', (e) => { e.preventDefault(); arRight.click(); }, { passive: false });
+            }
+            if (arSubmit) {
+                arSubmit.onclick = () => arSubmitFn();
+                arSubmit.addEventListener('touchstart', (e) => { e.preventDefault(); arSubmit.click(); }, { passive: false });
+            }
+            if (arSkip) {
+                arSkip.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('alphaRepeatFeature').classList.add('completed');
+                    document.getElementById('alphaRepeatFeature').dispatchEvent(new Event('completed'));
+                };
+                arSkip.addEventListener('touchstart', (e) => { e.preventDefault(); arSkip.click(); }, { passive: false });
             }
             break;
         }
@@ -13620,6 +13910,14 @@ function initializeModeButtons() {
                 <div class="feature-group">
                     <button class="feature-button" data-feature="alpha" draggable="true">ALPHA (SHORT)</button>
                     <button class="info-button" data-feature="alpha"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="alphaWord" draggable="true">ALPHA-WORD</button>
+                    <button class="info-button" data-feature="alphaWord"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="alphaRepeat" draggable="true">ALPHA-REPEAT</button>
+                    <button class="info-button" data-feature="alphaRepeat"><i class="fas fa-info-circle"></i></button>
                 </div>
                 <div class="feature-group">
                     <button class="feature-button" data-feature="omega" draggable="true">OMEGA: Short</button>
