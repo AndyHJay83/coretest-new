@@ -2876,6 +2876,9 @@ async function executeWorkflow(steps) {
                 case 'alpha':
                     featureElement = createAlphaFeature();
                     break;
+                case 'repeatQuestion':
+                    featureElement = createRepeatQuestionFeature();
+                    break;
                 case 'alphaWord':
                     featureElement = createAlphaWordFeature();
                     break;
@@ -4808,6 +4811,22 @@ function createAlphaRepeatFeature() {
     return div;
 }
 
+function createRepeatQuestionFeature() {
+    const div = document.createElement('div');
+    div.id = 'repeatQuestionFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">REPEAT?</h2>
+        <p class="repeat-question-prompt" style="text-align: center; margin: 20px 0; font-size: 18px; font-weight: bold;">Repeated letters in the word?</p>
+        <div class="repeat-question-yn button-container">
+            <button type="button" id="repeatQuestionYesBtn" class="yes-btn">YES</button>
+            <button type="button" id="repeatQuestionNoBtn" class="no-btn">NO</button>
+            <button type="button" id="repeatQuestionSkipBtn" class="skip-button">SKIP</button>
+        </div>
+    `;
+    return div;
+}
+
 // --- S/M/L (Length) Feature Logic ---
 function createSmlLengthFeature() {
     const div = document.createElement('div');
@@ -5984,6 +6003,15 @@ function filterWordsByAlphaRepeatYes(words, directions, firstLetterSection, swap
         const collapsed = collapseConsecutiveDuplicateLetters(w);
         if (collapsed.length !== 1 + dirs.length) return false;
         return alphaDirectionsMatchSpelling(collapsed, dirs, firstLetterSection, swapPov);
+    });
+}
+
+// --- REPEAT? (letters) filter logic ---
+function filterWordsByRepeatQuestion(words, hasRepeat) {
+    const wantRepeat = !!hasRepeat;
+    return (words || []).filter(word => {
+        const has = hasConsecutiveDuplicateLetters(word);
+        return wantRepeat ? has : !has;
     });
 }
 
@@ -8419,6 +8447,7 @@ function setupFeatureListeners(feature, callback, options) {
                     }
                     const usePosition = !!(appSettings && appSettings.decodePositionOn);
                     let specifiedPosition = null;
+                    let allowedTruthPositions = null;
                     if (usePosition && appSettings.decodePosition != null) {
                         const pos = parseInt(appSettings.decodePosition, 10);
                         if (pos >= 1 && pos <= input.length) {
@@ -8427,8 +8456,69 @@ function setupFeatureListeners(feature, callback, options) {
                             alert(`Truth position must be between 1 and ${input.length} for this string.`);
                             return;
                         }
+                    } else {
+                        const sectionRaw = prompt('Truth position section? Enter BEGINNING, MIDDLE, or END.', 'BEGINNING');
+                        if (sectionRaw === null) return;
+                        const section = sectionRaw.trim().toUpperCase();
+                        if (!['BEGINNING', 'MIDDLE', 'END'].includes(section)) {
+                            alert('Please enter BEGINNING, MIDDLE, or END.');
+                            return;
+                        }
+
+                        const specificRaw = prompt(
+                            'Specific position (optional). Leave blank to skip.\n' +
+                            'For BEGINNING/MIDDLE: enter absolute 1-based position.\n' +
+                            'For END: enter 1 = last letter, 2 = second-to-last, etc.',
+                            ''
+                        );
+                        if (specificRaw === null) return;
+
+                        if (specificRaw.trim() !== '') {
+                            const n = parseInt(specificRaw.trim(), 10);
+                            if (isNaN(n) || n < 1) {
+                                alert('Specific position must be a positive whole number.');
+                                return;
+                            }
+                            if (section === 'END') {
+                                const fromEndPos = input.length - n + 1;
+                                if (fromEndPos < 1 || fromEndPos > input.length) {
+                                    alert(`END position must be between 1 and ${input.length}.`);
+                                    return;
+                                }
+                                specifiedPosition = fromEndPos;
+                            } else {
+                                if (n > input.length) {
+                                    alert(`Position must be between 1 and ${input.length}.`);
+                                    return;
+                                }
+                                specifiedPosition = n;
+                            }
+                        } else {
+                            const half = Math.ceil(input.length / 2);
+                            const midStart = Math.max(0, Math.floor(input.length * 0.25));
+                            const midEndExclusive = Math.ceil(input.length * 0.75);
+                            if (section === 'BEGINNING') {
+                                allowedTruthPositions = Array.from({ length: half }, (_, i) => i + 1);
+                            } else if (section === 'END') {
+                                allowedTruthPositions = Array.from({ length: input.length - half }, (_, i) => half + i + 1);
+                            } else {
+                                allowedTruthPositions = [];
+                                for (let i = midStart; i < midEndExclusive; i++) {
+                                    allowedTruthPositions.push(i + 1);
+                                }
+                                if (allowedTruthPositions.length === 0) {
+                                    allowedTruthPositions = [1];
+                                }
+                            }
+                        }
                     }
-                    const filteredWords = filterWordsByScramble(currentFilteredWords, input, true, specifiedPosition);
+                    const filteredWords = filterWordsByScramble(
+                        currentFilteredWords,
+                        input,
+                        true,
+                        specifiedPosition,
+                        allowedTruthPositions
+                    );
                     callback(filteredWords);
                     document.getElementById('scrambleFeature').classList.add('completed');
                     document.getElementById('scrambleFeature').dispatchEvent(new Event('completed'));
@@ -10844,6 +10934,50 @@ function setupFeatureListeners(feature, callback, options) {
                     document.getElementById('alphaFeature').dispatchEvent(new Event('completed'));
                 };
                 alphaSkipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaSkipBtn.click(); }, { passive: false });
+            }
+            break;
+        }
+
+        case 'repeatQuestion': {
+            const yesBtn = document.getElementById('repeatQuestionYesBtn');
+            const noBtn = document.getElementById('repeatQuestionNoBtn');
+            const skipBtn = document.getElementById('repeatQuestionSkipBtn');
+
+            function setActive(choice) {
+                // choice: true = YES, false = NO, null = none
+                if (yesBtn) yesBtn.classList.toggle('active', choice === true);
+                if (noBtn) noBtn.classList.toggle('active', choice === false);
+            }
+
+            if (yesBtn) {
+                yesBtn.onclick = () => {
+                    setActive(true);
+                    const filtered = filterWordsByRepeatQuestion(currentFilteredWords, true);
+                    callback(filtered);
+                    document.getElementById('repeatQuestionFeature').classList.add('completed');
+                    document.getElementById('repeatQuestionFeature').dispatchEvent(new Event('completed'));
+                };
+                yesBtn.addEventListener('touchstart', (e) => { e.preventDefault(); yesBtn.click(); }, { passive: false });
+            }
+
+            if (noBtn) {
+                noBtn.onclick = () => {
+                    setActive(false);
+                    const filtered = filterWordsByRepeatQuestion(currentFilteredWords, false);
+                    callback(filtered);
+                    document.getElementById('repeatQuestionFeature').classList.add('completed');
+                    document.getElementById('repeatQuestionFeature').dispatchEvent(new Event('completed'));
+                };
+                noBtn.addEventListener('touchstart', (e) => { e.preventDefault(); noBtn.click(); }, { passive: false });
+            }
+
+            if (skipBtn) {
+                skipBtn.onclick = () => {
+                    callback(currentFilteredWords);
+                    document.getElementById('repeatQuestionFeature').classList.add('completed');
+                    document.getElementById('repeatQuestionFeature').dispatchEvent(new Event('completed'));
+                };
+                skipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); skipBtn.click(); }, { passive: false });
             }
             break;
         }
@@ -13912,6 +14046,10 @@ function initializeModeButtons() {
                     <button class="info-button" data-feature="alpha"><i class="fas fa-info-circle"></i></button>
                 </div>
                 <div class="feature-group">
+                    <button class="feature-button" data-feature="repeatQuestion" draggable="true">REPEAT?</button>
+                    <button class="info-button" data-feature="repeatQuestion"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
                     <button class="feature-button" data-feature="alphaWord" draggable="true">ALPHA-WORD</button>
                     <button class="info-button" data-feature="alphaWord"><i class="fas fa-info-circle"></i></button>
                 </div>
@@ -15389,7 +15527,7 @@ function updateT9DefinitesOverlay(words) {
 // When truthOnOne is true: ANY one letter is correct at its position (others are wrong at their positions)
 // If specifiedPosition is provided (1-based), only that position is correct, all others are wrong
 // The word length must match the input string length
-function filterWordsByScramble(words, letterString, truthOnOne, specifiedPosition = null) {
+function filterWordsByScramble(words, letterString, truthOnOne, specifiedPosition = null, allowedTruthPositions = null) {
     if (!letterString || letterString.length === 0) return words;
     
     const letters = letterString.toUpperCase().split('');
@@ -15445,6 +15583,9 @@ function filterWordsByScramble(words, letterString, truthOnOne, specifiedPositio
             });
         } else {
             // ANY one letter is correct at its position, others are wrong at their positions
+            const allowedIndices = Array.isArray(allowedTruthPositions) && allowedTruthPositions.length > 0
+                ? new Set(allowedTruthPositions.map(p => p - 1).filter(i => i >= 0 && i < letters.length))
+                : null;
             return words.filter(word => {
                 const upperWord = word.toUpperCase();
                 
@@ -15455,6 +15596,7 @@ function filterWordsByScramble(words, letterString, truthOnOne, specifiedPositio
                 
                 // Check each possible scenario where one letter is correct
                 for (let correctIndex = 0; correctIndex < letters.length; correctIndex++) {
+                    if (allowedIndices && !allowedIndices.has(correctIndex)) continue;
                     const correctLetter = letters[correctIndex];
                     
                     // Check if this position has the correct letter

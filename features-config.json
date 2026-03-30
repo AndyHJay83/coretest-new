@@ -428,6 +428,13 @@
       "analyzeFunction": "return [{ param: 'ALPHA with Y/N consecutive repeats; YES = collapse doubles; NO = exclude doubles.', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
+      "id": "repeatQuestion",
+      "name": "REPEAT?",
+      "displayName": "REPEAT?",
+      "requiresParam": false,
+      "analyzeFunction": "const yes = wordlist.filter(w => { const s = String(w || '').toUpperCase(); for (let i = 0; i < s.length - 1; i++) { if (s[i] >= 'A' && s[i] <= 'Z' && s[i] === s[i + 1]) return true; } return false; }); const no = wordlist.filter(w => { const s = String(w || '').toUpperCase(); for (let i = 0; i < s.length - 1; i++) { if (s[i] >= 'A' && s[i] <= 'Z' && s[i] === s[i + 1]) return false; } return true; }); return [{ param: 'YES', wordsLeft: yes.length, percentFiltered: 100 * (1 - yes.length / totalWords) }, { param: 'NO', wordsLeft: no.length, percentFiltered: 100 * (1 - no.length / totalWords) }];"
+    },
+    {
       "id": "smlLength",
       "name": "LENGTH (S/M/L)",
       "displayName": "LENGTH (S/M/L)",
