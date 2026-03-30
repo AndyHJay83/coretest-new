@@ -3988,20 +3988,22 @@ function createScrambleFeature() {
     div.className = 'feature-section';
     div.innerHTML = `
         <h2 class="feature-title">DECODE</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Enter the letter string. One character is correct at its position. If DECODE Truth Position is OFF in Settings, choose section + optional specific position below.</p>
-        <div class="length-input">
+        <p id="decodeStageHint" style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Enter the letter string. One character is correct at its position (Settings can lock this).</p>
+        <div id="decodeInputStage" class="length-input">
             <input type="text" id="scrambleInput" placeholder="Enter letter string" autocomplete="off" style="text-transform: uppercase;">
             <button id="scrambleButton">SUBMIT</button>
             <button id="scrambleSkipButton" class="skip-button">SKIP</button>
         </div>
-        <div id="decodeTruthOptions" style="display:none; margin-top: 14px;">
-            <p style="text-align: center; margin: 8px 0; font-size: 14px; color: #666;">Truth section</p>
+        <div id="decodeTruthSectionStage" style="display:none; margin-top: 14px;">
+            <p style="text-align: center; margin: 8px 0; font-size: 14px; color: #666;">Where is the truth position?</p>
             <div id="decodeTruthSectionButtons" class="section-buttons" style="margin-top: 8px;">
                 <button type="button" class="section-btn" data-section="BEGINNING">BEGINNING</button>
                 <button type="button" class="section-btn" data-section="MIDDLE">MIDDLE</button>
                 <button type="button" class="section-btn" data-section="END">END</button>
             </div>
-            <p style="text-align: center; margin: 10px 0 6px; font-size: 14px; color: #666;">Specific position (optional)</p>
+        </div>
+        <div id="decodeTruthSpecificStage" style="display:none; margin-top: 14px;">
+            <p id="decodeSpecificHint" style="text-align: center; margin: 10px 0 6px; font-size: 14px; color: #666;">Specific position (optional)</p>
             <div id="decodeTruthPositionButtons" class="position-buttons"></div>
             <div class="button-container" style="margin-top: 10px;">
                 <button type="button" id="decodeTruthPositionSkipBtn" class="skip-button">SKIP SPECIFIC</button>
@@ -8446,10 +8448,17 @@ function setupFeatureListeners(feature, callback, options) {
             const scrambleButton = document.getElementById('scrambleButton');
             const scrambleSkipButton = document.getElementById('scrambleSkipButton');
             const scrambleInput = document.getElementById('scrambleInput');
-            const decodeTruthOptions = document.getElementById('decodeTruthOptions');
+            const decodeStageHint = document.getElementById('decodeStageHint');
+            const decodeInputStage = document.getElementById('decodeInputStage');
+            const decodeTruthSectionStage = document.getElementById('decodeTruthSectionStage');
             const decodeTruthSectionButtons = document.getElementById('decodeTruthSectionButtons');
+            const decodeTruthSpecificStage = document.getElementById('decodeTruthSpecificStage');
+            const decodeSpecificHint = document.getElementById('decodeSpecificHint');
             const decodeTruthPositionButtons = document.getElementById('decodeTruthPositionButtons');
             const decodeTruthPositionSkipBtn = document.getElementById('decodeTruthPositionSkipBtn');
+            const usePositionSetting = !!(appSettings && appSettings.decodePositionOn);
+            let decodeStage = 'input'; // input -> section -> specific
+            let pendingDecodeInput = '';
             let selectedDecodeSection = null;
             let selectedDecodeSpecific = null;
 
@@ -8468,14 +8477,55 @@ function setupFeatureListeners(feature, callback, options) {
                 return out.length > 0 ? out : [1];
             };
 
+            const completeDecodeStep = (input, section, specificPosition = null) => {
+                let specifiedPosition = null;
+                let allowedTruthPositions = null;
+                if (specificPosition !== null) {
+                    specifiedPosition = specificPosition;
+                } else {
+                    allowedTruthPositions = computeDecodeSectionPositions(input.length, section);
+                }
+                const filteredWords = filterWordsByScramble(
+                    currentFilteredWords,
+                    input,
+                    true,
+                    specifiedPosition,
+                    allowedTruthPositions
+                );
+                callback(filteredWords);
+                document.getElementById('scrambleFeature').classList.add('completed');
+                document.getElementById('scrambleFeature').dispatchEvent(new Event('completed'));
+            };
+
+            const showDecodeStage = (stage) => {
+                decodeStage = stage;
+                if (decodeInputStage) decodeInputStage.style.display = stage === 'input' ? '' : 'none';
+                if (decodeTruthSectionStage) decodeTruthSectionStage.style.display = stage === 'section' ? '' : 'none';
+                if (decodeTruthSpecificStage) decodeTruthSpecificStage.style.display = stage === 'specific' ? '' : 'none';
+                if (decodeStageHint) {
+                    if (stage === 'input') {
+                        decodeStageHint.textContent = 'Enter the letter string. One character is correct at its position (Settings can lock this).';
+                    } else if (stage === 'section') {
+                        decodeStageHint.textContent = 'Step 2 of 3: choose the truth location.';
+                    } else {
+                        decodeStageHint.textContent = 'Step 3 of 3: choose specific position, or skip.';
+                    }
+                }
+            };
+
             const renderDecodeSpecificButtons = () => {
                 if (!decodeTruthPositionButtons || !scrambleInput) return;
-                const inputLen = scrambleInput.value.trim().length;
+                const inputLen = pendingDecodeInput.length;
                 decodeTruthPositionButtons.innerHTML = '';
                 if (!selectedDecodeSection || inputLen <= 0) return;
                 const allowedAbsPositions = computeDecodeSectionPositions(inputLen, selectedDecodeSection);
                 if (selectedDecodeSpecific !== null && !allowedAbsPositions.includes(selectedDecodeSpecific)) {
                     selectedDecodeSpecific = null;
+                }
+                if (decodeSpecificHint) {
+                    decodeSpecificHint.textContent = selectedDecodeSection === 'END'
+                        ? 'Specific position from END (optional): 1 = last letter, 2 = second-to-last...'
+                        : 'Specific position (optional)';
                 }
                 if (selectedDecodeSection === 'END') {
                     const half = Math.ceil(inputLen / 2);
@@ -8490,7 +8540,7 @@ function setupFeatureListeners(feature, callback, options) {
                         if (selectedDecodeSpecific === absPos) btn.classList.add('active');
                         btn.onclick = () => {
                             selectedDecodeSpecific = absPos;
-                            renderDecodeSpecificButtons();
+                            completeDecodeStep(pendingDecodeInput, selectedDecodeSection, selectedDecodeSpecific);
                         };
                         decodeTruthPositionButtons.appendChild(btn);
                     }
@@ -8503,17 +8553,14 @@ function setupFeatureListeners(feature, callback, options) {
                         if (selectedDecodeSpecific === pos) btn.classList.add('active');
                         btn.onclick = () => {
                             selectedDecodeSpecific = pos;
-                            renderDecodeSpecificButtons();
+                            completeDecodeStep(pendingDecodeInput, selectedDecodeSection, selectedDecodeSpecific);
                         };
                         decodeTruthPositionButtons.appendChild(btn);
                     });
                 }
             };
 
-            const usePositionSetting = !!(appSettings && appSettings.decodePositionOn);
-            if (decodeTruthOptions) {
-                decodeTruthOptions.style.display = usePositionSetting ? 'none' : '';
-            }
+            showDecodeStage('input');
             if (decodeTruthSectionButtons) {
                 const sectionButtons = decodeTruthSectionButtons.querySelectorAll('.section-btn');
                 sectionButtons.forEach(btn => {
@@ -8523,6 +8570,7 @@ function setupFeatureListeners(feature, callback, options) {
                         selectedDecodeSpecific = null;
                         sectionButtons.forEach(b => b.classList.remove('active'));
                         btn.classList.add('active');
+                        showDecodeStage('specific');
                         renderDecodeSpecificButtons();
                     };
                     btn.addEventListener('touchstart', (e) => { e.preventDefault(); btn.click(); }, { passive: false });
@@ -8531,14 +8579,13 @@ function setupFeatureListeners(feature, callback, options) {
             if (decodeTruthPositionSkipBtn) {
                 decodeTruthPositionSkipBtn.onclick = () => {
                     selectedDecodeSpecific = null;
-                    renderDecodeSpecificButtons();
+                    completeDecodeStep(pendingDecodeInput, selectedDecodeSection, null);
                 };
                 decodeTruthPositionSkipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); decodeTruthPositionSkipBtn.click(); }, { passive: false });
             }
             if (scrambleInput) {
                 scrambleInput.addEventListener('input', (e) => {
                     e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
-                    renderDecodeSpecificButtons();
                 });
             }
             if (scrambleButton && scrambleInput) {
@@ -8559,16 +8606,10 @@ function setupFeatureListeners(feature, callback, options) {
                             alert(`Truth position must be between 1 and ${input.length} for this string.`);
                             return;
                         }
-                    } else {
-                        if (!selectedDecodeSection) {
-                            alert('Choose truth section: BEGINNING, MIDDLE, or END.');
-                            return;
-                        }
-                        if (selectedDecodeSpecific !== null) {
-                            specifiedPosition = selectedDecodeSpecific;
-                        } else {
-                            allowedTruthPositions = computeDecodeSectionPositions(input.length, selectedDecodeSection);
-                        }
+                    } else if (decodeStage === 'input') {
+                        pendingDecodeInput = input;
+                        showDecodeStage('section');
+                        return;
                     }
                     const filteredWords = filterWordsByScramble(
                         currentFilteredWords,
