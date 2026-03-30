@@ -3988,11 +3988,24 @@ function createScrambleFeature() {
     div.className = 'feature-section';
     div.innerHTML = `
         <h2 class="feature-title">DECODE</h2>
-        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Enter the letter string. One character is correct at its position (Settings: Position for which one).</p>
+        <p style="text-align: center; margin: 10px 0; font-size: 14px; color: #666;">Enter the letter string. One character is correct at its position. If DECODE Truth Position is OFF in Settings, choose section + optional specific position below.</p>
         <div class="length-input">
             <input type="text" id="scrambleInput" placeholder="Enter letter string" autocomplete="off" style="text-transform: uppercase;">
             <button id="scrambleButton">SUBMIT</button>
             <button id="scrambleSkipButton" class="skip-button">SKIP</button>
+        </div>
+        <div id="decodeTruthOptions" style="display:none; margin-top: 14px;">
+            <p style="text-align: center; margin: 8px 0; font-size: 14px; color: #666;">Truth section</p>
+            <div id="decodeTruthSectionButtons" class="section-buttons" style="margin-top: 8px;">
+                <button type="button" class="section-btn" data-section="BEGINNING">BEGINNING</button>
+                <button type="button" class="section-btn" data-section="MIDDLE">MIDDLE</button>
+                <button type="button" class="section-btn" data-section="END">END</button>
+            </div>
+            <p style="text-align: center; margin: 10px 0 6px; font-size: 14px; color: #666;">Specific position (optional)</p>
+            <div id="decodeTruthPositionButtons" class="position-buttons"></div>
+            <div class="button-container" style="margin-top: 10px;">
+                <button type="button" id="decodeTruthPositionSkipBtn" class="skip-button">SKIP SPECIFIC</button>
+            </div>
         </div>
     `;
     return div;
@@ -8433,9 +8446,99 @@ function setupFeatureListeners(feature, callback, options) {
             const scrambleButton = document.getElementById('scrambleButton');
             const scrambleSkipButton = document.getElementById('scrambleSkipButton');
             const scrambleInput = document.getElementById('scrambleInput');
+            const decodeTruthOptions = document.getElementById('decodeTruthOptions');
+            const decodeTruthSectionButtons = document.getElementById('decodeTruthSectionButtons');
+            const decodeTruthPositionButtons = document.getElementById('decodeTruthPositionButtons');
+            const decodeTruthPositionSkipBtn = document.getElementById('decodeTruthPositionSkipBtn');
+            let selectedDecodeSection = null;
+            let selectedDecodeSpecific = null;
+
+            const computeDecodeSectionPositions = (length, section) => {
+                const half = Math.ceil(length / 2);
+                const midStart = Math.max(0, Math.floor(length * 0.25));
+                const midEndExclusive = Math.ceil(length * 0.75);
+                if (section === 'BEGINNING') {
+                    return Array.from({ length: half }, (_, i) => i + 1);
+                }
+                if (section === 'END') {
+                    return Array.from({ length: length - half }, (_, i) => half + i + 1);
+                }
+                const out = [];
+                for (let i = midStart; i < midEndExclusive; i++) out.push(i + 1);
+                return out.length > 0 ? out : [1];
+            };
+
+            const renderDecodeSpecificButtons = () => {
+                if (!decodeTruthPositionButtons || !scrambleInput) return;
+                const inputLen = scrambleInput.value.trim().length;
+                decodeTruthPositionButtons.innerHTML = '';
+                if (!selectedDecodeSection || inputLen <= 0) return;
+                const allowedAbsPositions = computeDecodeSectionPositions(inputLen, selectedDecodeSection);
+                if (selectedDecodeSpecific !== null && !allowedAbsPositions.includes(selectedDecodeSpecific)) {
+                    selectedDecodeSpecific = null;
+                }
+                if (selectedDecodeSection === 'END') {
+                    const half = Math.ceil(inputLen / 2);
+                    const fromEndMax = inputLen - half;
+                    for (let n = 1; n <= fromEndMax; n++) {
+                        const absPos = inputLen - n + 1;
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'position-btn';
+                        btn.textContent = String(n);
+                        btn.title = `${n} from end`;
+                        if (selectedDecodeSpecific === absPos) btn.classList.add('active');
+                        btn.onclick = () => {
+                            selectedDecodeSpecific = absPos;
+                            renderDecodeSpecificButtons();
+                        };
+                        decodeTruthPositionButtons.appendChild(btn);
+                    }
+                } else {
+                    allowedAbsPositions.forEach(pos => {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'position-btn';
+                        btn.textContent = String(pos);
+                        if (selectedDecodeSpecific === pos) btn.classList.add('active');
+                        btn.onclick = () => {
+                            selectedDecodeSpecific = pos;
+                            renderDecodeSpecificButtons();
+                        };
+                        decodeTruthPositionButtons.appendChild(btn);
+                    });
+                }
+            };
+
+            const usePositionSetting = !!(appSettings && appSettings.decodePositionOn);
+            if (decodeTruthOptions) {
+                decodeTruthOptions.style.display = usePositionSetting ? 'none' : '';
+            }
+            if (decodeTruthSectionButtons) {
+                const sectionButtons = decodeTruthSectionButtons.querySelectorAll('.section-btn');
+                sectionButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                    btn.onclick = () => {
+                        selectedDecodeSection = btn.dataset.section || null;
+                        selectedDecodeSpecific = null;
+                        sectionButtons.forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        renderDecodeSpecificButtons();
+                    };
+                    btn.addEventListener('touchstart', (e) => { e.preventDefault(); btn.click(); }, { passive: false });
+                });
+            }
+            if (decodeTruthPositionSkipBtn) {
+                decodeTruthPositionSkipBtn.onclick = () => {
+                    selectedDecodeSpecific = null;
+                    renderDecodeSpecificButtons();
+                };
+                decodeTruthPositionSkipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); decodeTruthPositionSkipBtn.click(); }, { passive: false });
+            }
             if (scrambleInput) {
                 scrambleInput.addEventListener('input', (e) => {
                     e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                    renderDecodeSpecificButtons();
                 });
             }
             if (scrambleButton && scrambleInput) {
@@ -8457,59 +8560,14 @@ function setupFeatureListeners(feature, callback, options) {
                             return;
                         }
                     } else {
-                        const sectionRaw = prompt('Truth position section? Enter BEGINNING, MIDDLE, or END.', 'BEGINNING');
-                        if (sectionRaw === null) return;
-                        const section = sectionRaw.trim().toUpperCase();
-                        if (!['BEGINNING', 'MIDDLE', 'END'].includes(section)) {
-                            alert('Please enter BEGINNING, MIDDLE, or END.');
+                        if (!selectedDecodeSection) {
+                            alert('Choose truth section: BEGINNING, MIDDLE, or END.');
                             return;
                         }
-
-                        const specificRaw = prompt(
-                            'Specific position (optional). Leave blank to skip.\n' +
-                            'For BEGINNING/MIDDLE: enter absolute 1-based position.\n' +
-                            'For END: enter 1 = last letter, 2 = second-to-last, etc.',
-                            ''
-                        );
-                        if (specificRaw === null) return;
-
-                        if (specificRaw.trim() !== '') {
-                            const n = parseInt(specificRaw.trim(), 10);
-                            if (isNaN(n) || n < 1) {
-                                alert('Specific position must be a positive whole number.');
-                                return;
-                            }
-                            if (section === 'END') {
-                                const fromEndPos = input.length - n + 1;
-                                if (fromEndPos < 1 || fromEndPos > input.length) {
-                                    alert(`END position must be between 1 and ${input.length}.`);
-                                    return;
-                                }
-                                specifiedPosition = fromEndPos;
-                            } else {
-                                if (n > input.length) {
-                                    alert(`Position must be between 1 and ${input.length}.`);
-                                    return;
-                                }
-                                specifiedPosition = n;
-                            }
+                        if (selectedDecodeSpecific !== null) {
+                            specifiedPosition = selectedDecodeSpecific;
                         } else {
-                            const half = Math.ceil(input.length / 2);
-                            const midStart = Math.max(0, Math.floor(input.length * 0.25));
-                            const midEndExclusive = Math.ceil(input.length * 0.75);
-                            if (section === 'BEGINNING') {
-                                allowedTruthPositions = Array.from({ length: half }, (_, i) => i + 1);
-                            } else if (section === 'END') {
-                                allowedTruthPositions = Array.from({ length: input.length - half }, (_, i) => half + i + 1);
-                            } else {
-                                allowedTruthPositions = [];
-                                for (let i = midStart; i < midEndExclusive; i++) {
-                                    allowedTruthPositions.push(i + 1);
-                                }
-                                if (allowedTruthPositions.length === 0) {
-                                    allowedTruthPositions = [1];
-                                }
-                            }
+                            allowedTruthPositions = computeDecodeSectionPositions(input.length, selectedDecodeSection);
                         }
                     }
                     const filteredWords = filterWordsByScramble(
