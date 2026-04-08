@@ -5396,6 +5396,19 @@ input:checked + .slider:before {
     transform: translateY(1px);
 }
 
+.secondary-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: #ececec;
+    color: #888;
+    border-color: #d5d5d5;
+}
+
+.secondary-btn:disabled:hover {
+    background-color: #ececec;
+    border-color: #d5d5d5;
+}
+
 .primary-btn {
     padding: 12px 24px;
     font-size: 16px;

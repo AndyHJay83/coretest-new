@@ -131,6 +131,7 @@ const SOLOGRAM_WORD_GROUPS = {
     brushwood: { label: 'BRUSHWOOD', words: ['ABSENTMINDEDLY', 'BRILLIANTLY', 'CANDLELIGHT', 'DISQUIETING', 'EMBARRASSMENT', 'FLABBERGASTED', 'GRANDFATHERLY', 'HALFHEARTEDLY', 'JUDGMENTALLY', 'KNOWLEDGEABLE', 'LIGHTHEARTEDLY', 'PREDETERMINED', 'RECOMMENDATION', 'THUNDERSTRUCK', 'ZESTFULNESS'] },
     glance: { label: 'GLANCE', words: ['ECONOMISTS', 'GRANDCHILDREN', 'HEARTBREAKINGLY', 'INDEPENDENCE', 'POSSIBILITIES', 'SPORTSMANSHIP', 'THOUGHTLESSLY', 'UNCOMFORTABLY'] },
     months: { label: 'MONTHS', words: ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'] },
+    colours: { label: 'COLOURS', words: ['AMBER', 'AQUA', 'BLUE', 'BROWN', 'BLACK', 'BEIGE', 'BRONZE', 'BURGUNDY', 'CYAN', 'CORAL', 'CRIMSON', 'CREAM', 'COPPER', 'EMERALD', 'GREEN', 'GOLD', 'GREY', 'INDIGO', 'IVORY', 'LIME', 'LAVENDER', 'MAGENTA', 'MAROON', 'MAUVE', 'NAVY', 'ORANGE', 'OCHRE', 'PINK', 'PURPLE', 'PEACH', 'RED', 'SILVER', 'SCARLET', 'TEAL', 'TAUPE', 'TURQUOISE', 'VIOLET', 'WHITE', 'YELLOW'] },
     other: { label: 'OTHER', words: ['CANDELABRA', 'WILLOWHERB', 'STRAIGHTFORWARD', 'TEMPERATURE', 'HEADSCARF', 'JOHANNESBURG', 'POTPOURRI', 'SCHOOLWORK', 'SCHOOLGIRL', 'THUNDERSTORM', 'PEPPERCORN', 'SUPERHERO', 'SUPERSHARP', 'TROUBLEMAKER', 'HEADQUARTERS', 'SWEETHEART', 'TOSHIHARU', 'ANNIVERSARY', 'FLATLINERZ'] }
 };
 function getSologramSecondaryWords() {
@@ -199,6 +200,14 @@ const DEFAULT_SETTINGS = {
     alphaDirectionsCount: 0,  // 0 = enter until SUBMIT; N = auto-submit after N directions
     alphaSwapPov: false,       // OFF: Left=toward A, Right=toward Z; ON: swap
     eyeTestFirstLetter: 'E',
+    /** Saved EYE TEST letter charts: [{ id, name, eyeTestFirstLetter, eyeTestFixedGroup1..6 }] */
+    eyeTestSavedCharts: [],
+    /** Selected saved chart id, or null when using manual groups */
+    eyeTestSelectedChartId: null,
+    /** Built-in letter-order preset id ('19k' | '4000u' | …) or '' when not using one */
+    eyeTestBuiltinPresetId: '',
+    /** Unified chart selection: '' | 'builtin:<id>' | 'saved:<uuid>' */
+    eyeTestSelection: '',
     calculusMode: 'abstract',  // 'abstract' (digits 0–9) or 'curvesStraight' (C/S)
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
     // MUTE / MUTE DUO: letter mode: 'az' = A–Z fixed sequence, 'mostFrequent' = dynamic most-frequent letter,
@@ -569,6 +578,10 @@ function getEngineApiBaseUrl() {
 
 function getEngineClaudeApiUrl() {
     return `${getEngineApiBaseUrl()}/api/claude`;
+}
+
+function getEngineLocationApiUrl() {
+    return `${getEngineApiBaseUrl()}/api/location`;
 }
 
 /**
@@ -2187,12 +2200,18 @@ function waitForNameEnginePersonPick(featurePre, candidates, searchLabel) {
 
 async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode) {
     if (!featureArea) throw new Error('Feature area not found for ENGINE pre-step');
-    const mode = engineMode === 'name' ? 'name' : 'association';
-    const title = mode === 'name' ? 'NAME ENGINE WORDLIST' : 'WORD ENGINE WORDLIST';
-    const placeholder = mode === 'name' ? 'Enter a name...' : 'Enter a word...';
+    const mode = (engineMode === 'name' || engineMode === 'location') ? engineMode : 'association';
+    const title = mode === 'name'
+        ? 'NAME ENGINE WORDLIST'
+        : (mode === 'location' ? 'LOCATION ENGINE WORDLIST' : 'WORD ENGINE WORDLIST');
+    const placeholder = mode === 'name'
+        ? 'Enter a name...'
+        : (mode === 'location' ? 'e.g. hospital, church, airport' : 'Enter a word...');
     const statusText = mode === 'name'
         ? 'Enter a name.'
-        : 'Enter a word.';
+        : (mode === 'location' ? 'Enter a location.' : 'Enter a word.');
+    const submitButtonText = mode === 'location' ? 'Generate' : 'DONE';
+    const inputLabel = mode === 'location' ? 'Location' : (mode === 'name' ? 'Name' : 'Word');
 
     featureArea.innerHTML = '';
     const pre = document.createElement('div');
@@ -2201,9 +2220,10 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
     pre.style.display = 'block';
     pre.innerHTML = `
         <div class="feature-title">${title}</div>
+        <label for="enginePrefilterInput" style="display:block; text-align:center; margin-bottom:8px; font-size:14px; color:#666;">${inputLabel}</label>
         <div class="position-input">
             <input type="text" id="enginePrefilterInput" placeholder="${placeholder}">
-            <button id="enginePrefilterButton">DONE</button>
+            <button id="enginePrefilterButton">${submitButtonText}</button>
         </div>
     `;
     featureArea.appendChild(pre);
@@ -2226,25 +2246,30 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
             if (inFlight) return;
             inFlight = true;
             btnEl.disabled = true;
-            if (resultsContainer) resultsContainer.innerHTML = '<p>Generating ENGINE wordlist...</p>';
+            if (resultsContainer) {
+                resultsContainer.innerHTML = mode === 'location'
+                    ? '<p>Generating LOCATION ENGINE wordlist...</p>'
+                    : '<p>Generating ENGINE wordlist...</p>';
+            }
 
             try {
                 let data;
                 let extraBody = {};
                 for (;;) {
-                    const resp = await fetch(getEngineClaudeApiUrl(), {
+                    const endpointUrl = mode === 'location' ? getEngineLocationApiUrl() : getEngineClaudeApiUrl();
+                    const resp = await fetch(endpointUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             input_word: input,
-                            limit: mode === 'name' ? 500 : 100,
+                            limit: mode === 'name' ? 500 : (mode === 'location' ? 200 : 100),
                             mode,
                             tmdb_api_key: (appSettings && appSettings.tmdbApiKey) || '',
                             anthropic_api_key: (appSettings && appSettings.anthropicApiKey) || '',
                             ...extraBody
                         })
                     });
-                    data = await parseEngineApiJsonResponse(resp, 'ENGINE API');
+                    data = await parseEngineApiJsonResponse(resp, mode === 'location' ? 'LOCATION ENGINE API' : 'ENGINE API');
                     if (!resp.ok) throw new Error(data?.error || 'ENGINE generation failed');
 
                     if (mode === 'name' && data.needs_person_picker) {
@@ -2379,7 +2404,8 @@ async function executeWorkflow(steps) {
         console.log('Selected wordlist:', selectedWordlist);
         const usingWordEngineWordlist = selectedWordlist === 'wordengine';
         const usingNameEngineWordlist = selectedWordlist === 'nameengine';
-        const usingEngineWordlist = usingWordEngineWordlist || usingNameEngineWordlist;
+        const usingLocationEngineWordlist = selectedWordlist === 'locationengine';
+        const usingEngineWordlist = usingWordEngineWordlist || usingNameEngineWordlist || usingLocationEngineWordlist;
         
         // Check if we need to load a new wordlist
         const needsReload = !wordListLoaded || 
@@ -2645,7 +2671,7 @@ async function executeWorkflow(steps) {
 
         // ENGINE wordlist mode: generate a fresh pre-workflow list from user input.
         if (usingEngineWordlist) {
-            const engineMode = usingNameEngineWordlist ? 'name' : 'association';
+            const engineMode = usingNameEngineWordlist ? 'name' : (usingLocationEngineWordlist ? 'location' : 'association');
             const generated = await runEnginePrefilterStep(featureArea, resultsContainer, engineMode);
             wordList = [...generated.words];
             currentFilteredWords = [...generated.words];
@@ -4981,6 +5007,180 @@ function computeEyeTestGroupEntropy(upperWords, group) {
 }
 
 // Build dynamic letter groups for EYE TEST (sizes 2,3,4,5,6)
+/** Apply a saved chart object to appSettings and Settings panel inputs (if present). */
+function applyEyeTestChartToAppSettings(chart) {
+    if (!chart || typeof chart !== 'object' || !appSettings) return;
+    const keys = ['eyeTestFixedGroup1', 'eyeTestFixedGroup2', 'eyeTestFixedGroup3', 'eyeTestFixedGroup4', 'eyeTestFixedGroup5', 'eyeTestFixedGroup6'];
+    const fl = typeof chart.eyeTestFirstLetter === 'string'
+        ? chart.eyeTestFirstLetter.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1) || 'E'
+        : 'E';
+    appSettings.eyeTestFirstLetter = fl;
+    keys.forEach((k) => {
+        const v = typeof chart[k] === 'string' ? chart[k].toUpperCase().replace(/[^A-Z]/g, '') : '';
+        appSettings[k] = v;
+    });
+    const flInput = document.getElementById('eyeTestFirstLetterInput');
+    if (flInput) flInput.value = fl;
+    keys.forEach((k, i) => {
+        const el = document.getElementById(`eyeTestFixedGroup${i + 1}Input`);
+        if (el) el.value = appSettings[k] || '';
+    });
+    appSettings.eyeTestBuiltinPresetId = '';
+    appSettings.eyeTestSelectedChartId = chart.id;
+    appSettings.eyeTestSelection = 'saved:' + chart.id;
+    const uni = document.getElementById('eyeTestUnifiedChartSelect');
+    if (uni) uni.value = appSettings.eyeTestSelection;
+}
+
+function readEyeTestSettingsFromInputsForSave() {
+    const g = (id) => {
+        const el = document.getElementById(id);
+        return (el && el.value) ? String(el.value).toUpperCase().replace(/[^A-Z]/g, '') : '';
+    };
+    const flEl = document.getElementById('eyeTestFirstLetterInput');
+    const firstLetter = (flEl && flEl.value)
+        ? String(flEl.value).toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1) || 'E'
+        : ((appSettings && appSettings.eyeTestFirstLetter) || 'E').toString().slice(0, 1).toUpperCase();
+    return {
+        eyeTestFirstLetter: firstLetter || 'E',
+        eyeTestFixedGroup1: g('eyeTestFixedGroup1Input'),
+        eyeTestFixedGroup2: g('eyeTestFixedGroup2Input'),
+        eyeTestFixedGroup3: g('eyeTestFixedGroup3Input'),
+        eyeTestFixedGroup4: g('eyeTestFixedGroup4Input'),
+        eyeTestFixedGroup5: g('eyeTestFixedGroup5Input'),
+        eyeTestFixedGroup6: g('eyeTestFixedGroup6Input')
+    };
+}
+
+/** EYE TEST fixed groups: 2 + 3 + 4 + 5 + 6 + 7 letters from one master string (remainder discarded). */
+const EYE_TEST_BUILTIN_GROUP_SIZES = [2, 3, 4, 5, 6, 7];
+
+const EYE_TEST_BUILTIN_PRESETS = [
+    { id: '19k', master: 'OCALINUSMHYDGTBFVREP' },
+    { id: '4000u', master: 'UREINTOCLASHPUMBDGYK' },
+    { id: '134ke', master: 'EOTNISCALUMPHDGYBFWZ' },
+    { id: 'default', master: 'NTRLCSEUAIOMGD' },
+    { id: 'oxford', master: 'EQAJRKIWOYTFNBSGLHCM' }
+];
+
+function eyeTestParseSelection(val) {
+    if (!val || typeof val !== 'string') return { kind: 'manual' };
+    if (val.startsWith('builtin:')) return { kind: 'builtin', id: val.slice(8) };
+    if (val.startsWith('saved:')) return { kind: 'saved', id: val.slice(6) };
+    return { kind: 'manual' };
+}
+
+function syncEyeTestLegacyFromSelection(sel) {
+    if (!appSettings) return;
+    const parsed = eyeTestParseSelection(sel);
+    if (parsed.kind === 'builtin') {
+        appSettings.eyeTestBuiltinPresetId = parsed.id;
+        appSettings.eyeTestSelectedChartId = null;
+    } else if (parsed.kind === 'saved') {
+        appSettings.eyeTestBuiltinPresetId = '';
+        appSettings.eyeTestSelectedChartId = parsed.id;
+    } else {
+        appSettings.eyeTestBuiltinPresetId = '';
+        appSettings.eyeTestSelectedChartId = null;
+    }
+    appSettings.eyeTestSelection = sel || '';
+}
+
+function migrateEyeTestSelectionFromLegacy() {
+    if (!appSettings) return;
+    const cur = appSettings.eyeTestSelection;
+    if (typeof cur === 'string' && cur.length > 0) {
+        syncEyeTestLegacyFromSelection(cur);
+        return;
+    }
+    const builtin = appSettings.eyeTestBuiltinPresetId;
+    if (builtin && EYE_TEST_BUILTIN_PRESETS.some(p => p.id === builtin)) {
+        appSettings.eyeTestSelection = 'builtin:' + builtin;
+        syncEyeTestLegacyFromSelection(appSettings.eyeTestSelection);
+        return;
+    }
+    const sid = appSettings.eyeTestSelectedChartId;
+    if (sid && Array.isArray(appSettings.eyeTestSavedCharts) && appSettings.eyeTestSavedCharts.some(c => c.id === sid)) {
+        appSettings.eyeTestSelection = 'saved:' + sid;
+        syncEyeTestLegacyFromSelection(appSettings.eyeTestSelection);
+        return;
+    }
+    appSettings.eyeTestSelection = '';
+    syncEyeTestLegacyFromSelection('');
+}
+
+function populateEyeTestUnifiedChartSelect(selectEl) {
+    if (!selectEl) return;
+    const charts = Array.isArray(appSettings.eyeTestSavedCharts) ? appSettings.eyeTestSavedCharts : [];
+    const currentSel = (appSettings && typeof appSettings.eyeTestSelection === 'string') ? appSettings.eyeTestSelection : '';
+    selectEl.innerHTML = '';
+    const optNone = document.createElement('option');
+    optNone.value = '';
+    optNone.textContent = '— Manual (custom letters) —';
+    selectEl.appendChild(optNone);
+    const ogBuiltin = document.createElement('optgroup');
+    ogBuiltin.label = 'Built-in presets';
+    EYE_TEST_BUILTIN_PRESETS.forEach((p) => {
+        const opt = document.createElement('option');
+        opt.value = 'builtin:' + p.id;
+        opt.textContent = p.master;
+        ogBuiltin.appendChild(opt);
+    });
+    selectEl.appendChild(ogBuiltin);
+    const ogSaved = document.createElement('optgroup');
+    ogSaved.label = 'My charts';
+    charts.forEach((c) => {
+        if (!c || !c.id) return;
+        const opt = document.createElement('option');
+        opt.value = 'saved:' + c.id;
+        opt.textContent = c.name || `Chart ${c.id}`;
+        ogSaved.appendChild(opt);
+    });
+    selectEl.appendChild(ogSaved);
+    const valid = currentSel === ''
+        || (currentSel.startsWith('builtin:') && EYE_TEST_BUILTIN_PRESETS.some(p => 'builtin:' + p.id === currentSel))
+        || (currentSel.startsWith('saved:') && charts.some(c => 'saved:' + c.id === currentSel));
+    const sel = valid ? currentSel : '';
+    if (!valid && appSettings) {
+        appSettings.eyeTestSelection = '';
+        syncEyeTestLegacyFromSelection('');
+    }
+    selectEl.value = sel;
+}
+
+function chunkEyeTestMasterStringToGroups(master) {
+    const letters = String(master || '').toUpperCase().replace(/[^A-Z]/g, '');
+    let pos = 0;
+    return EYE_TEST_BUILTIN_GROUP_SIZES.map((size) => {
+        const chunk = letters.slice(pos, pos + size);
+        pos += size;
+        return chunk;
+    });
+}
+
+function applyEyeTestFixedGroupsArrayToAppSettings(groups) {
+    if (!appSettings || !Array.isArray(groups)) return;
+    const keys = ['eyeTestFixedGroup1', 'eyeTestFixedGroup2', 'eyeTestFixedGroup3', 'eyeTestFixedGroup4', 'eyeTestFixedGroup5', 'eyeTestFixedGroup6'];
+    for (let i = 0; i < 6; i++) {
+        const v = (groups[i] != null) ? String(groups[i]).toUpperCase().replace(/[^A-Z]/g, '') : '';
+        appSettings[keys[i]] = v;
+        const el = document.getElementById(`eyeTestFixedGroup${i + 1}Input`);
+        if (el) el.value = v;
+    }
+}
+
+function applyEyeTestBuiltinPresetById(presetId) {
+    const preset = EYE_TEST_BUILTIN_PRESETS.find(p => p.id === presetId);
+    if (!preset || !appSettings) return;
+    appSettings.eyeTestSelectedChartId = null;
+    appSettings.eyeTestBuiltinPresetId = presetId;
+    appSettings.eyeTestSelection = 'builtin:' + presetId;
+    const uni = document.getElementById('eyeTestUnifiedChartSelect');
+    if (uni) uni.value = appSettings.eyeTestSelection;
+    const groups = chunkEyeTestMasterStringToGroups(preset.master);
+    applyEyeTestFixedGroupsArrayToAppSettings(groups);
+}
+
 function buildEyeTestGroups(words) {
     if (!Array.isArray(words) || words.length === 0) {
         return ['', '', '', '', ''];
@@ -5556,13 +5756,13 @@ function getMostLikelyLiePositions(words, userFourDigits, lastActualLen) {
     return { positions, scores };
 }
 
-// Get distinct digits at liePosition (1-4) among words that have exactly one lie at that position. userFourDigits: 4 strings.
+// Get digits at liePosition (1-4) among words that have exactly one lie at that position, ordered by likelihood (most frequent first). userFourDigits: 4 strings.
 function getPossibleDigitsAtPosition(words, liePosition, userFourDigits, lastActualLen) {
     lastActualLen = lastActualLen || 0;
     const pos0 = liePosition - 1;
     calculateT9Strings(words);
     const minLen = 4 + lastActualLen;
-    const digits = new Set();
+    const digitCounts = new Map();
     words.forEach(word => {
         const t9String = t9StringsMap.get(word) || wordToT9(word);
         if (t9String.length < minLen) return;
@@ -5572,9 +5772,14 @@ function getPossibleDigitsAtPosition(words, liePosition, userFourDigits, lastAct
         for (let i = 0; i < 4; i++) {
             if (lastFourDigits[i] !== userFourDigits[i]) mismatches++;
         }
-        if (mismatches === 1 && lastFourDigits[pos0] !== userFourDigits[pos0]) digits.add(lastFourDigits[pos0]);
+        if (mismatches === 1 && lastFourDigits[pos0] !== userFourDigits[pos0]) {
+            const d = lastFourDigits[pos0];
+            digitCounts.set(d, (digitCounts.get(d) || 0) + 1);
+        }
     });
-    return Array.from(digits).sort();
+    return Array.from(digitCounts.entries())
+        .sort((a, b) => (b[1] - a[1]) || (Number(a[0]) - Number(b[0])))
+        .map(([digit]) => digit);
 }
 
 // Filter words where the lie is at liePosition (1-4) and the true digit at that position is truthDigit.
@@ -12318,8 +12523,8 @@ function filterWordsByO(words, includeO) {
 }
 
 // Default ATLAS/Colours letters (locked; COLOUR3 always uses this set)
-// Updated to use the colour letter string: ABCGILMOPRSTUVWY
-const ATLAS_DEFAULT_LETTERS = new Set(['A', 'B', 'C', 'G', 'I', 'L', 'M', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'W', 'Y']);
+// Colour letter string: A B C E G I L M N O P R S T V W Y
+const ATLAS_DEFAULT_LETTERS = new Set(['A', 'B', 'C', 'E', 'G', 'I', 'L', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'V', 'W', 'Y']);
 
 // Letter → colour name for ATLAS "applicable colours" display at end of workflow
 const ATLAS_COLOUR_NAMES = {
@@ -13760,8 +13965,8 @@ function initializeFeatureSelection() {
 
 function isFeatureAlreadySelected(featureType) {
     const selectedFeatures = document.getElementById('selectedFeaturesList');
-    // Allow multiple instances of MOST FREQUENT and LEAST FREQUENT features
-    if (featureType === 'mostFrequent' || featureType === 'leastFrequent') {
+    // Allow multiple instances of MOST FREQUENT, LEAST FREQUENT, and EYE TEST features
+    if (featureType === 'mostFrequent' || featureType === 'leastFrequent' || featureType === 'eyeTest') {
         // Check if the feature was just added (within the last 500ms)
         const lastAdded = selectedFeatures.getAttribute('lastAdded');
         const lastAddedTime = selectedFeatures.getAttribute('lastAddedTime');
@@ -14806,6 +15011,24 @@ function initSettingsUI() {
         });
     }
 
+    const eyeTestUseFixedGroupsToggle = document.getElementById('eyeTestUseFixedGroupsToggle');
+    migrateEyeTestSelectionFromLegacy();
+
+    const markEyeTestChartEdited = () => {
+        if (appSettings) {
+            appSettings.eyeTestSelectedChartId = null;
+            appSettings.eyeTestBuiltinPresetId = '';
+            appSettings.eyeTestSelection = '';
+        }
+        const uni = document.getElementById('eyeTestUnifiedChartSelect');
+        if (uni) uni.value = '';
+        const delBtn = document.getElementById('eyeTestDeleteChartBtn');
+        if (delBtn) {
+            delBtn.disabled = true;
+            delBtn.title = 'Select one of your saved charts to delete.';
+        }
+    };
+
     const eyeTestFirstLetterInput = document.getElementById('eyeTestFirstLetterInput');
     if (eyeTestFirstLetterInput) {
         const current = (appSettings && typeof appSettings.eyeTestFirstLetter === 'string'
@@ -14818,12 +15041,12 @@ function initSettingsUI() {
             eyeTestFirstLetterInput.value = v;
             if (v.length === 1) {
                 appSettings.eyeTestFirstLetter = v;
+                markEyeTestChartEdited();
                 saveAppSettings();
             }
         });
     }
 
-    const eyeTestUseFixedGroupsToggle = document.getElementById('eyeTestUseFixedGroupsToggle');
     if (eyeTestUseFixedGroupsToggle) {
         eyeTestUseFixedGroupsToggle.checked = !!(appSettings && appSettings.eyeTestUseFixedGroups);
         eyeTestUseFixedGroupsToggle.addEventListener('change', () => {
@@ -14831,6 +15054,7 @@ function initSettingsUI() {
             saveAppSettings();
         });
     }
+
     const eyeTestFixedInputs = [
         { id: 'eyeTestFixedGroup1Input', key: 'eyeTestFixedGroup1' },
         { id: 'eyeTestFixedGroup2Input', key: 'eyeTestFixedGroup2' },
@@ -14848,9 +15072,127 @@ function initSettingsUI() {
             let v = (el.value || '').toUpperCase().replace(/[^A-Z]/g, '');
             el.value = v;
             appSettings[key] = v;
+            markEyeTestChartEdited();
             saveAppSettings();
         });
     });
+
+    const eyeTestUnifiedChartSelect = document.getElementById('eyeTestUnifiedChartSelect');
+    function updateEyeTestDeleteButtonState() {
+        const btn = document.getElementById('eyeTestDeleteChartBtn');
+        if (!btn || !eyeTestUnifiedChartSelect) return;
+        const v = eyeTestUnifiedChartSelect.value;
+        const parsed = eyeTestParseSelection(v);
+        const canDelete = parsed.kind === 'saved';
+        btn.disabled = !canDelete;
+        if (canDelete) {
+            btn.removeAttribute('title');
+        } else if (parsed.kind === 'builtin') {
+            btn.title = 'Built-in presets cannot be deleted. Save as a custom chart if you want a removable copy.';
+        } else {
+            btn.title = 'Select one of your saved charts to delete.';
+        }
+    }
+
+    if (eyeTestUnifiedChartSelect) {
+        if (!Array.isArray(appSettings.eyeTestSavedCharts)) appSettings.eyeTestSavedCharts = [];
+        populateEyeTestUnifiedChartSelect(eyeTestUnifiedChartSelect);
+        const parsedInit = eyeTestParseSelection(appSettings.eyeTestSelection || '');
+        if (parsedInit.kind === 'builtin') {
+            applyEyeTestBuiltinPresetById(parsedInit.id);
+            eyeTestUnifiedChartSelect.value = appSettings.eyeTestSelection;
+        } else if (parsedInit.kind === 'saved') {
+            const chart = (appSettings.eyeTestSavedCharts || []).find(c => c.id === parsedInit.id);
+            if (chart) {
+                applyEyeTestChartToAppSettings(chart);
+                appSettings.eyeTestUseFixedGroups = true;
+                if (eyeTestUseFixedGroupsToggle) eyeTestUseFixedGroupsToggle.checked = true;
+            } else {
+                appSettings.eyeTestSelection = '';
+                syncEyeTestLegacyFromSelection('');
+                populateEyeTestUnifiedChartSelect(eyeTestUnifiedChartSelect);
+            }
+        }
+        eyeTestUnifiedChartSelect.addEventListener('change', () => {
+            const v = eyeTestUnifiedChartSelect.value;
+            appSettings.eyeTestSelection = v;
+            syncEyeTestLegacyFromSelection(v);
+            updateEyeTestDeleteButtonState();
+            if (!v) {
+                saveAppSettings();
+                return;
+            }
+            if (v.startsWith('builtin:')) {
+                applyEyeTestBuiltinPresetById(v.slice(8));
+                appSettings.eyeTestUseFixedGroups = true;
+                if (eyeTestUseFixedGroupsToggle) eyeTestUseFixedGroupsToggle.checked = true;
+                saveAppSettings();
+                return;
+            }
+            if (v.startsWith('saved:')) {
+                const id = v.slice(6);
+                const chart = (appSettings.eyeTestSavedCharts || []).find(c => c.id === id);
+                if (!chart) {
+                    appSettings.eyeTestSelection = '';
+                    syncEyeTestLegacyFromSelection('');
+                    populateEyeTestUnifiedChartSelect(eyeTestUnifiedChartSelect);
+                    saveAppSettings();
+                    return;
+                }
+                applyEyeTestChartToAppSettings(chart);
+                appSettings.eyeTestUseFixedGroups = true;
+                if (eyeTestUseFixedGroupsToggle) eyeTestUseFixedGroupsToggle.checked = true;
+                saveAppSettings();
+            }
+        });
+        updateEyeTestDeleteButtonState();
+    }
+
+    const eyeTestSaveChartBtn = document.getElementById('eyeTestSaveChartBtn');
+    const eyeTestSaveChartNameInput = document.getElementById('eyeTestSaveChartNameInput');
+    const eyeTestDeleteChartBtn = document.getElementById('eyeTestDeleteChartBtn');
+    if (eyeTestSaveChartBtn && eyeTestSaveChartNameInput) {
+        eyeTestSaveChartBtn.addEventListener('click', () => {
+            const name = (eyeTestSaveChartNameInput.value || '').trim();
+            if (!name) {
+                alert('Enter a name for this chart.');
+                return;
+            }
+            if (!Array.isArray(appSettings.eyeTestSavedCharts)) appSettings.eyeTestSavedCharts = [];
+            const data = readEyeTestSettingsFromInputsForSave();
+            const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+            const chart = { id, name, ...data };
+            appSettings.eyeTestSavedCharts.push(chart);
+            appSettings.eyeTestSelectedChartId = id;
+            appSettings.eyeTestBuiltinPresetId = '';
+            appSettings.eyeTestSelection = 'saved:' + id;
+            eyeTestSaveChartNameInput.value = '';
+            populateEyeTestUnifiedChartSelect(eyeTestUnifiedChartSelect);
+            if (eyeTestUnifiedChartSelect) eyeTestUnifiedChartSelect.value = appSettings.eyeTestSelection;
+            updateEyeTestDeleteButtonState();
+            saveAppSettings();
+        });
+    }
+    if (eyeTestDeleteChartBtn) {
+        eyeTestDeleteChartBtn.addEventListener('click', () => {
+            if (eyeTestDeleteChartBtn.disabled) return;
+            const uni = document.getElementById('eyeTestUnifiedChartSelect');
+            const v = (uni && uni.value) || '';
+            if (eyeTestParseSelection(v).kind !== 'saved') {
+                alert('Select one of your saved charts to delete.');
+                return;
+            }
+            const id = v.slice(6);
+            if (!Array.isArray(appSettings.eyeTestSavedCharts)) appSettings.eyeTestSavedCharts = [];
+            appSettings.eyeTestSavedCharts = appSettings.eyeTestSavedCharts.filter(c => c.id !== id);
+            appSettings.eyeTestSelectedChartId = null;
+            appSettings.eyeTestBuiltinPresetId = '';
+            appSettings.eyeTestSelection = '';
+            populateEyeTestUnifiedChartSelect(uni);
+            updateEyeTestDeleteButtonState();
+            saveAppSettings();
+        });
+    }
 
     const dictionaryAlphaUseCustomRangeToggle = document.getElementById('dictionaryAlphaUseCustomRangeToggle');
     const dictionaryAlphaCustomRangeFields = document.getElementById('dictionaryAlphaCustomRangeFields');

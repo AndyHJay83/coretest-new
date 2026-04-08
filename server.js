@@ -1228,6 +1228,93 @@ The document describes thoroughness in the abstract. **For this HTTP request you
   }
 });
 
+// --- LOCATION ENGINE route (Groq: location -> physical objects) ---
+app.post('/api/location', async (req, res, next) => {
+  try {
+    const location = requireString(req.body?.input_word, 'input_word');
+    const limit = clampInt(req.body?.limit, 1, 500, 200);
+    const groqApiKey = process.env.GROQ_API_KEY;
+    if (!groqApiKey) {
+      const err = new Error('GROQ_API_KEY is not set (required for LOCATION ENGINE)');
+      err.status = 500;
+      throw err;
+    }
+
+    const prompt = `List approximately 200 physical objects you would find inside a ${location}.
+
+Rules:
+- Only include tangible, physical things you could literally see or touch
+- Include items like furniture, equipment, tools, clothing worn by staff, signage, containers, machines, decorations
+- DO NOT include abstract concepts, departments, procedures, conditions, or job roles
+- DO NOT include multi-word phrases — single words only
+- Bad examples: "physical therapy", "pathology", "temperature", "treatment", "service"
+- Good examples: "syringe", "bed", "clipboard", "gown", "trolley", "curtain", "monitor"
+
+Return ONLY a comma-separated list of single words. No numbering, no explanations, no extra text.`;
+
+    const groqResp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${groqApiKey}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.3,
+        max_tokens: 1000,
+        messages: [
+          { role: 'user', content: prompt }
+        ]
+      })
+    });
+    const data = await groqResp.json().catch(() => ({}));
+    if (!groqResp.ok) {
+      const err = new Error(data?.error?.message || 'Groq request failed');
+      err.status = groqResp.status || 502;
+      throw err;
+    }
+
+    const rawContent = String(data?.choices?.[0]?.message?.content || '').trim();
+    if (!rawContent) {
+      const err = new Error('Groq returned no content for LOCATION ENGINE');
+      err.status = 502;
+      throw err;
+    }
+
+    const dedupedSorted = Array.from(new Set(
+      rawContent
+        .split(',')
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean)
+        .filter(s => !s.includes(' '))
+        .filter(s => /^[a-z]+$/.test(s))
+    )).sort((a, b) => a.localeCompare(b));
+
+    const results = dedupedSorted.slice(0, limit).map((w, idx) => ({
+      word: w,
+      display: w,
+      rank: idx + 1,
+      score: Math.max(0, 100 - idx),
+      tags: ['location', 'physical', 'groq']
+    }));
+
+    return res.json({
+      input_word: location,
+      engine_version: 'engine-v3.1',
+      mode: 'location_objects_groq',
+      total_candidates: results.length,
+      results,
+      detected: {
+        location_engine_llm: 'groq',
+        location_engine_model: 'llama-3.1-8b-instant',
+        location_engine_limit: limit
+      }
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Static app
 app.use(express.static(process.cwd(), { extensions: ['html'] }));
 

@@ -64,6 +64,7 @@
                             <option value="months_starsigns">Months & Starsigns</option>
                             <option value="wordengine">WORD ENGINE</option>
                             <option value="nameengine">NAME ENGINE</option>
+                            <option value="locationengine">LOCATION ENGINE</option>
                         </select>
                         <div class="custom-select">
                             <div class="selected-text">4000 Wordlist</div>
@@ -1105,6 +1106,7 @@
                             <option value="brushwood">BRUSHWOOD</option>
                             <option value="glance">GLANCE</option>
                             <option value="months">MONTHS</option>
+                            <option value="colours">COLOURS</option>
                             <option value="other">OTHER</option>
                         </select>
                     </div>
@@ -1184,6 +1186,11 @@
                             <label for="eyeTestUseFixedGroupsToggle">Use fixed letter groups:</label>
                             <input type="checkbox" id="eyeTestUseFixedGroupsToggle">
                         </div>
+                        <label for="eyeTestUnifiedChartSelect" style="display: block; margin-top: 10px;">Letter chart:</label>
+                        <select id="eyeTestUnifiedChartSelect" style="max-width: 100%; margin-bottom: 6px;">
+                            <option value="">— Manual (custom letters) —</option>
+                        </select>
+                        <p style="font-size: 12px; color: #666; margin: 0 0 8px 0;">Choose a built-in preset (read-only) or one of your saved charts. Presets split one master string into groups of 2, 3, 4, 5, 6, and 7 letters in order; extra letters are ignored. To keep edits after loading a preset, save under a new name—creates a custom chart under “My charts”.</p>
                         <div class="eye-test-fixed-groups" style="margin-top: 8px;">
                             <div class="eye-test-group-row">
                                 <label for="eyeTestFixedGroup1Input">Group 1 (2 letters):</label>
@@ -1210,6 +1217,12 @@
                                 <input type="text" id="eyeTestFixedGroup6Input" maxlength="7" autocomplete="off" style="width: 6em; text-transform: uppercase;">
                             </div>
                         </div>
+                        <div class="position-input" style="flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px;">
+                            <input type="text" id="eyeTestSaveChartNameInput" placeholder="Chart name" maxlength="80" autocomplete="off" style="flex: 1; min-width: 140px;">
+                            <button type="button" id="eyeTestSaveChartBtn" class="secondary-btn">Save current as chart</button>
+                            <button type="button" id="eyeTestDeleteChartBtn" class="secondary-btn" disabled>Delete selected chart</button>
+                        </div>
+                        <p style="font-size: 12px; color: #666; margin-top: 8px;">Saving stores the first-line letter and all six groups. Loading a chart turns on “Use fixed letter groups” and fills the fields.</p>
                     </div>
                     <div class="settings-section">
                         <h3 class="settings-section-title">OMEGA</h3>
