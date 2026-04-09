@@ -210,6 +210,8 @@ const DEFAULT_SETTINGS = {
     eyeTestSelection: '',
     /** NEW generation mode: 'mixed' | 'alternating' */
     newLetterMode: 'mixed',
+    /** NEW answer mode: 'more' | 'exact' */
+    newAnswerCountMode: 'more',
     calculusMode: 'abstract',  // 'abstract' (digits 0–9) or 'curvesStraight' (C/S)
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
     // MUTE / MUTE DUO: letter mode: 'az' = A–Z fixed sequence, 'mostFrequent' = dynamic most-frequent letter,
@@ -5426,7 +5428,7 @@ function scrollCountUnaccountedAnywhereOccurrences(word, batchStr, context) {
 }
 
 function buildScrollAccountingContext(stops) {
-    const ctx = { pos1Candidates: new Set(), pos2Candidates: new Set() };
+    const ctx = { pos1Candidates: new Set(), pos2Candidates: new Set(), countMode: 'more' };
     if (!Array.isArray(stops)) return ctx;
     const firstStop = stops.find((s) => s && s.kind === 'first');
     const secondStop = stops.find((s) => s && s.kind === 'second');
@@ -5450,13 +5452,15 @@ function wordPassesScrollStop(word, stop, context) {
     const letters = batch.split('');
     const digit = stop.digit;
     const hasDigit = digit !== null && digit !== undefined && !Number.isNaN(digit);
+    const exactMode = !!(context && context.countMode === 'exact');
     if (stop.kind === 'first') {
         if (w.length < 1) return false;
         for (const L of letters) {
             if (w[0] !== L) continue;
             const others = scrollCountOthersInWord(w, batch, L, [0]);
             if (!hasDigit) return true;
-            if (others === digit) return true;
+            const observed = exactMode ? (others + 1) : others;
+            if (observed === digit) return true;
         }
         return false;
     }
@@ -5466,21 +5470,24 @@ function wordPassesScrollStop(word, stop, context) {
             if (w[1] !== L) continue;
             const others = scrollCountOthersInWord(w, batch, L, [1]);
             if (!hasDigit) return true;
-            if (others === digit) return true;
+            const observed = exactMode ? (others + 1) : others;
+            if (observed === digit) return true;
         }
         return false;
     }
     if (stop.kind === 'anywhere') {
         const unaccounted = scrollCountUnaccountedAnywhereOccurrences(w, batch, context);
         if (!hasDigit) return unaccounted >= 1;
+        if (exactMode) return unaccounted === digit;
         return unaccounted >= (1 + digit);
     }
     return true;
 }
 
-function filterWordsByScrollStops(words, stops) {
+function filterWordsByScrollStops(words, stops, countMode) {
     if (!Array.isArray(words) || !Array.isArray(stops) || stops.length === 0) return Array.isArray(words) ? words.slice() : [];
     const context = buildScrollAccountingContext(stops);
+    context.countMode = (countMode === 'exact') ? 'exact' : 'more';
     return words.filter((w) => stops.every((s) => wordPassesScrollStop(w, s, context)));
 }
 
@@ -12227,11 +12234,12 @@ function setupFeatureListeners(feature, callback, options) {
             let currentBatchType = 'mixed';
             const savedNewMode = appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode);
             const scrollMode = savedNewMode === 'alternating' ? 'alternating' : 'mixed';
+            const newAnswerCountMode = (appSettings && appSettings.newAnswerCountMode === 'exact') ? 'exact' : 'more';
             if (subtitleEl) {
                 if (scrollMode === 'alternating') {
-                    subtitleEl.innerHTML = 'Alternating consonants and vowels. Vowels will exhaust after 3 viewings.<br>ANSWER on a stop.<br>Enter "How many MORE letters could I see?"';
+                    subtitleEl.innerHTML = `Alternating consonants and vowels. Vowels will exhaust after 3 viewings.<br>ANSWER on a stop.<br>${newAnswerCountMode === 'exact' ? 'Enter "Exact count".' : 'Enter "How many MORE letters could I see?"'}`;
                 } else {
-                    subtitleEl.innerHTML = 'Mixed consonants and vowels.<br>ANSWER on a stop.<br>Enter "How many MORE letters could I see?"';
+                    subtitleEl.innerHTML = `Mixed consonants and vowels.<br>ANSWER on a stop.<br>${newAnswerCountMode === 'exact' ? 'Enter "Exact count".' : 'Enter "How many MORE letters could I see?"'}`;
                 }
             }
             const vowelShownSinceLastStop = { A: 0, E: 0, I: 0, O: 0, U: 0 };
@@ -12324,7 +12332,7 @@ function setupFeatureListeners(feature, callback, options) {
             };
 
             const applyScrollFilter = () => {
-                const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops);
+                const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops, newAnswerCountMode);
                 callback(filtered);
                 setMessage(scrollStops.length
                     ? `${filtered.length} words (${scrollStops.length} stop(s)).`
@@ -12406,7 +12414,7 @@ function setupFeatureListeners(feature, callback, options) {
 
             if (submitBtn) {
                 submitBtn.onclick = () => {
-                    const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops);
+                    const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops, newAnswerCountMode);
                     callback(filtered);
                     setMessage(`${filtered.length} words — step complete.`);
                     const featureDiv = document.getElementById('newFeature');
@@ -15490,6 +15498,19 @@ function initSettingsUI() {
         newLetterModeSelect.addEventListener('change', () => {
             const next = validModes.has(newLetterModeSelect.value) ? newLetterModeSelect.value : 'mixed';
             appSettings.newLetterMode = next;
+            saveAppSettings();
+        });
+    }
+    const newAnswerCountModeSelect = document.getElementById('newAnswerCountModeSelect');
+    if (newAnswerCountModeSelect) {
+        const validModes = new Set(['more', 'exact']);
+        const savedMode = (appSettings && appSettings.newAnswerCountMode) || 'more';
+        const resolved = validModes.has(savedMode) ? savedMode : 'more';
+        newAnswerCountModeSelect.value = resolved;
+        appSettings.newAnswerCountMode = resolved;
+        newAnswerCountModeSelect.addEventListener('change', () => {
+            const next = validModes.has(newAnswerCountModeSelect.value) ? newAnswerCountModeSelect.value : 'more';
+            appSettings.newAnswerCountMode = next;
             saveAppSettings();
         });
     }
