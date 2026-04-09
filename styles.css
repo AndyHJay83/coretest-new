@@ -4292,13 +4292,6 @@ input:checked + .slider:before {
     font-family: ui-monospace, monospace;
 }
 
-.workflow-report-trace-ol {
-    margin: 0 0 8px 0;
-    padding-left: 1.4em;
-    font-size: 13px;
-    line-height: 1.5;
-}
-
 .workflow-report-trace-compact {
     margin: 0 0 8px 0;
     font-size: 13px;
@@ -6071,6 +6064,21 @@ button.close-info-button.workflow-report-close {
 .new-controls-row .pin-code-input {
     width: 7em;
     max-width: 120px;
+}
+
+.new-answer-field {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.new-answer-count-hint {
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+    line-height: 1.2;
+    min-height: 1.2em;
 }
 
 .new-target-row {

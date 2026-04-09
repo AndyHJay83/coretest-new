@@ -259,8 +259,7 @@ function snapshotNewSettingsForReport(appSettingsRef) {
         answerDigitBuffer: !!a.newAnswerDigitBuffer,
         answerCountMode: isExact ? 'exact' : 'more',
         answerCountModeLabel: isExact ? 'Exact count' : 'How many MORE',
-        autoStopSeconds: sec,
-        showCompletionDebug: a.newShowCompletionDebug !== false
+        autoStopSeconds: sec
     };
 }
 
@@ -271,8 +270,7 @@ function formatNewSettingsAtPerformanceHuman(ns) {
         `Custom position (1–6 / ANY): ${ns.customPositionMode ? 'on' : 'off'}`,
         `+1 answer digit buffer: ${ns.answerDigitBuffer ? 'on' : 'off'}`,
         `Answer count mode: ${ns.answerCountModeLabel || ns.answerCountMode}`,
-        `Auto-stop: ${ns.autoStopSeconds}s`,
-        `MOVE ON debug summary: ${ns.showCompletionDebug ? 'on' : 'off'}`
+        `Auto-stop: ${ns.autoStopSeconds}s`
     ].join(' · ');
 }
 
@@ -568,11 +566,6 @@ function buildWorkflowStepDeepPanel(step, stepIndex, totalSteps) {
         { term: 'Time on step', def: formatDurationMs(step.durationMs) }
     ]);
 
-    const traceH = document.createElement('div');
-    traceH.className = 'workflow-report-deep-heading';
-    traceH.textContent = 'Word count after each list update (every filter callback)';
-    panel.appendChild(traceH);
-
     const tr = Array.isArray(step.wordCountTrace) ? step.wordCountTrace : [];
     if (tr.length === 0) {
         const p = document.createElement('p');
@@ -580,23 +573,13 @@ function buildWorkflowStepDeepPanel(step, stepIndex, totalSteps) {
         p.textContent = 'No per-update trace (older saved report, or only one update for this step).';
         panel.appendChild(p);
     } else {
-        const ol = document.createElement('ol');
-        ol.className = 'workflow-report-trace-ol';
-        tr.forEach((n) => {
-            const item = document.createElement('li');
-            item.textContent = `${n} words`;
-            ol.appendChild(item);
-        });
-        panel.appendChild(ol);
         const comp = compressWordCountTrace(tr);
-        if (comp.length > 1) {
-            const p2 = document.createElement('p');
-            p2.className = 'workflow-report-trace-compact';
-            const strong = document.createElement('strong');
-            strong.textContent = 'Compressed: ';
-            p2.append(strong, document.createTextNode(comp.join(' → ')));
-            panel.appendChild(p2);
-        }
+        const p2 = document.createElement('p');
+        p2.className = 'workflow-report-trace-compact';
+        const strong = document.createElement('strong');
+        strong.textContent = 'Compressed: ';
+        p2.append(strong, document.createTextNode(comp.join(' → ')));
+        panel.appendChild(p2);
     }
 
     panel.appendChild(renderStepPayloadSection(step.payload));
@@ -694,7 +677,7 @@ function renderWorkflowReportHumanView(container, runs) {
 
         const runDetails = document.createElement('details');
         runDetails.className = 'workflow-report-run-details';
-        runDetails.open = runIdx === 0;
+        runDetails.open = false;
 
         const runSum = document.createElement('summary');
         runSum.className = 'workflow-report-run-summary';
@@ -747,7 +730,7 @@ function renderWorkflowReportHumanView(container, runs) {
             nsBox.className = 'workflow-report-new-settings-at-perf';
             const nsTitle = document.createElement('div');
             nsTitle.className = 'workflow-report-new-settings-title';
-            nsTitle.textContent = 'NEW settings at this performance';
+            nsTitle.textContent = 'SETTINGS:';
             const nsBody = document.createElement('div');
             nsBody.className = 'workflow-report-new-settings-body';
             nsBody.textContent = formatNewSettingsAtPerformanceHuman(run.newSettingsAtPerformance);
@@ -901,8 +884,6 @@ const DEFAULT_SETTINGS = {
     newCustomMode: false,
     /** NEW: allow ±1 on each answered digit when filtering */
     newAnswerDigitBuffer: false,
-    /** NEW: after MOVE ON, show batch + answer lines in the feature message */
-    newShowCompletionDebug: true,
     calculusMode: 'abstract',  // 'abstract' (digits 0–9) or 'curvesStraight' (C/S)
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
     // MUTE / MUTE DUO: letter mode: 'az' = A–Z fixed sequence, 'mostFrequent' = dynamic most-frequent letter,
@@ -6283,7 +6264,10 @@ function createNewFeature() {
         <div class="new-controls-row">
             <button type="button" id="newScrollBtn" class="secondary-btn">SCROLL</button>
             <button type="button" id="newAnswerBtn" class="secondary-btn">ANSWER</button>
-            <input type="text" id="newAnswerInput" class="pin-code-input" placeholder="e.g. 112" maxlength="12" inputmode="numeric" autocomplete="off" style="width:7em;">
+            <div class="new-answer-field">
+                <span id="newAnswerCountHint" class="new-answer-count-hint" aria-live="polite"></span>
+                <input type="text" id="newAnswerInput" class="pin-code-input" placeholder="e.g. 112" maxlength="12" inputmode="numeric" autocomplete="off" aria-describedby="newAnswerCountHint">
+            </div>
             <button type="button" id="newSubmitBtn" class="primary-btn pin-submit-btn">MOVE ON</button>
         </div>
         </div>
@@ -13034,6 +13018,10 @@ function setupFeatureListeners(feature, callback, options) {
             const savedNewMode = appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode);
             const scrollMode = savedNewMode === 'alternating' ? 'alternating' : 'mixed';
             const newAnswerCountMode = (appSettings && appSettings.newAnswerCountMode === 'exact') ? 'exact' : 'more';
+            const answerCountHintEl = document.getElementById('newAnswerCountHint');
+            if (answerCountHintEl) {
+                answerCountHintEl.textContent = newAnswerCountMode === 'exact' ? 'Exact amount' : 'How many more?';
+            }
             const newDigitBuffer = (appSettings && appSettings.newAnswerDigitBuffer) ? 1 : 0;
             const newAutoStopSeconds = Math.max(1, Math.min(60, parseInt((appSettings && appSettings.newAutoStopSeconds) ?? 10, 10) || 10));
             const customModeOn = !!(appSettings && appSettings.newCustomMode);
@@ -13299,16 +13287,7 @@ function setupFeatureListeners(feature, callback, options) {
                         stops: stopsSnapshot,
                         wordsAfter: filtered.length
                     };
-                    let msg = `${filtered.length} words — step complete.`;
-                    if (appSettings && appSettings.newShowCompletionDebug !== false && scrollStops.length) {
-                        const lines = scrollStops.map((s, idx) => {
-                            const batch = (s.batchStr || '').toUpperCase().split('').join(' ');
-                            const kindLabel = s.kind === 'position' ? `position ${s.position}` : s.kind;
-                            const ans = s.digit != null && !Number.isNaN(s.digit) ? String(s.digit) : '—';
-                            return `Stop ${idx + 1}: ${batch || '—'} | ${kindLabel} | answer: ${ans}`;
-                        });
-                        msg += '\n\n' + lines.join('\n');
-                    }
+                    const msg = `${filtered.length} words — step complete.`;
                     setMessage(msg);
                     const featureDiv = document.getElementById('newFeature');
                     if (featureDiv) {
@@ -16484,14 +16463,6 @@ function initSettingsUI() {
         newAnswerDigitBufferToggle.checked = !!(appSettings && appSettings.newAnswerDigitBuffer);
         newAnswerDigitBufferToggle.addEventListener('change', () => {
             appSettings.newAnswerDigitBuffer = newAnswerDigitBufferToggle.checked;
-            saveAppSettings();
-        });
-    }
-    const newShowCompletionDebugToggle = document.getElementById('newShowCompletionDebugToggle');
-    if (newShowCompletionDebugToggle) {
-        newShowCompletionDebugToggle.checked = appSettings.newShowCompletionDebug !== false;
-        newShowCompletionDebugToggle.addEventListener('change', () => {
-            appSettings.newShowCompletionDebug = newShowCompletionDebugToggle.checked;
             saveAppSettings();
         });
     }
