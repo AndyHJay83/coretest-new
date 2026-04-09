@@ -212,6 +212,8 @@ const DEFAULT_SETTINGS = {
     newLetterMode: 'mixed',
     /** NEW answer mode: 'more' | 'exact' */
     newAnswerCountMode: 'more',
+    /** NEW auto-stop timer in seconds */
+    newAutoStopSeconds: 10,
     calculusMode: 'abstract',  // 'abstract' (digits 0–9) or 'curvesStraight' (C/S)
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
     // MUTE / MUTE DUO: letter mode: 'az' = A–Z fixed sequence, 'mostFrequent' = dynamic most-frequent letter,
@@ -5415,23 +5417,26 @@ function scrollCountUnaccountedAnywhereOccurrences(word, batchStr, context) {
     const letters = new Set(batch.split(''));
     const pos1Candidates = (context && context.pos1Candidates) || new Set();
     const pos2Candidates = (context && context.pos2Candidates) || new Set();
+    const pos3Candidates = (context && context.pos3Candidates) || new Set();
     let total = 0;
     for (let i = 0; i < w.length; i++) {
         const ch = w[i];
         if (!letters.has(ch)) continue;
-        // Position 1/2 can only be "accounted for" if earlier stops allow that letter there.
+        // Position 1/2/3 can only be "accounted for" if earlier stops allow that letter there.
         if (i === 0 && pos1Candidates.has(ch)) continue;
         if (i === 1 && pos2Candidates.has(ch)) continue;
+        if (i === 2 && pos3Candidates.has(ch)) continue;
         total++;
     }
     return total;
 }
 
 function buildScrollAccountingContext(stops) {
-    const ctx = { pos1Candidates: new Set(), pos2Candidates: new Set(), countMode: 'more' };
+    const ctx = { pos1Candidates: new Set(), pos2Candidates: new Set(), pos3Candidates: new Set(), countMode: 'more' };
     if (!Array.isArray(stops)) return ctx;
     const firstStop = stops.find((s) => s && s.kind === 'first');
     const secondStop = stops.find((s) => s && s.kind === 'second');
+    const thirdStop = stops.find((s) => s && s.kind === 'third');
     if (firstStop && typeof firstStop.batchStr === 'string') {
         firstStop.batchStr.toUpperCase().split('').forEach((ch) => {
             if (ch >= 'A' && ch <= 'Z') ctx.pos1Candidates.add(ch);
@@ -5440,6 +5445,11 @@ function buildScrollAccountingContext(stops) {
     if (secondStop && typeof secondStop.batchStr === 'string') {
         secondStop.batchStr.toUpperCase().split('').forEach((ch) => {
             if (ch >= 'A' && ch <= 'Z') ctx.pos2Candidates.add(ch);
+        });
+    }
+    if (thirdStop && typeof thirdStop.batchStr === 'string') {
+        thirdStop.batchStr.toUpperCase().split('').forEach((ch) => {
+            if (ch >= 'A' && ch <= 'Z') ctx.pos3Candidates.add(ch);
         });
     }
     return ctx;
@@ -5475,6 +5485,17 @@ function wordPassesScrollStop(word, stop, context) {
         }
         return false;
     }
+    if (stop.kind === 'third') {
+        if (w.length < 3) return false;
+        for (const L of letters) {
+            if (w[2] !== L) continue;
+            const others = scrollCountOthersInWord(w, batch, L, [2]);
+            if (!hasDigit) return true;
+            const observed = exactMode ? (others + 1) : others;
+            if (observed === digit) return true;
+        }
+        return false;
+    }
     if (stop.kind === 'anywhere') {
         const unaccounted = scrollCountUnaccountedAnywhereOccurrences(w, batch, context);
         if (!hasDigit) return unaccounted >= 1;
@@ -5498,7 +5519,7 @@ function createNewFeature() {
     div.innerHTML = `
         <div class="feature-title">NEW</div>
         <div class="new-feature-layout">
-        <p id="newSubtitle" class="scroll-subtitle" style="font-size:13px;color:#666;margin:0 0 8px 0;"></p>
+        <p id="newPhaseLabel" class="scroll-subtitle" style="font-size:13px;color:#666;margin:0 0 8px 0;"></p>
         <div id="newBatchDisplay" class="scroll-batch-display" style="font-size:28px;letter-spacing:10px;font-weight:bold;margin:12px 0;min-height:1.2em;">—</div>
         <div id="newTimerCountdown" style="font-size:12px;color:#1B8E3F;min-height:1.2em;margin:-2px 0 10px 0;"></div>
         <div class="new-controls-row">
@@ -12216,7 +12237,7 @@ function setupFeatureListeners(feature, callback, options) {
         case 'new': {
             const batchDisplay = document.getElementById('newBatchDisplay');
             const timerCountdownEl = document.getElementById('newTimerCountdown');
-            const subtitleEl = document.getElementById('newSubtitle');
+            const phaseLabelEl = document.getElementById('newPhaseLabel');
             const scrollBtn = document.getElementById('newScrollBtn');
             const answerBtn = document.getElementById('newAnswerBtn');
             const answerInput = document.getElementById('newAnswerInput');
@@ -12235,15 +12256,21 @@ function setupFeatureListeners(feature, callback, options) {
             const savedNewMode = appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode);
             const scrollMode = savedNewMode === 'alternating' ? 'alternating' : 'mixed';
             const newAnswerCountMode = (appSettings && appSettings.newAnswerCountMode === 'exact') ? 'exact' : 'more';
-            if (subtitleEl) {
-                if (scrollMode === 'alternating') {
-                    subtitleEl.innerHTML = `Alternating consonants and vowels. Vowels will exhaust after 3 viewings.<br>ANSWER on a stop.<br>${newAnswerCountMode === 'exact' ? 'Enter "Exact count".' : 'Enter "How many MORE letters could I see?"'}`;
-                } else {
-                    subtitleEl.innerHTML = `Mixed consonants and vowels.<br>ANSWER on a stop.<br>${newAnswerCountMode === 'exact' ? 'Enter "Exact count".' : 'Enter "How many MORE letters could I see?"'}`;
-                }
-            }
+            const newAutoStopSeconds = Math.max(1, Math.min(60, parseInt((appSettings && appSettings.newAutoStopSeconds) ?? 10, 10) || 10));
             const vowelShownSinceLastStop = { A: 0, E: 0, I: 0, O: 0, U: 0 };
             let forceConsonantsUntilStop = false;
+
+            const getPhaseLabel = () => {
+                const n = scrollStops.length;
+                if (n === 0) return 'First letter';
+                if (n === 1) return 'Second letter';
+                if (n === 2) return 'Third letter';
+                return 'Any letter';
+            };
+
+            const updatePhaseLabel = () => {
+                if (phaseLabelEl) phaseLabelEl.textContent = getPhaseLabel();
+            };
 
             const setMessage = (text = '', isError = false) => {
                 if (messageEl) {
@@ -12316,7 +12343,7 @@ function setupFeatureListeners(feature, callback, options) {
                     batchDisplay.textContent = batch.length ? batch.join(' ') : '—';
                 }
                 const startedAt = Date.now();
-                const durationMs = 10000;
+                const durationMs = newAutoStopSeconds * 1000;
                 const renderCountdown = () => {
                     const remainingMs = Math.max(0, durationMs - (Date.now() - startedAt));
                     const sec = Math.ceil(remainingMs / 1000);
@@ -12328,7 +12355,7 @@ function setupFeatureListeners(feature, callback, options) {
                     if (!currentBatchCommitted) {
                         commitCurrentStop('timer');
                     }
-                }, 10000);
+                }, durationMs);
             };
 
             const applyScrollFilter = () => {
@@ -12343,9 +12370,16 @@ function setupFeatureListeners(feature, callback, options) {
                 if (currentBatchCommitted || !currentBatchStr) return;
                 currentBatchCommitted = true;
                 clearScrollTimer();
-                const kind = scrollStops.length === 0 ? 'first' : scrollStops.length === 1 ? 'second' : 'anywhere';
-                scrollStops.push({ kind, batchStr: currentBatchStr, digit: null });
+                const resolvedKind = scrollStops.length === 0
+                    ? 'first'
+                    : scrollStops.length === 1
+                        ? 'second'
+                        : scrollStops.length === 2
+                            ? 'third'
+                            : 'anywhere';
+                scrollStops.push({ kind: resolvedKind, batchStr: currentBatchStr, digit: null });
                 resetVowelCoverageCycle();
+                updatePhaseLabel();
                 applyScrollFilter();
             };
 
@@ -12432,8 +12466,9 @@ function setupFeatureListeners(feature, callback, options) {
             scrollBatchIndex = 0;
             scrollStops = [];
             resetVowelCoverageCycle();
+            updatePhaseLabel();
             showBatch();
-            setMessage(`Stop 1 = first letter · stop 2 = second · then anywhere (positions 3+). ${(currentFilteredWords || []).length} words.`);
+            setMessage(`${(currentFilteredWords || []).length} words.`);
 
             break;
         }
@@ -15512,6 +15547,20 @@ function initSettingsUI() {
             const next = validModes.has(newAnswerCountModeSelect.value) ? newAnswerCountModeSelect.value : 'more';
             appSettings.newAnswerCountMode = next;
             saveAppSettings();
+        });
+    }
+    const newAutoStopSecondsInput = document.getElementById('newAutoStopSecondsInput');
+    if (newAutoStopSecondsInput) {
+        const raw = parseInt((appSettings && appSettings.newAutoStopSeconds) ?? 10, 10);
+        const resolved = Math.max(1, Math.min(60, isNaN(raw) ? 10 : raw));
+        newAutoStopSecondsInput.value = String(resolved);
+        appSettings.newAutoStopSeconds = resolved;
+        newAutoStopSecondsInput.addEventListener('input', () => {
+            const n = parseInt(newAutoStopSecondsInput.value, 10);
+            if (!isNaN(n) && n >= 1 && n <= 60) {
+                appSettings.newAutoStopSeconds = n;
+                saveAppSettings();
+            }
         });
     }
 
