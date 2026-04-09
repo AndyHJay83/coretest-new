@@ -214,6 +214,8 @@ const DEFAULT_SETTINGS = {
     newAnswerCountMode: 'more',
     /** NEW auto-stop timer in seconds */
     newAutoStopSeconds: 10,
+    /** NEW custom position mode toggle */
+    newCustomMode: false,
     calculusMode: 'abstract',  // 'abstract' (digits 0–9) or 'curvesStraight' (C/S)
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
     // MUTE / MUTE DUO: letter mode: 'az' = A–Z fixed sequence, 'mostFrequent' = dynamic most-frequent letter,
@@ -5415,43 +5417,38 @@ function scrollCountUnaccountedAnywhereOccurrences(word, batchStr, context) {
     const w = String(word || '').toUpperCase();
     const batch = String(batchStr || '').toUpperCase();
     const letters = new Set(batch.split(''));
-    const pos1Candidates = (context && context.pos1Candidates) || new Set();
-    const pos2Candidates = (context && context.pos2Candidates) || new Set();
-    const pos3Candidates = (context && context.pos3Candidates) || new Set();
+    const positionCandidates = (context && context.positionCandidates) || new Map();
     let total = 0;
     for (let i = 0; i < w.length; i++) {
         const ch = w[i];
         if (!letters.has(ch)) continue;
-        // Position 1/2/3 can only be "accounted for" if earlier stops allow that letter there.
-        if (i === 0 && pos1Candidates.has(ch)) continue;
-        if (i === 1 && pos2Candidates.has(ch)) continue;
-        if (i === 2 && pos3Candidates.has(ch)) continue;
+        // Position can only be "accounted for" if earlier stops allow that letter there.
+        const position = i + 1;
+        const allowedSet = positionCandidates.get(position);
+        if (allowedSet && allowedSet.has(ch)) continue;
         total++;
     }
     return total;
 }
 
 function buildScrollAccountingContext(stops) {
-    const ctx = { pos1Candidates: new Set(), pos2Candidates: new Set(), pos3Candidates: new Set(), countMode: 'more' };
+    const ctx = { positionCandidates: new Map(), countMode: 'more' };
     if (!Array.isArray(stops)) return ctx;
-    const firstStop = stops.find((s) => s && s.kind === 'first');
-    const secondStop = stops.find((s) => s && s.kind === 'second');
-    const thirdStop = stops.find((s) => s && s.kind === 'third');
-    if (firstStop && typeof firstStop.batchStr === 'string') {
-        firstStop.batchStr.toUpperCase().split('').forEach((ch) => {
-            if (ch >= 'A' && ch <= 'Z') ctx.pos1Candidates.add(ch);
+    const addPositionCandidates = (position, batchStr) => {
+        if (typeof batchStr !== 'string' || !position || position < 1) return;
+        if (!ctx.positionCandidates.has(position)) ctx.positionCandidates.set(position, new Set());
+        const set = ctx.positionCandidates.get(position);
+        batchStr.toUpperCase().split('').forEach((ch) => {
+            if (ch >= 'A' && ch <= 'Z') set.add(ch);
         });
-    }
-    if (secondStop && typeof secondStop.batchStr === 'string') {
-        secondStop.batchStr.toUpperCase().split('').forEach((ch) => {
-            if (ch >= 'A' && ch <= 'Z') ctx.pos2Candidates.add(ch);
-        });
-    }
-    if (thirdStop && typeof thirdStop.batchStr === 'string') {
-        thirdStop.batchStr.toUpperCase().split('').forEach((ch) => {
-            if (ch >= 'A' && ch <= 'Z') ctx.pos3Candidates.add(ch);
-        });
-    }
+    };
+    stops.forEach((s) => {
+        if (!s) return;
+        if (s.kind === 'first') addPositionCandidates(1, s.batchStr);
+        else if (s.kind === 'second') addPositionCandidates(2, s.batchStr);
+        else if (s.kind === 'third') addPositionCandidates(3, s.batchStr);
+        else if (s.kind === 'position') addPositionCandidates(parseInt(s.position, 10), s.batchStr);
+    });
     return ctx;
 }
 
@@ -5496,6 +5493,19 @@ function wordPassesScrollStop(word, stop, context) {
         }
         return false;
     }
+    if (stop.kind === 'position') {
+        const pos = parseInt(stop.position, 10);
+        if (isNaN(pos) || pos < 1) return false;
+        if (w.length < pos) return false;
+        for (const L of letters) {
+            if (w[pos - 1] !== L) continue;
+            const others = scrollCountOthersInWord(w, batch, L, [pos - 1]);
+            if (!hasDigit) return true;
+            const observed = exactMode ? (others + 1) : others;
+            if (observed === digit) return true;
+        }
+        return false;
+    }
     if (stop.kind === 'anywhere') {
         const unaccounted = scrollCountUnaccountedAnywhereOccurrences(w, batch, context);
         if (!hasDigit) return unaccounted >= 1;
@@ -5520,6 +5530,15 @@ function createNewFeature() {
         <div class="feature-title">NEW</div>
         <div class="new-feature-layout">
         <p id="newPhaseLabel" class="scroll-subtitle" style="font-size:13px;color:#666;margin:0 0 8px 0;"></p>
+        <div id="newTargetModeRow" class="new-target-row" style="display:none;">
+            <button type="button" class="secondary-btn new-target-btn" data-target-kind="position" data-target-position="1">1</button>
+            <button type="button" class="secondary-btn new-target-btn" data-target-kind="position" data-target-position="2">2</button>
+            <button type="button" class="secondary-btn new-target-btn" data-target-kind="position" data-target-position="3">3</button>
+            <button type="button" class="secondary-btn new-target-btn" data-target-kind="position" data-target-position="4">4</button>
+            <button type="button" class="secondary-btn new-target-btn" data-target-kind="position" data-target-position="5">5</button>
+            <button type="button" class="secondary-btn new-target-btn" data-target-kind="position" data-target-position="6">6</button>
+            <button type="button" class="secondary-btn new-target-btn" data-target-kind="anywhere">ANY</button>
+        </div>
         <div id="newBatchDisplay" class="scroll-batch-display" style="font-size:28px;letter-spacing:10px;font-weight:bold;margin:12px 0;min-height:1.2em;">—</div>
         <div id="newTimerCountdown" style="font-size:12px;color:#1B8E3F;min-height:1.2em;margin:-2px 0 10px 0;"></div>
         <div class="new-controls-row">
@@ -12238,6 +12257,8 @@ function setupFeatureListeners(feature, callback, options) {
             const batchDisplay = document.getElementById('newBatchDisplay');
             const timerCountdownEl = document.getElementById('newTimerCountdown');
             const phaseLabelEl = document.getElementById('newPhaseLabel');
+            const targetModeRow = document.getElementById('newTargetModeRow');
+            const targetButtons = Array.from(document.querySelectorAll('#newTargetModeRow .new-target-btn'));
             const scrollBtn = document.getElementById('newScrollBtn');
             const answerBtn = document.getElementById('newAnswerBtn');
             const answerInput = document.getElementById('newAnswerInput');
@@ -12253,14 +12274,30 @@ function setupFeatureListeners(feature, callback, options) {
             let currentBatchStr = '';
             let batchCycleSize = 1;
             let currentBatchType = 'mixed';
+            let pendingCustomTarget = null; // { kind: 'position'|'anywhere', position?: number }
+            let lockedTargetForActiveBatch = null;
             const savedNewMode = appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode);
             const scrollMode = savedNewMode === 'alternating' ? 'alternating' : 'mixed';
             const newAnswerCountMode = (appSettings && appSettings.newAnswerCountMode === 'exact') ? 'exact' : 'more';
             const newAutoStopSeconds = Math.max(1, Math.min(60, parseInt((appSettings && appSettings.newAutoStopSeconds) ?? 10, 10) || 10));
+            const customModeOn = !!(appSettings && appSettings.newCustomMode);
             const vowelShownSinceLastStop = { A: 0, E: 0, I: 0, O: 0, U: 0 };
             let forceConsonantsUntilStop = false;
 
             const getPhaseLabel = () => {
+                if (customModeOn) {
+                    if (lockedTargetForActiveBatch) {
+                        return lockedTargetForActiveBatch.kind === 'anywhere'
+                            ? 'Any letter'
+                            : `Position ${lockedTargetForActiveBatch.position}`;
+                    }
+                    if (pendingCustomTarget) {
+                        return pendingCustomTarget.kind === 'anywhere'
+                            ? 'Any letter (pending)'
+                            : `Position ${pendingCustomTarget.position} (pending)`;
+                    }
+                    return 'Select position 1-6 or ANY';
+                }
                 const n = scrollStops.length;
                 if (n === 0) return 'First letter';
                 if (n === 1) return 'Second letter';
@@ -12270,6 +12307,18 @@ function setupFeatureListeners(feature, callback, options) {
 
             const updatePhaseLabel = () => {
                 if (phaseLabelEl) phaseLabelEl.textContent = getPhaseLabel();
+            };
+
+            const updateTargetButtonState = () => {
+                targetButtons.forEach((btn) => {
+                    const kind = btn.getAttribute('data-target-kind');
+                    const posRaw = btn.getAttribute('data-target-position');
+                    const pos = posRaw ? parseInt(posRaw, 10) : null;
+                    const active = pendingCustomTarget
+                        && pendingCustomTarget.kind === kind
+                        && ((kind === 'anywhere') || (pendingCustomTarget.position === pos));
+                    btn.classList.toggle('active', !!active);
+                });
             };
 
             const setMessage = (text = '', isError = false) => {
@@ -12342,6 +12391,10 @@ function setupFeatureListeners(feature, callback, options) {
                 if (batchDisplay) {
                     batchDisplay.textContent = batch.length ? batch.join(' ') : '—';
                 }
+                if (customModeOn && !lockedTargetForActiveBatch) {
+                    if (timerCountdownEl) timerCountdownEl.textContent = '';
+                    return;
+                }
                 const startedAt = Date.now();
                 const durationMs = newAutoStopSeconds * 1000;
                 const renderCountdown = () => {
@@ -12370,14 +12423,33 @@ function setupFeatureListeners(feature, callback, options) {
                 if (currentBatchCommitted || !currentBatchStr) return;
                 currentBatchCommitted = true;
                 clearScrollTimer();
-                const resolvedKind = scrollStops.length === 0
-                    ? 'first'
-                    : scrollStops.length === 1
-                        ? 'second'
-                        : scrollStops.length === 2
-                            ? 'third'
-                            : 'anywhere';
-                scrollStops.push({ kind: resolvedKind, batchStr: currentBatchStr, digit: null });
+                if (customModeOn) {
+                    if (!lockedTargetForActiveBatch) {
+                        setMessage('Choose a position (1-6) or ANY, then press SCROLL.', true);
+                        currentBatchCommitted = false;
+                        return;
+                    }
+                    if (lockedTargetForActiveBatch.kind === 'anywhere') {
+                        scrollStops.push({ kind: 'anywhere', batchStr: currentBatchStr, digit: null });
+                    } else {
+                        scrollStops.push({
+                            kind: 'position',
+                            position: lockedTargetForActiveBatch.position,
+                            batchStr: currentBatchStr,
+                            digit: null
+                        });
+                    }
+                    lockedTargetForActiveBatch = null;
+                } else {
+                    const resolvedKind = scrollStops.length === 0
+                        ? 'first'
+                        : scrollStops.length === 1
+                            ? 'second'
+                            : scrollStops.length === 2
+                                ? 'third'
+                                : 'anywhere';
+                    scrollStops.push({ kind: resolvedKind, batchStr: currentBatchStr, digit: null });
+                }
                 resetVowelCoverageCycle();
                 updatePhaseLabel();
                 applyScrollFilter();
@@ -12422,6 +12494,14 @@ function setupFeatureListeners(feature, callback, options) {
 
             if (scrollBtn) {
                 scrollBtn.onclick = () => {
+                    if (customModeOn) {
+                        if (!pendingCustomTarget) {
+                            setMessage('Select 1-6 or ANY before SCROLL.', true);
+                            updatePhaseLabel();
+                            return;
+                        }
+                        lockedTargetForActiveBatch = { ...pendingCustomTarget };
+                    }
                     scrollBatchIndex++;
                     showBatch();
                     const shownIndex = (scrollBatchIndex % batchCycleSize) + 1;
@@ -12431,6 +12511,7 @@ function setupFeatureListeners(feature, callback, options) {
                     } else {
                         setMessage(`Batch ${shownIndex} / ${batchCycleSize} (cycling)`);
                     }
+                    updatePhaseLabel();
                 };
                 scrollBtn.addEventListener('touchstart', (e) => {
                     e.preventDefault();
@@ -12466,9 +12547,33 @@ function setupFeatureListeners(feature, callback, options) {
             scrollBatchIndex = 0;
             scrollStops = [];
             resetVowelCoverageCycle();
+            if (targetModeRow) targetModeRow.style.display = customModeOn ? 'flex' : 'none';
+            if (customModeOn) {
+                targetButtons.forEach((btn) => {
+                    const kind = btn.getAttribute('data-target-kind');
+                    const posRaw = btn.getAttribute('data-target-position');
+                    btn.addEventListener('click', () => {
+                        if (kind === 'anywhere') {
+                            pendingCustomTarget = { kind: 'anywhere' };
+                        } else {
+                            const pos = parseInt(posRaw || '', 10);
+                            if (!isNaN(pos) && pos >= 1 && pos <= 6) {
+                                pendingCustomTarget = { kind: 'position', position: pos };
+                            }
+                        }
+                        updateTargetButtonState();
+                        updatePhaseLabel();
+                    });
+                });
+                updateTargetButtonState();
+            }
             updatePhaseLabel();
             showBatch();
-            setMessage(`${(currentFilteredWords || []).length} words.`);
+            if (customModeOn) {
+                setMessage(`Select 1-6 or ANY, then press SCROLL. ${(currentFilteredWords || []).length} words.`);
+            } else {
+                setMessage(`${(currentFilteredWords || []).length} words.`);
+            }
 
             break;
         }
@@ -15561,6 +15666,14 @@ function initSettingsUI() {
                 appSettings.newAutoStopSeconds = n;
                 saveAppSettings();
             }
+        });
+    }
+    const newCustomModeToggle = document.getElementById('newCustomModeToggle');
+    if (newCustomModeToggle) {
+        newCustomModeToggle.checked = !!(appSettings && appSettings.newCustomMode);
+        newCustomModeToggle.addEventListener('change', () => {
+            appSettings.newCustomMode = newCustomModeToggle.checked;
+            saveAppSettings();
         });
     }
 

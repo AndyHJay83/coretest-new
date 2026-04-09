@@ -5579,6 +5579,25 @@ input:checked + .slider:before {
     max-width: 120px;
 }
 
+.new-target-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin: 0 0 10px 0;
+}
+
+.new-target-btn {
+    min-width: 44px;
+    padding: 8px 10px;
+}
+
+.new-target-btn.active {
+    background-color: #1B5E20;
+    color: #fff;
+    border-color: #1B5E20;
+}
+
 .position-cons-helper {
     font-size: 0.85em;
     color: #666;
