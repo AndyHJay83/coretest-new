@@ -239,6 +239,10 @@
                                 <button class="feature-button" data-feature="eyeTest" draggable="true">EYE TEST</button>
                                 <button class="info-button" data-feature="eyeTest"><i class="fas fa-info-circle"></i></button>
                             </div>
+                            <div class="feature-group">
+                                <button class="feature-button" data-feature="new" draggable="true">NEW</button>
+                                <button class="info-button" data-feature="new"><i class="fas fa-info-circle"></i></button>
+                            </div>
                             <div class="feature-group" data-builder-hidden="true">
                                 <button class="feature-button" data-feature="scrabble1" draggable="true">SCRABBLE1</button>
                                 <button class="info-button" data-feature="scrabble1"><i class="fas fa-info-circle"></i></button>
@@ -1225,6 +1229,16 @@
                         <p style="font-size: 12px; color: #666; margin-top: 8px;">Saving stores the first-line letter and all six groups. Loading a chart turns on “Use fixed letter groups” and fills the fields.</p>
                     </div>
                     <div class="settings-section">
+                        <h3 class="settings-section-title">NEW</h3>
+                        <p class="settings-section-subtitle">4-letter batch generation for the NEW filter</p>
+                        <label for="newLetterModeSelect">Letter mode:</label>
+                        <select id="newLetterModeSelect" style="max-width: 100%; margin-bottom: 6px;">
+                            <option value="mixed">Mixed (2 consonants + 2 vowels)</option>
+                            <option value="alternating">Alternating (all consonants / all vowels)</option>
+                        </select>
+                        <p style="font-size: 12px; color: #666; margin: 0;">Alternating mode uses 2 high + 2 low letters from one type at a time, switching consonants/vowels. After each vowel appears at least 3 times in a cycle, NEW stays on vowel batches until a stop is committed.</p>
+                    </div>
+                    <div class="settings-section">
                         <h3 class="settings-section-title">OMEGA</h3>
                         <p class="settings-section-subtitle">Which shape/object set to use for the OMEGA filter</p>
                         <label for="omegaShapesCountInput">Number of shapes (0 = until SUBMIT):</label>
@@ -1645,6 +1659,13 @@
             <div class="feature-info-content">
                 <h3>EYE TEST</h3>
                 <p><strong>EYE TEST</strong><br>Automatically builds 6 PIN-style letter groups (sizes 2, 3, 4, 5, 6, and 7) from the current wordlist, chosen for high information gain. Each box is pre-filled with its group; you enter a 6-digit code where each digit is how many letters from that group appear in the target word. It uses the same matching logic as PIN but with dynamic groups, acting like an \"eye test\" for the wordlist.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="newInfo" class="feature-info-modal">
+            <div class="feature-info-content">
+                <h3>NEW</h3>
+                <p><strong>NEW</strong><br>Shows four letters per batch: the next most and least frequent consonants and vowels (A,E,I,O,U only — Y is not a vowel here). NEW advances to the next batch. After 10 seconds on a batch, or when you press ANSWER, that batch is committed as a stop: first stop = first letter; second = second letter; further stops = letters anywhere in the word. Enter digits (e.g. 112) for how many extra letters from each batch (see in-app help). SUBMIT finishes the step.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

@@ -208,6 +208,8 @@ const DEFAULT_SETTINGS = {
     eyeTestBuiltinPresetId: '',
     /** Unified chart selection: '' | 'builtin:<id>' | 'saved:<uuid>' */
     eyeTestSelection: '',
+    /** NEW generation mode: 'mixed' | 'alternating' */
+    newLetterMode: 'mixed',
     calculusMode: 'abstract',  // 'abstract' (digits 0–9) or 'curvesStraight' (C/S)
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
     // MUTE / MUTE DUO: letter mode: 'az' = A–Z fixed sequence, 'mostFrequent' = dynamic most-frequent letter,
@@ -2591,6 +2593,7 @@ async function executeWorkflow(steps) {
             positionConsFeature: createPositionConsFeature(),
             firstCurvedFeature: createFirstCurvedFeature(),
             eyeTestFeature: createEyeTestFeature(),
+            newFeature: createNewFeature(),
             pinFeature: createPinFeature(),
             eeeFeature: createEeeFeature(),
             eeeFirstFeature: createEeeFirstFeature(),
@@ -2829,6 +2832,9 @@ async function executeWorkflow(steps) {
                     break;
                 case 'eyeTest':
                     featureElement = createEyeTestFeature();
+                    break;
+                case 'new':
+                    featureElement = createNewFeature();
                     break;
                 case 'pin':
                     featureElement = createPinFeature();
@@ -5301,6 +5307,202 @@ function createEyeTestFeature() {
         console.error('Error building EYE TEST groups', e);
     }
 
+    return div;
+}
+
+/** SCROLL filter: vowels = AEIOU only (not Y). */
+const SCROLL_VOWELS_LIST = ['A', 'E', 'I', 'O', 'U'];
+const SCROLL_VOWELS_SET = new Set(SCROLL_VOWELS_LIST);
+const SCROLL_CONSONANTS_LIST = ALPHABET_LETTERS.filter((c) => !VOWEL_SET.has(c));
+
+function countScrollLetterFrequencies(words) {
+    const cons = {};
+    const vow = {};
+    SCROLL_CONSONANTS_LIST.forEach((c) => { cons[c] = 0; });
+    SCROLL_VOWELS_LIST.forEach((v) => { vow[v] = 0; });
+    if (!Array.isArray(words)) return { cons, vow };
+    for (const w of words) {
+        const u = String(w || '').toUpperCase();
+        for (let i = 0; i < u.length; i++) {
+            const ch = u[i];
+            if (ch < 'A' || ch > 'Z') continue;
+            if (SCROLL_VOWELS_SET.has(ch)) vow[ch]++;
+            else if (cons[ch] !== undefined) cons[ch]++;
+        }
+    }
+    return { cons, vow };
+}
+
+function rankScrollLetters(letters, counts, ascending) {
+    const arr = letters.map((L) => ({ L, c: counts[L] ?? 0 }));
+    arr.sort((a, b) => {
+        const cmp = ascending ? a.c - b.c : b.c - a.c;
+        if (cmp !== 0) return cmp;
+        return Math.random() - 0.5;
+    });
+    return arr.map((x) => x.L);
+}
+
+function buildScrollBatchAtK(consDesc, consAsc, vowDesc, vowAsc, k) {
+    const take = [];
+    const tryAdd = (ch) => {
+        if (ch && !take.includes(ch)) take.push(ch);
+    };
+    const pickAt = (arr, idx) => {
+        if (!Array.isArray(arr) || arr.length === 0) return '';
+        const wrapped = ((idx % arr.length) + arr.length) % arr.length;
+        return arr[wrapped];
+    };
+    [pickAt(consDesc, k), pickAt(consAsc, k), pickAt(vowDesc, k), pickAt(vowAsc, k)].forEach(tryAdd);
+    let i = 1;
+    while (take.length < 4 && i < 30) {
+        [pickAt(consDesc, k + i), pickAt(consAsc, k + i), pickAt(vowDesc, k + i), pickAt(vowAsc, k + i)].forEach(tryAdd);
+        i++;
+    }
+    return take.slice(0, 4);
+}
+
+function buildScrollSingleTypeBatchAtK(desc, asc, k) {
+    const take = [];
+    const pickAt = (arr, idx) => {
+        if (!Array.isArray(arr) || arr.length === 0) return '';
+        const wrapped = ((idx % arr.length) + arr.length) % arr.length;
+        return arr[wrapped];
+    };
+    const tryAdd = (ch) => {
+        if (ch && !take.includes(ch)) take.push(ch);
+    };
+    [pickAt(desc, k), pickAt(desc, k + 1), pickAt(asc, k), pickAt(asc, k + 1)].forEach(tryAdd);
+    let i = 2;
+    while (take.length < 4 && i < 30) {
+        [pickAt(desc, k + i), pickAt(asc, k + i)].forEach(tryAdd);
+        i++;
+    }
+    return take.slice(0, 4);
+}
+
+function scrollCountOthersInWord(word, batchStr, excludeLetter, excludedPositions) {
+    const u = String(word || '').toUpperCase();
+    const b = batchStr.toUpperCase();
+    const ex = String(excludeLetter || '').toUpperCase();
+    const excluded = new Set(Array.isArray(excludedPositions) ? excludedPositions : []);
+    const seen = new Set();
+    for (let i = 0; i < u.length; i++) {
+        if (excluded.has(i)) continue;
+        const ch = u[i];
+        if (ch === ex) continue;
+        if (b.includes(ch)) seen.add(ch);
+    }
+    return seen.size;
+}
+
+function scrollTotalBatchInWord(word, batchStr, startIndex) {
+    const u = String(word || '').toUpperCase();
+    const b = batchStr.toUpperCase();
+    const from = Math.max(0, parseInt(startIndex ?? 0, 10) || 0);
+    let n = 0;
+    for (let i = from; i < u.length; i++) {
+        if (b.includes(u[i])) n++;
+    }
+    return n;
+}
+
+function scrollCountUnaccountedAnywhereOccurrences(word, batchStr, context) {
+    const w = String(word || '').toUpperCase();
+    const batch = String(batchStr || '').toUpperCase();
+    const letters = new Set(batch.split(''));
+    const pos1Candidates = (context && context.pos1Candidates) || new Set();
+    const pos2Candidates = (context && context.pos2Candidates) || new Set();
+    let total = 0;
+    for (let i = 0; i < w.length; i++) {
+        const ch = w[i];
+        if (!letters.has(ch)) continue;
+        // Position 1/2 can only be "accounted for" if earlier stops allow that letter there.
+        if (i === 0 && pos1Candidates.has(ch)) continue;
+        if (i === 1 && pos2Candidates.has(ch)) continue;
+        total++;
+    }
+    return total;
+}
+
+function buildScrollAccountingContext(stops) {
+    const ctx = { pos1Candidates: new Set(), pos2Candidates: new Set() };
+    if (!Array.isArray(stops)) return ctx;
+    const firstStop = stops.find((s) => s && s.kind === 'first');
+    const secondStop = stops.find((s) => s && s.kind === 'second');
+    if (firstStop && typeof firstStop.batchStr === 'string') {
+        firstStop.batchStr.toUpperCase().split('').forEach((ch) => {
+            if (ch >= 'A' && ch <= 'Z') ctx.pos1Candidates.add(ch);
+        });
+    }
+    if (secondStop && typeof secondStop.batchStr === 'string') {
+        secondStop.batchStr.toUpperCase().split('').forEach((ch) => {
+            if (ch >= 'A' && ch <= 'Z') ctx.pos2Candidates.add(ch);
+        });
+    }
+    return ctx;
+}
+
+function wordPassesScrollStop(word, stop, context) {
+    const w = String(word || '').toUpperCase();
+    const batch = String(stop.batchStr || '').toUpperCase();
+    if (batch.length < 1) return true;
+    const letters = batch.split('');
+    const digit = stop.digit;
+    const hasDigit = digit !== null && digit !== undefined && !Number.isNaN(digit);
+    if (stop.kind === 'first') {
+        if (w.length < 1) return false;
+        for (const L of letters) {
+            if (w[0] !== L) continue;
+            const others = scrollCountOthersInWord(w, batch, L, [0]);
+            if (!hasDigit) return true;
+            if (others === digit) return true;
+        }
+        return false;
+    }
+    if (stop.kind === 'second') {
+        if (w.length < 2) return false;
+        for (const L of letters) {
+            if (w[1] !== L) continue;
+            const others = scrollCountOthersInWord(w, batch, L, [1]);
+            if (!hasDigit) return true;
+            if (others === digit) return true;
+        }
+        return false;
+    }
+    if (stop.kind === 'anywhere') {
+        const unaccounted = scrollCountUnaccountedAnywhereOccurrences(w, batch, context);
+        if (!hasDigit) return unaccounted >= 1;
+        return unaccounted >= (1 + digit);
+    }
+    return true;
+}
+
+function filterWordsByScrollStops(words, stops) {
+    if (!Array.isArray(words) || !Array.isArray(stops) || stops.length === 0) return Array.isArray(words) ? words.slice() : [];
+    const context = buildScrollAccountingContext(stops);
+    return words.filter((w) => stops.every((s) => wordPassesScrollStop(w, s, context)));
+}
+
+function createNewFeature() {
+    const div = document.createElement('div');
+    div.id = 'newFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <div class="feature-title">NEW</div>
+        <div class="new-feature-layout">
+        <p id="newSubtitle" class="scroll-subtitle" style="font-size:13px;color:#666;margin:0 0 8px 0;"></p>
+        <div id="newBatchDisplay" class="scroll-batch-display" style="font-size:28px;letter-spacing:10px;font-weight:bold;margin:12px 0;min-height:1.2em;">—</div>
+        <div id="newTimerCountdown" style="font-size:12px;color:#1B8E3F;min-height:1.2em;margin:-2px 0 10px 0;"></div>
+        <div class="new-controls-row">
+            <button type="button" id="newScrollBtn" class="secondary-btn">SCROLL</button>
+            <button type="button" id="newAnswerBtn" class="secondary-btn">ANSWER</button>
+            <input type="text" id="newAnswerInput" class="pin-code-input" placeholder="e.g. 112" maxlength="12" inputmode="numeric" autocomplete="off" style="width:7em;">
+            <button type="button" id="newSubmitBtn" class="primary-btn pin-submit-btn">SUBMIT</button>
+        </div>
+        </div>
+        <div id="newMessage" class="position-cons-message"></div>
+    `;
     return div;
 }
 
@@ -12004,6 +12206,230 @@ function setupFeatureListeners(feature, callback, options) {
             break;
         }
 
+        case 'new': {
+            const batchDisplay = document.getElementById('newBatchDisplay');
+            const timerCountdownEl = document.getElementById('newTimerCountdown');
+            const subtitleEl = document.getElementById('newSubtitle');
+            const scrollBtn = document.getElementById('newScrollBtn');
+            const answerBtn = document.getElementById('newAnswerBtn');
+            const answerInput = document.getElementById('newAnswerInput');
+            const submitBtn = document.getElementById('newSubmitBtn');
+            const messageEl = document.getElementById('newMessage');
+
+            let scrollBatchIndex = 0;
+            /** @type {{ kind: string, batchStr: string, digit: number|null }[]} */
+            let scrollStops = [];
+            let scrollTimer = null;
+            let scrollCountdownInterval = null;
+            let currentBatchCommitted = false;
+            let currentBatchStr = '';
+            let batchCycleSize = 1;
+            let currentBatchType = 'mixed';
+            const savedNewMode = appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode);
+            const scrollMode = savedNewMode === 'alternating' ? 'alternating' : 'mixed';
+            if (subtitleEl) {
+                if (scrollMode === 'alternating') {
+                    subtitleEl.innerHTML = 'Alternating consonants and vowels. Vowels will exhaust after 3 viewings.<br>ANSWER on a stop.<br>Enter "How many MORE letters could I see?"';
+                } else {
+                    subtitleEl.innerHTML = 'Mixed consonants and vowels.<br>ANSWER on a stop.<br>Enter "How many MORE letters could I see?"';
+                }
+            }
+            const vowelShownSinceLastStop = { A: 0, E: 0, I: 0, O: 0, U: 0 };
+            let forceConsonantsUntilStop = false;
+
+            const setMessage = (text = '', isError = false) => {
+                if (messageEl) {
+                    messageEl.textContent = text;
+                    messageEl.style.color = isError ? '#f44336' : '#4CAF50';
+                }
+            };
+
+            const clearScrollTimer = () => {
+                if (scrollTimer) {
+                    clearTimeout(scrollTimer);
+                    scrollTimer = null;
+                }
+                if (scrollCountdownInterval) {
+                    clearInterval(scrollCountdownInterval);
+                    scrollCountdownInterval = null;
+                }
+                if (timerCountdownEl) timerCountdownEl.textContent = '';
+            };
+
+            const computeRanks = () => {
+                const words = currentFilteredWords || [];
+                const { cons, vow } = countScrollLetterFrequencies(words);
+                const consDesc = rankScrollLetters(SCROLL_CONSONANTS_LIST, cons, false);
+                const consAsc = rankScrollLetters(SCROLL_CONSONANTS_LIST, cons, true);
+                const vowDesc = rankScrollLetters(SCROLL_VOWELS_LIST, vow, false);
+                const vowAsc = rankScrollLetters(SCROLL_VOWELS_LIST, vow, true);
+                batchCycleSize = Math.max(1, Math.min(consDesc.length, vowDesc.length));
+                return { consDesc, consAsc, vowDesc, vowAsc };
+            };
+
+            const resetVowelCoverageCycle = () => {
+                SCROLL_VOWELS_LIST.forEach((v) => { vowelShownSinceLastStop[v] = 0; });
+                forceConsonantsUntilStop = false;
+            };
+
+            const markVowelsShown = (batchArr) => {
+                batchArr.forEach((ch) => {
+                    if (vowelShownSinceLastStop[ch] !== undefined) vowelShownSinceLastStop[ch] += 1;
+                });
+                if (SCROLL_VOWELS_LIST.every((v) => (vowelShownSinceLastStop[v] || 0) >= 3)) {
+                    forceConsonantsUntilStop = true;
+                }
+            };
+
+            const showBatch = () => {
+                clearScrollTimer();
+                currentBatchCommitted = false;
+                const { consDesc, consAsc, vowDesc, vowAsc } = computeRanks();
+                let batch = [];
+                if (scrollMode === 'alternating') {
+                    const evenTurn = (scrollBatchIndex % 2) === 0;
+                    const emitVowels = !forceConsonantsUntilStop && !evenTurn;
+                    if (emitVowels) {
+                        currentBatchType = 'vowel';
+                        batchCycleSize = Math.max(1, SCROLL_VOWELS_LIST.length);
+                        batch = buildScrollSingleTypeBatchAtK(vowDesc, vowAsc, scrollBatchIndex);
+                        markVowelsShown(batch);
+                    } else {
+                        currentBatchType = 'consonant';
+                        batchCycleSize = Math.max(1, SCROLL_CONSONANTS_LIST.length);
+                        batch = buildScrollSingleTypeBatchAtK(consDesc, consAsc, scrollBatchIndex);
+                    }
+                } else {
+                    currentBatchType = 'mixed';
+                    batch = buildScrollBatchAtK(consDesc, consAsc, vowDesc, vowAsc, scrollBatchIndex);
+                }
+                currentBatchStr = batch.join('');
+                if (batchDisplay) {
+                    batchDisplay.textContent = batch.length ? batch.join(' ') : '—';
+                }
+                const startedAt = Date.now();
+                const durationMs = 10000;
+                const renderCountdown = () => {
+                    const remainingMs = Math.max(0, durationMs - (Date.now() - startedAt));
+                    const sec = Math.ceil(remainingMs / 1000);
+                    if (timerCountdownEl) timerCountdownEl.textContent = String(sec);
+                };
+                renderCountdown();
+                scrollCountdownInterval = setInterval(renderCountdown, 200);
+                scrollTimer = setTimeout(() => {
+                    if (!currentBatchCommitted) {
+                        commitCurrentStop('timer');
+                    }
+                }, 10000);
+            };
+
+            const applyScrollFilter = () => {
+                const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops);
+                callback(filtered);
+                setMessage(scrollStops.length
+                    ? `${filtered.length} words (${scrollStops.length} stop(s)).`
+                    : `${(currentFilteredWords || []).length} words (no stops yet).`);
+            };
+
+            const commitCurrentStop = (source) => {
+                if (currentBatchCommitted || !currentBatchStr) return;
+                currentBatchCommitted = true;
+                clearScrollTimer();
+                const kind = scrollStops.length === 0 ? 'first' : scrollStops.length === 1 ? 'second' : 'anywhere';
+                scrollStops.push({ kind, batchStr: currentBatchStr, digit: null });
+                resetVowelCoverageCycle();
+                applyScrollFilter();
+            };
+
+            const applyAnswerDigits = () => {
+                const raw = (answerInput?.value || '').replace(/[^0-9]/g, '');
+                if (!raw) {
+                    setMessage('Enter at least one digit for unanswered stops.', true);
+                    return;
+                }
+                const unansweredIdxs = [];
+                for (let i = 0; i < scrollStops.length; i++) {
+                    if (scrollStops[i].digit === null || scrollStops[i].digit === undefined || Number.isNaN(scrollStops[i].digit)) {
+                        unansweredIdxs.push(i);
+                    }
+                }
+                if (unansweredIdxs.length === 0) {
+                    setMessage('All current stops are already answered. Scroll to add more stops.');
+                    return;
+                }
+                const useCount = Math.min(raw.length, unansweredIdxs.length);
+                for (let i = 0; i < useCount; i++) {
+                    const stopIdx = unansweredIdxs[i];
+                    const d = parseInt(raw[i], 10);
+                    scrollStops[stopIdx].digit = Number.isNaN(d) ? null : d;
+                }
+                if (answerInput) answerInput.value = '';
+                applyScrollFilter();
+            };
+
+            const onAnswer = () => {
+                if (!currentBatchStr) {
+                    setMessage('No batch to answer.', true);
+                    return;
+                }
+                if (!currentBatchCommitted) {
+                    commitCurrentStop('answer');
+                }
+                applyAnswerDigits();
+            };
+
+            if (scrollBtn) {
+                scrollBtn.onclick = () => {
+                    scrollBatchIndex++;
+                    showBatch();
+                    const shownIndex = (scrollBatchIndex % batchCycleSize) + 1;
+                    if (scrollMode === 'alternating') {
+                        const suffix = forceConsonantsUntilStop ? ' · consonants-only until stop' : '';
+                        setMessage(`${currentBatchType.toUpperCase()} batch ${shownIndex} / ${batchCycleSize} (cycling)${suffix}`);
+                    } else {
+                        setMessage(`Batch ${shownIndex} / ${batchCycleSize} (cycling)`);
+                    }
+                };
+                scrollBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    scrollBtn.click();
+                }, { passive: false });
+            }
+
+            if (answerBtn) {
+                answerBtn.onclick = onAnswer;
+                answerBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    onAnswer();
+                }, { passive: false });
+            }
+
+            if (submitBtn) {
+                submitBtn.onclick = () => {
+                    const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops);
+                    callback(filtered);
+                    setMessage(`${filtered.length} words — step complete.`);
+                    const featureDiv = document.getElementById('newFeature');
+                    if (featureDiv) {
+                        featureDiv.classList.add('completed');
+                        featureDiv.dispatchEvent(new Event('completed'));
+                    }
+                };
+                submitBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    submitBtn.click();
+                }, { passive: false });
+            }
+
+            scrollBatchIndex = 0;
+            scrollStops = [];
+            resetVowelCoverageCycle();
+            showBatch();
+            setMessage(`Stop 1 = first letter · stop 2 = second · then anywhere (positions 3+). ${(currentFilteredWords || []).length} words.`);
+
+            break;
+        }
+
         case 'pin': {
             const wordInputs = [
                 document.getElementById('pinWord1'),
@@ -15051,6 +15477,19 @@ function initSettingsUI() {
         eyeTestUseFixedGroupsToggle.checked = !!(appSettings && appSettings.eyeTestUseFixedGroups);
         eyeTestUseFixedGroupsToggle.addEventListener('change', () => {
             appSettings.eyeTestUseFixedGroups = eyeTestUseFixedGroupsToggle.checked;
+            saveAppSettings();
+        });
+    }
+    const newLetterModeSelect = document.getElementById('newLetterModeSelect');
+    if (newLetterModeSelect) {
+        const validModes = new Set(['mixed', 'alternating']);
+        const savedMode = (appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode)) || 'mixed';
+        const resolved = validModes.has(savedMode) ? savedMode : 'mixed';
+        newLetterModeSelect.value = resolved;
+        appSettings.newLetterMode = resolved;
+        newLetterModeSelect.addEventListener('change', () => {
+            const next = validModes.has(newLetterModeSelect.value) ? newLetterModeSelect.value : 'mixed';
+            appSettings.newLetterMode = next;
             saveAppSettings();
         });
     }

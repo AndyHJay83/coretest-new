@@ -5560,6 +5560,25 @@ input:checked + .slider:before {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
+/* NEW filter layout */
+.new-feature-layout {
+    text-align: center;
+}
+
+.new-controls-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+}
+
+.new-controls-row .pin-code-input {
+    width: 7em;
+    max-width: 120px;
+}
+
 .position-cons-helper {
     font-size: 0.85em;
     color: #666;

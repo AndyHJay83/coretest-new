@@ -246,6 +246,13 @@
       "analyzeFunction": "return [{ param: 'Dynamic PIN-style letter groups (2-7 letters) chosen for high information gain on current wordlist. Enter a 6-digit code of counts.', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
+      "id": "new",
+      "name": "NEW",
+      "displayName": "NEW",
+      "requiresParam": false,
+      "analyzeFunction": "return [{ param: 'Most/least consonants + vowels (AEIOU); 10s or ANSWER commits; digits filter.', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
       "id": "pin",
       "name": "PIN",
       "displayName": "PIN",
