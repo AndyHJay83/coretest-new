@@ -17,7 +17,7 @@
     <meta http-equiv="Expires" content="0">
     <title>The Core</title>
     <link rel="manifest" href="manifest.json?v=2">
-    <link rel="stylesheet" href="styles.css?v=14">
+    <link rel="stylesheet" href="styles.css?v=19">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 </head>
@@ -1247,6 +1247,14 @@
                             <label for="newCustomModeToggle">CUSTOM MODE (choose position 1-6 or ANY each stop)</label>
                             <input type="checkbox" id="newCustomModeToggle">
                         </div>
+                        <div class="settings-toggle-row" style="margin-top: 6px;">
+                            <label for="newAnswerDigitBufferToggle">+1 buffer on answer digits (each stop’s count can match ±1)</label>
+                            <input type="checkbox" id="newAnswerDigitBufferToggle">
+                        </div>
+                        <div class="settings-toggle-row" style="margin-top: 6px;">
+                            <label for="newShowCompletionDebugToggle">Show batch + answer summary when MOVE ON completes</label>
+                            <input type="checkbox" id="newShowCompletionDebugToggle">
+                        </div>
                         <p style="font-size: 12px; color: #666; margin: 0;">Alternating mode uses 2 high + 2 low letters from one type at a time, switching consonants/vowels. After each vowel appears at least 3 times in a cycle, NEW stays on vowel batches until a stop is committed.</p>
                     </div>
                     <div class="settings-section">
@@ -1396,6 +1404,11 @@
                             </div>
                         </div>
                         <button type="button" id="loveLettersResetDefaultBtn" class="small-button">Reset to Default</button>
+                    </div>
+                    <div class="settings-section">
+                        <h3 class="settings-section-title">REPORT</h3>
+                        <p class="settings-section-subtitle">The last 10 runs — word counts per step, NEW settings snapshot when NEW was in the workflow, optional target word per run, readable view plus JSON export. Stored in this browser only.</p>
+                        <button type="button" id="workflowReportOpenBtn" class="secondary-btn">Open REPORT</button>
                     </div>
                 </div>
             </div>
@@ -1676,7 +1689,7 @@
         <div id="newInfo" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>NEW</h3>
-                <p><strong>NEW</strong><br>Shows four letters per batch: the next most and least frequent consonants and vowels (A,E,I,O,U only — Y is not a vowel here). NEW advances to the next batch. After 10 seconds on a batch, or when you press ANSWER, that batch is committed as a stop: first stop = first letter; second = second letter; further stops = letters anywhere in the word. Enter digits (e.g. 112) for how many extra letters from each batch (see in-app help). SUBMIT finishes the step.</p>
+                <p><strong>NEW</strong><br>Shows four letters per batch: the next most and least frequent consonants and vowels (A,E,I,O,U only — Y is not a vowel here). NEW advances to the next batch. After 10 seconds on a batch, or when you press ANSWER, that batch is committed as a stop: first stop = first letter; second = second letter; further stops = letters anywhere in the word. Enter digits (e.g. 112) for how many extra letters from each batch (see in-app help). MOVE ON finishes the step. Optional +1 buffer in Settings relaxes each answered digit by ±1.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
@@ -1916,10 +1929,21 @@
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
+        <div id="workflowReportInfo" class="feature-info-modal">
+            <div class="feature-info-content workflow-report-modal-content">
+                <h3>Workflow REPORT</h3>
+                <p class="workflow-report-intro">Use COPY on each run’s header to copy a readable summary plus JSON (separated by a line of dashes). Expand a run for the target word and steps; expand a step for duration, traces, and payload. Steps that leave 0 words are highlighted in red.</p>
+                <div id="workflowReportHuman" class="workflow-report-human" aria-live="polite"></div>
+                <div class="workflow-report-actions">
+                    <button type="button" id="workflowReportClearBtn" class="secondary-btn">Clear history</button>
+                    <button type="button" class="close-info-button workflow-report-close" aria-label="Close">&times;</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="muteBinaryFilter.js?v=1"></script>
-    <script src="script.js?v=15"></script>
+    <script src="script.js?v=24"></script>
     <div id="eyeTestChartOverlay" class="eye-test-chart-overlay" style="display:none;">
         <canvas id="eyeTestChartCanvas" width="600" height="820"></canvas>
         <div class="eye-test-chart-hint">Triple tap anywhere to close</div>

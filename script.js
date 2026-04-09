@@ -151,6 +151,689 @@ let lastPositionConsGeneratedLetters = '';
 
 // Workflow Management
 let workflows = JSON.parse(localStorage.getItem('workflows')) || [];
+
+const WORKFLOW_REPORT_STORAGE_KEY = 'workflowRunReports';
+const WORKFLOW_REPORT_MAX = 10;
+/** Set before dispatching `completed` on a feature so REPORT can store step-specific data */
+let pendingWorkflowStepPayload = null;
+
+function loadWorkflowReports() {
+    try {
+        const raw = localStorage.getItem(WORKFLOW_REPORT_STORAGE_KEY);
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveWorkflowReports(reports) {
+    try {
+        localStorage.setItem(WORKFLOW_REPORT_STORAGE_KEY, JSON.stringify(reports.slice(0, WORKFLOW_REPORT_MAX)));
+    } catch (e) {
+        console.warn('Could not save workflow reports', e);
+    }
+}
+
+function pushWorkflowReport(run) {
+    if (!run || typeof run !== 'object') return;
+    const list = loadWorkflowReports();
+    list.unshift(run);
+    saveWorkflowReports(list);
+}
+
+function clearWorkflowReports() {
+    try {
+        localStorage.removeItem(WORKFLOW_REPORT_STORAGE_KEY);
+    } catch (e) {
+        console.warn('Could not clear workflow reports', e);
+    }
+}
+
+/** Single thought-of word for REPORT debugging (A–Z only); empty input clears. */
+function sanitizeWorkflowTargetWord(raw) {
+    const s = String(raw || '').toUpperCase().replace(/[^A-Z]/g, '');
+    return s.length ? s.slice(0, 60) : null;
+}
+
+function updateWorkflowRunTargetWord(runId, wordOrNull) {
+    const list = loadWorkflowReports();
+    const idx = list.findIndex((r) => Number(r.id) === Number(runId));
+    if (idx < 0) return;
+    list[idx].targetWord = wordOrNull;
+    saveWorkflowReports(list);
+    refreshWorkflowReportModalContent();
+}
+
+function onWorkflowReportHumanClick(e) {
+    const copyExportBtn = e.target.closest('.workflow-report-copy-run-export');
+    if (copyExportBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = parseInt(copyExportBtn.getAttribute('data-run-index'), 10);
+        if (Number.isNaN(idx) || idx < 0) return;
+        const list = loadWorkflowReports();
+        const run = list[idx];
+        if (!run) return;
+        (async () => {
+            try {
+                await navigator.clipboard.writeText(
+                    buildWorkflowReportExportTextForSingleRun(run, idx)
+                );
+            } catch (err) {
+                console.warn('Copy failed', err);
+            }
+        })();
+        return;
+    }
+
+    const btn = e.target.closest('.workflow-report-target-edit');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const runId = btn.getAttribute('data-run-id');
+    if (!runId) return;
+    const current = (btn.getAttribute('data-current') || '').trim();
+    const raw = window.prompt(
+        current
+            ? `Thought-of target word (letters A–Z only). Leave empty and tap OK to clear.\nCurrent: ${current}`
+            : 'Thought-of target word (letters A–Z only, optional — saved with this run for developers):',
+        current
+    );
+    if (raw === null) return;
+    updateWorkflowRunTargetWord(Number(runId), sanitizeWorkflowTargetWord(raw));
+}
+
+function snapshotNewSettingsForReport(appSettingsRef) {
+    const a = appSettingsRef || {};
+    const sec = Math.max(1, Math.min(60, parseInt(a.newAutoStopSeconds ?? 10, 10) || 10));
+    const letterMode = (a.newLetterMode || a.scrollLetterMode || 'mixed');
+    const isExact = a.newAnswerCountMode === 'exact';
+    return {
+        letterMode,
+        letterModeLabel: letterMode === 'alternating'
+            ? 'Alternating (consonant / vowel batches)'
+            : 'Mixed (2 consonants + 2 vowels per batch)',
+        customPositionMode: !!a.newCustomMode,
+        answerDigitBuffer: !!a.newAnswerDigitBuffer,
+        answerCountMode: isExact ? 'exact' : 'more',
+        answerCountModeLabel: isExact ? 'Exact count' : 'How many MORE',
+        autoStopSeconds: sec,
+        showCompletionDebug: a.newShowCompletionDebug !== false
+    };
+}
+
+function formatNewSettingsAtPerformanceHuman(ns) {
+    if (!ns || typeof ns !== 'object') return '';
+    return [
+        `Letter batches: ${ns.letterModeLabel || ns.letterMode}`,
+        `Custom position (1–6 / ANY): ${ns.customPositionMode ? 'on' : 'off'}`,
+        `+1 answer digit buffer: ${ns.answerDigitBuffer ? 'on' : 'off'}`,
+        `Answer count mode: ${ns.answerCountModeLabel || ns.answerCountMode}`,
+        `Auto-stop: ${ns.autoStopSeconds}s`,
+        `MOVE ON debug summary: ${ns.showCompletionDebug ? 'on' : 'off'}`
+    ].join(' · ');
+}
+
+/** displayName from features-config (plus workflow-only ids) for readable REPORT labels */
+const WORKFLOW_FEATURE_LABELS = {
+    position1: 'Short Word',
+    consMid: '3 LETTER WORD',
+    consMid2: 'Cons MID',
+    vowel: 'Vowel',
+    vowel2: 'VOWEL2',
+    vowelPos: 'VOWEL POS',
+    name: 'NAME',
+    o: 'O?',
+    oCurves: 'O-CURVES',
+    lexicon: 'Curved Pos.',
+    zeroCurves: 'ZERO CURVES',
+    eee: 'EEE?',
+    eeeFirst: 'EEEFIRST',
+    e21: 'E21',
+    originalLex: 'Lexicon',
+    advLex: 'ADV-LEX',
+    consonant: 'Cons. Together',
+    consonants: 'CONSONANTS',
+    colour3: 'Colour3',
+    atlas: 'ATLAS',
+    theCore: 'THE CORE',
+    letterLying: 'Letter Lying',
+    loveLetters: 'Love Letters',
+    length: 'LENGTH',
+    mostFrequent: 'MOST FREQUENT',
+    leastFrequent: 'LEAST FREQUENT',
+    notIn: 'ABSENT',
+    present: 'PRESENT',
+    abcde: 'ABCDE',
+    abc: 'ABC',
+    findEee: 'FIND-EEE',
+    positionCons: 'POSITION-CONS',
+    firstCurved: 'FIRST CURVED',
+    numerology: 'NUMEROLOGY',
+    eyeTest: 'EYE TEST',
+    new: 'NEW',
+    pin: 'PIN',
+    scrabble: 'SCRABBLE',
+    scrabble1: 'SCRABBLE1',
+    sologram: 'SOLOGRAM',
+    scramble: 'DECODE',
+    pianoForte: 'PIANO FORTE',
+    pianoPiano: 'PIANO PIANO',
+    t9Length: 'T9 LENGTH',
+    t9LastTwo: 'LAST TWO',
+    t9Last: 'LAST',
+    t9Position5: 'POSITION 5',
+    t9Guess: 'GUESS',
+    t9OneLie: '1 LIE (L4)',
+    t9Repeat: 'Repeat?',
+    t9Higher: 'Higher?',
+    t9NumberStart: 'NUMBER START',
+    t9Singing: 'SINGING',
+    t9OneTruth: '1 TRUTH (F4)',
+    t9B: 'B-IDENTITY',
+    alphaNumeric: 'AlphaNumeric',
+    lettersAbove: 'Letters Above',
+    dictionaryAlpha: 'DICTIONARY (B/M/E)',
+    alpha: 'ALPHA (SHORT)',
+    alphaWord: 'ALPHA-WORD',
+    alphaRepeat: 'ALPHA-REPEAT',
+    repeatQuestion: 'REPEAT?',
+    smlLength: 'LENGTH (S/M/L)',
+    calculus: 'CALCULUS',
+    letterShapes: 'Letter shapes',
+    connective: 'CONNECTIVE',
+    anywhere: 'ANYWHERE',
+    together: 'TOGETHER',
+    middle: 'MIDDLE',
+    shape: 'OMEGA',
+    omega: 'OMEGA',
+    curved: 'CURVED',
+    mute: 'MUTE',
+    muteDuo: 'MUTE DUO'
+};
+
+function getWorkflowFeatureLabel(featureId) {
+    if (!featureId) return '—';
+    return WORKFLOW_FEATURE_LABELS[featureId] || String(featureId);
+}
+
+function compressWordCountTrace(trace) {
+    if (!Array.isArray(trace) || trace.length === 0) return [];
+    const out = [trace[0]];
+    for (let i = 1; i < trace.length; i++) {
+        if (trace[i] !== trace[i - 1]) out.push(trace[i]);
+    }
+    return out;
+}
+
+function classifyStepImpact(step) {
+    const wi = Number(step.wordsIn) || 0;
+    const wo = Number(step.wordsOut) || 0;
+    const removed = Math.max(0, wi - wo);
+    const pct = wi > 0 ? Math.round((100 * removed) / wi) : 0;
+    if (wi > 0 && wo === 0) return { level: 'zero', removed, pct };
+    if (wi >= 8 && wo > 0 && wo <= Math.floor(wi * 0.1)) return { level: 'heavy', removed, pct };
+    if (wi >= 20 && pct >= 85) return { level: 'heavy', removed, pct };
+    return { level: 'ok', removed, pct };
+}
+
+function formatReportWhen(iso) {
+    if (!iso) return '';
+    try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return iso;
+        return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+        return String(iso);
+    }
+}
+
+function formatDurationMs(ms) {
+    const n = Number(ms);
+    if (!Number.isFinite(n) || n < 0) return '—';
+    if (n < 1000) return `${Math.round(n)} ms`;
+    return `${(n / 1000).toFixed(1)} s`;
+}
+
+/** One-line summary for collapsed step row (user answers); duration stays in expanded panel only. */
+function formatWorkflowStepQuickCaption(step) {
+    const p = step.payload;
+    const f = step.feature;
+    if (!p || typeof p !== 'object') return null;
+
+    if (p.feature === 'length') {
+        if (p.skipped) return 'Skipped — list unchanged';
+        if (p.submittedLength != null && !Number.isNaN(Number(p.submittedLength))) {
+            const n = Number(p.submittedLength);
+            return p.buffer1 ? `Length ${n} (±1 buffer)` : `Length ${n}`;
+        }
+    }
+    if (p.feature === 'scrabble') {
+        if (p.skipped) return 'Skipped — list unchanged';
+        if (p.score != null && !Number.isNaN(Number(p.score))) {
+            return p.buffer1 ? `Scrabble score ${p.score} (±1)` : `Scrabble score ${p.score}`;
+        }
+    }
+    if (p.feature === 'scrabble1') {
+        if (p.skipped) return 'Skipped — list unchanged';
+        if (p.score != null && !Number.isNaN(Number(p.score))) {
+            return `Scrabble score ${p.score} (±1 band)`;
+        }
+    }
+    if (p.feature === 'sologram') {
+        if (p.skipped) return 'Skipped — list unchanged';
+        if (p.ynString) return `Y/N “${p.ynString}”`;
+    }
+    if (p.feature === 'new') {
+        const stops = Array.isArray(p.stops) ? p.stops.length : 0;
+        const digits = Array.isArray(p.stops)
+            ? p.stops.map((s) => (s.digit != null && !Number.isNaN(s.digit) ? String(s.digit) : '—')).join('')
+            : '';
+        if (stops > 0 && digits) return `NEW: ${stops} stop(s), digits ${digits}`;
+        if (stops > 0) return `NEW: ${stops} stop(s)`;
+    }
+    return null;
+}
+
+function appendReportDefinitionList(parent, rows) {
+    const dl = document.createElement('dl');
+    dl.className = 'workflow-report-dl';
+    rows.forEach(({ term, def }) => {
+        if (def === undefined || def === null || def === '') return;
+        const dt = document.createElement('dt');
+        dt.textContent = term;
+        const dd = document.createElement('dd');
+        if (def instanceof Node) dd.appendChild(def);
+        else dd.textContent = String(def);
+        dl.append(dt, dd);
+    });
+    if (dl.children.length) parent.appendChild(dl);
+}
+
+function renderStepPayloadSection(payload) {
+    const wrap = document.createElement('div');
+    wrap.className = 'workflow-report-step-payload-section';
+    const h = document.createElement('div');
+    h.className = 'workflow-report-deep-heading';
+    h.textContent = 'Recorded answers / filter data';
+    wrap.appendChild(h);
+
+    if (!payload || typeof payload !== 'object') {
+        const p = document.createElement('p');
+        p.className = 'workflow-report-muted';
+        p.textContent = 'Nothing extra was stored for this step. Most filters only update the list when you complete the step; per-update word counts are listed above when available.';
+        wrap.appendChild(p);
+        return wrap;
+    }
+
+    if (payload.feature === 'new') {
+        appendReportDefinitionList(wrap, [
+            { term: 'NEW answer count mode', def: payload.answerCountMode === 'exact' ? 'Exact count' : 'How many MORE' },
+            { term: '+1 digit buffer (at MOVE ON)', def: payload.digitBuffer ? 'On' : 'Off' },
+            { term: 'Words after MOVE ON', def: payload.wordsAfter != null ? String(payload.wordsAfter) : '—' }
+        ]);
+        const stops = payload.stops;
+        if (Array.isArray(stops) && stops.length) {
+            const tbl = document.createElement('table');
+            tbl.className = 'workflow-report-stops-table';
+            const thead = document.createElement('thead');
+            const hr = document.createElement('tr');
+            ['#', 'Batch (4 letters)', 'Stop type', 'Digit'].forEach((label) => {
+                const th = document.createElement('th');
+                th.textContent = label;
+                hr.appendChild(th);
+            });
+            thead.appendChild(hr);
+            tbl.appendChild(thead);
+            const tb = document.createElement('tbody');
+            stops.forEach((st, j) => {
+                const tr = document.createElement('tr');
+                const batch = (st.batchStr || '').toUpperCase().split('').join(' ');
+                const k = st.kind === 'position' ? `Position ${st.position}` : String(st.kind || '—');
+                const ans = st.digit != null && !Number.isNaN(st.digit) ? String(st.digit) : '—';
+                [String(j + 1), batch || '—', k, ans].forEach((cell) => {
+                    const td = document.createElement('td');
+                    td.textContent = cell;
+                    tr.appendChild(td);
+                });
+                tb.appendChild(tr);
+            });
+            tbl.appendChild(tb);
+            wrap.appendChild(tbl);
+        }
+        return wrap;
+    }
+
+    if (payload.feature === 'length') {
+        appendReportDefinitionList(wrap, [
+            { term: 'Submitted length', def: payload.skipped ? '— (skipped)' : (payload.submittedLength != null ? String(payload.submittedLength) : '—') },
+            { term: 'LENGTH ±1 buffer', def: payload.buffer1 ? 'On' : 'Off' },
+            { term: 'Skipped', def: payload.skipped ? 'Yes' : 'No' }
+        ]);
+        return wrap;
+    }
+
+    if (payload.feature === 'scrabble') {
+        appendReportDefinitionList(wrap, [
+            { term: 'Score', def: payload.skipped ? '— (skipped)' : (payload.score != null ? String(payload.score) : '—') },
+            { term: 'SCRABBLE ±1 buffer', def: payload.buffer1 ? 'On' : 'Off' }
+        ]);
+        return wrap;
+    }
+
+    if (payload.feature === 'scrabble1') {
+        appendReportDefinitionList(wrap, [
+            { term: 'Score (±1 band)', def: payload.skipped ? '— (skipped)' : (payload.score != null ? String(payload.score) : '—') }
+        ]);
+        return wrap;
+    }
+
+    if (payload.feature === 'sologram') {
+        appendReportDefinitionList(wrap, [
+            { term: 'Y/N string', def: payload.skipped ? '— (skipped)' : (payload.ynString || '—') }
+        ]);
+        return wrap;
+    }
+
+    const pre = document.createElement('pre');
+    pre.className = 'workflow-report-json-local';
+    pre.textContent = JSON.stringify(payload, null, 2);
+    wrap.appendChild(pre);
+    return wrap;
+}
+
+function buildWorkflowStepDeepPanel(step, stepIndex, totalSteps) {
+    const panel = document.createElement('div');
+    panel.className = 'workflow-report-step-deep';
+
+    const wi = Number(step.wordsIn) || 0;
+    const wo = Number(step.wordsOut) || 0;
+    const removed = Math.max(0, wi - wo);
+    const retention = wi > 0 ? `${((100 * wo) / wi).toFixed(1)}% retained` : '—';
+
+    const h = document.createElement('div');
+    h.className = 'workflow-report-deep-heading';
+    h.textContent = `Details · step ${stepIndex + 1} of ${totalSteps}`;
+    panel.appendChild(h);
+
+    appendReportDefinitionList(panel, [
+        { term: 'Feature id', def: step.feature },
+        { term: 'Name', def: getWorkflowFeatureLabel(step.feature) },
+        { term: 'Words entering step', def: String(wi) },
+        { term: 'Words leaving step', def: String(wo) },
+        { term: 'Words removed', def: String(removed) },
+        { term: 'Retention', def: retention },
+        { term: 'Time on step', def: formatDurationMs(step.durationMs) }
+    ]);
+
+    const traceH = document.createElement('div');
+    traceH.className = 'workflow-report-deep-heading';
+    traceH.textContent = 'Word count after each list update (every filter callback)';
+    panel.appendChild(traceH);
+
+    const tr = Array.isArray(step.wordCountTrace) ? step.wordCountTrace : [];
+    if (tr.length === 0) {
+        const p = document.createElement('p');
+        p.className = 'workflow-report-muted';
+        p.textContent = 'No per-update trace (older saved report, or only one update for this step).';
+        panel.appendChild(p);
+    } else {
+        const ol = document.createElement('ol');
+        ol.className = 'workflow-report-trace-ol';
+        tr.forEach((n) => {
+            const item = document.createElement('li');
+            item.textContent = `${n} words`;
+            ol.appendChild(item);
+        });
+        panel.appendChild(ol);
+        const comp = compressWordCountTrace(tr);
+        if (comp.length > 1) {
+            const p2 = document.createElement('p');
+            p2.className = 'workflow-report-trace-compact';
+            const strong = document.createElement('strong');
+            strong.textContent = 'Compressed: ';
+            p2.append(strong, document.createTextNode(comp.join(' → ')));
+            panel.appendChild(p2);
+        }
+    }
+
+    panel.appendChild(renderStepPayloadSection(step.payload));
+    return panel;
+}
+
+function appendWorkflowReportPlainSummaryLines(lines, run, runIdx) {
+    const name = run.workflowName || '(unnamed)';
+    const wl = run.wordlistId || '—';
+    const when = formatReportWhen(run.startedAt);
+    const ini = run.initialWordCount ?? '—';
+    const fin = run.finalWordCount ?? '—';
+    lines.push(`━━ Run ${runIdx + 1}: ${name} ━━`);
+    lines.push(`When: ${when}`);
+    lines.push(`Wordlist: ${wl}`);
+    lines.push(`Words: start ${ini} → end ${fin}`);
+    if (run.targetWord) {
+        lines.push(`Target word (debug): ${run.targetWord}`);
+    } else {
+        lines.push('Target word (debug): (not recorded)');
+    }
+    if (run.newSettingsAtPerformance) {
+        lines.push(`NEW settings at performance: ${formatNewSettingsAtPerformanceHuman(run.newSettingsAtPerformance)}`);
+    }
+    if (Number(run.finalWordCount) === 0 && Number(ini) > 0) {
+        lines.push('⚠ Ended with 0 words — see steps below for where the list emptied.');
+    }
+    const steps = Array.isArray(run.steps) ? run.steps : [];
+    let firstZero = -1;
+    steps.forEach((s, i) => {
+        if (firstZero < 0 && Number(s.wordsIn) > 0 && Number(s.wordsOut) === 0) firstZero = i;
+    });
+    if (firstZero >= 0) {
+        const st = steps[firstZero];
+        lines.push(`→ First step to hit 0 words: #${firstZero + 1} ${getWorkflowFeatureLabel(st.feature)} (${st.feature})`);
+    }
+    lines.push('Steps:');
+    steps.forEach((s, i) => {
+        const label = getWorkflowFeatureLabel(s.feature);
+        const imp = classifyStepImpact(s);
+        const tag = imp.level === 'heavy' ? ` [−${imp.pct}%]` : '';
+        lines.push(`  ${i + 1}. ${label} (${s.feature}) — in ${s.wordsIn} → out ${s.wordsOut}${tag}`);
+        const cap = formatWorkflowStepQuickCaption(s);
+        if (cap) lines.push(`      ${cap}`);
+        const tr = compressWordCountTrace(s.wordCountTrace);
+        if (tr.length > 1) {
+            lines.push(`      Updates: ${tr.join(' → ')}`);
+        }
+        if (s.payload && s.payload.feature === 'new' && Array.isArray(s.payload.stops)) {
+            s.payload.stops.forEach((st, j) => {
+                const batch = (st.batchStr || '').toUpperCase().split('').join(' ');
+                const ans = st.digit != null && !Number.isNaN(st.digit) ? String(st.digit) : '—';
+                const k = st.kind === 'position' ? `pos ${st.position}` : st.kind;
+                lines.push(`      Stop ${j + 1}: ${batch} | ${k} | answer ${ans}`);
+            });
+        }
+    });
+}
+
+function buildWorkflowReportPlainSummaryForSingleRun(run, runIdx) {
+    const lines = [];
+    appendWorkflowReportPlainSummaryLines(lines, run, runIdx);
+    return lines.join('\n');
+}
+
+const WORKFLOW_REPORT_EXPORT_DIVIDER = '\n\n--------\n\n';
+
+function buildWorkflowReportExportTextForSingleRun(run, runIdx) {
+    const readable = buildWorkflowReportPlainSummaryForSingleRun(run, runIdx);
+    return readable + WORKFLOW_REPORT_EXPORT_DIVIDER + JSON.stringify(run, null, 2);
+}
+
+function renderWorkflowReportHumanView(container, runs) {
+    if (!container) return;
+    container.textContent = '';
+    if (!Array.isArray(runs) || runs.length === 0) {
+        const p = document.createElement('p');
+        p.className = 'workflow-report-empty';
+        p.textContent = 'No workflow runs recorded yet. Perform a workflow to populate this report.';
+        container.appendChild(p);
+        return;
+    }
+
+    runs.forEach((run, runIdx) => {
+        const card = document.createElement('div');
+        card.className = 'workflow-report-run-card';
+
+        const ini = run.initialWordCount;
+        const fin = run.finalWordCount;
+        const steps = Array.isArray(run.steps) ? run.steps : [];
+        let firstZeroIdx = -1;
+        steps.forEach((s, i) => {
+            if (firstZeroIdx < 0 && Number(s.wordsIn) > 0 && Number(s.wordsOut) === 0) firstZeroIdx = i;
+        });
+
+        const runDetails = document.createElement('details');
+        runDetails.className = 'workflow-report-run-details';
+        runDetails.open = runIdx === 0;
+
+        const runSum = document.createElement('summary');
+        runSum.className = 'workflow-report-run-summary';
+        const sumText = document.createElement('div');
+        sumText.className = 'workflow-report-run-summary-text';
+        const sumMain = document.createElement('div');
+        sumMain.className = 'workflow-report-run-summary-main';
+        sumMain.textContent = `Run ${runIdx + 1}: ${run.workflowName || '(unnamed)'}`;
+        const sumSub = document.createElement('div');
+        sumSub.className = 'workflow-report-run-summary-sub';
+        sumSub.textContent = `${formatReportWhen(run.startedAt)} · ${run.wordlistId || '—'} · ${ini ?? '—'} → ${fin ?? '—'} words · ${steps.length} step(s) — tap to expand`;
+        sumText.append(sumMain, sumSub);
+        const copyExport = document.createElement('button');
+        copyExport.type = 'button';
+        copyExport.className = 'secondary-btn workflow-report-copy-run-export';
+        copyExport.textContent = 'COPY';
+        copyExport.setAttribute('data-run-index', String(runIdx));
+        copyExport.setAttribute(
+            'aria-label',
+            `Copy readable summary and JSON for run ${runIdx + 1}`
+        );
+        runSum.append(sumText, copyExport);
+
+        const runBody = document.createElement('div');
+        runBody.className = 'workflow-report-run-expand-body';
+
+        const targetBlock = document.createElement('div');
+        targetBlock.className = 'workflow-report-target-block';
+        const targetRow = document.createElement('div');
+        targetRow.className = 'workflow-report-target-row';
+        const twLabel = document.createElement('span');
+        twLabel.className = 'workflow-report-target-label';
+        twLabel.textContent = 'Target word: ';
+        const twVal = document.createElement('strong');
+        twVal.className = 'workflow-report-target-value';
+        const tw = run.targetWord;
+        twVal.textContent = tw || '— not set —';
+        const twBtn = document.createElement('button');
+        twBtn.type = 'button';
+        twBtn.className = 'secondary-btn workflow-report-target-edit';
+        twBtn.textContent = tw ? 'Change' : 'Set word';
+        twBtn.setAttribute('data-run-id', String(run.id));
+        twBtn.setAttribute('data-current', tw || '');
+        targetRow.append(twLabel, twVal, document.createTextNode(' '), twBtn);
+        targetBlock.appendChild(targetRow);
+        runBody.appendChild(targetBlock);
+
+        if (run.newSettingsAtPerformance) {
+            const nsBox = document.createElement('div');
+            nsBox.className = 'workflow-report-new-settings-at-perf';
+            const nsTitle = document.createElement('div');
+            nsTitle.className = 'workflow-report-new-settings-title';
+            nsTitle.textContent = 'NEW settings at this performance';
+            const nsBody = document.createElement('div');
+            nsBody.className = 'workflow-report-new-settings-body';
+            nsBody.textContent = formatNewSettingsAtPerformanceHuman(run.newSettingsAtPerformance);
+            nsBox.append(nsTitle, nsBody);
+            runBody.appendChild(nsBox);
+        }
+
+        if (Number(fin) === 0 && Number(ini) > 0) {
+            const alert = document.createElement('div');
+            alert.className = 'workflow-report-alert workflow-report-alert--warn';
+            alert.textContent = 'Ended with no words left. The red-highlighted step is where the list first hit zero.';
+            runBody.appendChild(alert);
+        }
+
+        const stepList = document.createElement('ol');
+        stepList.className = 'workflow-report-step-list';
+
+        steps.forEach((s, i) => {
+            const imp = classifyStepImpact(s);
+            const li = document.createElement('li');
+            li.className = 'workflow-report-step-li';
+
+            const stepDetails = document.createElement('details');
+            stepDetails.className = 'workflow-report-step-details';
+            if (imp.level === 'zero') stepDetails.classList.add('workflow-report-step-details--zero');
+            else if (imp.level === 'heavy') stepDetails.classList.add('workflow-report-step-details--heavy');
+            if (i === firstZeroIdx) stepDetails.classList.add('workflow-report-step-details--first-zero');
+
+            const stepSum = document.createElement('summary');
+            stepSum.className = 'workflow-report-step-summary';
+
+            const row = document.createElement('div');
+            row.className = 'workflow-report-step-row';
+
+            const nameEl = document.createElement('span');
+            nameEl.className = 'workflow-report-step-name';
+            nameEl.textContent = getWorkflowFeatureLabel(s.feature);
+
+            const idEl = document.createElement('code');
+            idEl.className = 'workflow-report-step-id';
+            idEl.textContent = s.feature;
+
+            const counts = document.createElement('span');
+            counts.className = 'workflow-report-step-counts';
+            counts.textContent = `${s.wordsIn} → ${s.wordsOut} words`;
+
+            row.append(nameEl, document.createTextNode(' '), idEl, document.createTextNode(' · '), counts);
+
+            if (imp.level === 'heavy') {
+                const badge = document.createElement('span');
+                badge.className = 'workflow-report-badge workflow-report-badge--caution';
+                badge.textContent = `−${imp.pct}%`;
+                row.appendChild(document.createTextNode(' '));
+                row.appendChild(badge);
+            }
+
+            const sub = document.createElement('div');
+            sub.className = 'workflow-report-step-summary-sub';
+            const removed = Math.max(0, (Number(s.wordsIn) || 0) - (Number(s.wordsOut) || 0));
+            const cap = formatWorkflowStepQuickCaption(s);
+            sub.textContent = cap
+                ? `${cap} · removed ${removed}`
+                : `Removed ${removed} word(s) — open step for details (answer not stored for this filter)`;
+
+            stepSum.append(row, sub);
+
+            const deep = buildWorkflowStepDeepPanel(s, i, steps.length);
+            stepDetails.append(stepSum, deep);
+            li.appendChild(stepDetails);
+            stepList.appendChild(li);
+        });
+
+        runBody.appendChild(stepList);
+        runDetails.append(runSum, runBody);
+        card.appendChild(runDetails);
+        container.appendChild(card);
+    });
+}
+
+function refreshWorkflowReportModalContent() {
+    const human = document.getElementById('workflowReportHuman');
+    const data = loadWorkflowReports();
+    if (human) {
+        renderWorkflowReportHumanView(human, data);
+    }
+}
 let currentWorkflow = null;
 
 // App-wide settings (persisted in localStorage)
@@ -216,6 +899,10 @@ const DEFAULT_SETTINGS = {
     newAutoStopSeconds: 10,
     /** NEW custom position mode toggle */
     newCustomMode: false,
+    /** NEW: allow ±1 on each answered digit when filtering */
+    newAnswerDigitBuffer: false,
+    /** NEW: after MOVE ON, show batch + answer lines in the feature message */
+    newShowCompletionDebug: true,
     calculusMode: 'abstract',  // 'abstract' (digits 0–9) or 'curvesStraight' (C/S)
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
     // MUTE / MUTE DUO: letter mode: 'az' = A–Z fixed sequence, 'mostFrequent' = dynamic most-frequent letter,
@@ -866,6 +1553,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize Settings UI (buffer toggles etc.)
     initSettingsUI();
+    initWorkflowReportUI();
     
     // Initialize version display
     function initializeVersionDisplay() {
@@ -2692,6 +3380,20 @@ async function executeWorkflow(steps) {
         
         // Display initial wordlist
         displayResults(currentFilteredWords);
+
+        const reportSelect = document.getElementById('workflowSelect');
+        const reportWorkflowName = (reportSelect && reportSelect.value) ? reportSelect.value : '(unnamed)';
+        const planAtRunStart = workflowSteps.map((s) => s.feature);
+        const workflowRunRecord = {
+            id: Date.now(),
+            startedAt: new Date().toISOString(),
+            workflowName: reportWorkflowName,
+            planAtStart: planAtRunStart,
+            planAtEnd: [],
+            wordlistId: selectedWordlist,
+            initialWordCount: Array.isArray(currentFilteredWords) ? currentFilteredWords.length : 0,
+            steps: []
+        };
         
         // Track the rank of MOST FREQUENT features
         let mostFrequentRank = 1;
@@ -2700,6 +3402,10 @@ async function executeWorkflow(steps) {
         for (let stepIndex = 0; stepIndex < workflowSteps.length; stepIndex++) {
             const step = workflowSteps[stepIndex];
             const previousStepFeature = stepIndex > 0 ? workflowSteps[stepIndex - 1].feature : null;
+            pendingWorkflowStepPayload = null;
+            const stepWordsIn = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : 0;
+            const stepStartedAt = Date.now();
+            const stepWordCountTrace = [];
             console.log('Executing step:', step);
             
             let featureId = step.feature + 'Feature';
@@ -2982,6 +3688,8 @@ async function executeWorkflow(steps) {
                 setupFeatureListeners(step.feature, (filteredWords) => {
                     currentFilteredWords = filteredWords;
                     displayResults(currentFilteredWords);
+                    const n = Array.isArray(filteredWords) ? filteredWords.length : 0;
+                    stepWordCountTrace.push(n);
                 }, { previousStepFeature, steps: workflowSteps, stepIndex });
             }, 0);
             
@@ -3017,6 +3725,18 @@ async function executeWorkflow(steps) {
                             workflowSteps.length = stepIndex + 2;
                         }
                     }
+
+                    const stepWordsOut = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : 0;
+                    workflowRunRecord.steps.push({
+                        feature: step.feature,
+                        wordsIn: stepWordsIn,
+                        wordsOut: stepWordsOut,
+                        wordsRemoved: Math.max(0, stepWordsIn - stepWordsOut),
+                        durationMs: Date.now() - stepStartedAt,
+                        payload: pendingWorkflowStepPayload,
+                        wordCountTrace: stepWordCountTrace.slice()
+                    });
+                    pendingWorkflowStepPayload = null;
                     
                     resolve();
                 };
@@ -3025,6 +3745,15 @@ async function executeWorkflow(steps) {
             });
         }
         
+        workflowRunRecord.finishedAt = new Date().toISOString();
+        workflowRunRecord.planAtEnd = workflowSteps.map((s) => s.feature);
+        workflowRunRecord.finalWordCount = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : 0;
+        workflowRunRecord.targetWord = null;
+        if (workflowRunRecord.planAtEnd.some((f) => f === 'new')) {
+            workflowRunRecord.newSettingsAtPerformance = snapshotNewSettingsForReport(appSettings);
+        }
+        pushWorkflowReport(workflowRunRecord);
+
         // Show final results
         displayResults(currentFilteredWords);
     } catch (error) {
@@ -5452,6 +6181,13 @@ function buildScrollAccountingContext(stops) {
     return ctx;
 }
 
+/** When buffer is 1, treat user digit as nominal ±1 for equality-style checks. */
+function scrollObservedMatchesDigit(observed, digit, buffer) {
+    const b = buffer > 0 ? 1 : 0;
+    if (!b) return observed === digit;
+    return Math.abs(observed - digit) <= 1;
+}
+
 function wordPassesScrollStop(word, stop, context) {
     const w = String(word || '').toUpperCase();
     const batch = String(stop.batchStr || '').toUpperCase();
@@ -5460,6 +6196,7 @@ function wordPassesScrollStop(word, stop, context) {
     const digit = stop.digit;
     const hasDigit = digit !== null && digit !== undefined && !Number.isNaN(digit);
     const exactMode = !!(context && context.countMode === 'exact');
+    const digitBuffer = context && context.digitBuffer > 0 ? 1 : 0;
     if (stop.kind === 'first') {
         if (w.length < 1) return false;
         for (const L of letters) {
@@ -5467,7 +6204,7 @@ function wordPassesScrollStop(word, stop, context) {
             const others = scrollCountOthersInWord(w, batch, L, [0]);
             if (!hasDigit) return true;
             const observed = exactMode ? (others + 1) : others;
-            if (observed === digit) return true;
+            if (scrollObservedMatchesDigit(observed, digit, digitBuffer)) return true;
         }
         return false;
     }
@@ -5478,7 +6215,7 @@ function wordPassesScrollStop(word, stop, context) {
             const others = scrollCountOthersInWord(w, batch, L, [1]);
             if (!hasDigit) return true;
             const observed = exactMode ? (others + 1) : others;
-            if (observed === digit) return true;
+            if (scrollObservedMatchesDigit(observed, digit, digitBuffer)) return true;
         }
         return false;
     }
@@ -5489,7 +6226,7 @@ function wordPassesScrollStop(word, stop, context) {
             const others = scrollCountOthersInWord(w, batch, L, [2]);
             if (!hasDigit) return true;
             const observed = exactMode ? (others + 1) : others;
-            if (observed === digit) return true;
+            if (scrollObservedMatchesDigit(observed, digit, digitBuffer)) return true;
         }
         return false;
     }
@@ -5502,23 +6239,25 @@ function wordPassesScrollStop(word, stop, context) {
             const others = scrollCountOthersInWord(w, batch, L, [pos - 1]);
             if (!hasDigit) return true;
             const observed = exactMode ? (others + 1) : others;
-            if (observed === digit) return true;
+            if (scrollObservedMatchesDigit(observed, digit, digitBuffer)) return true;
         }
         return false;
     }
     if (stop.kind === 'anywhere') {
         const unaccounted = scrollCountUnaccountedAnywhereOccurrences(w, batch, context);
         if (!hasDigit) return unaccounted >= 1;
-        if (exactMode) return unaccounted === digit;
-        return unaccounted >= (1 + digit);
+        if (exactMode) return scrollObservedMatchesDigit(unaccounted, digit, digitBuffer);
+        const minRequired = Math.max(1, 1 + digit - digitBuffer);
+        return unaccounted >= minRequired;
     }
     return true;
 }
 
-function filterWordsByScrollStops(words, stops, countMode) {
+function filterWordsByScrollStops(words, stops, countMode, digitBuffer) {
     if (!Array.isArray(words) || !Array.isArray(stops) || stops.length === 0) return Array.isArray(words) ? words.slice() : [];
     const context = buildScrollAccountingContext(stops);
     context.countMode = (countMode === 'exact') ? 'exact' : 'more';
+    context.digitBuffer = (digitBuffer === 1 || digitBuffer === true) ? 1 : 0;
     return words.filter((w) => stops.every((s) => wordPassesScrollStop(w, s, context)));
 }
 
@@ -5545,7 +6284,7 @@ function createNewFeature() {
             <button type="button" id="newScrollBtn" class="secondary-btn">SCROLL</button>
             <button type="button" id="newAnswerBtn" class="secondary-btn">ANSWER</button>
             <input type="text" id="newAnswerInput" class="pin-code-input" placeholder="e.g. 112" maxlength="12" inputmode="numeric" autocomplete="off" style="width:7em;">
-            <button type="button" id="newSubmitBtn" class="primary-btn pin-submit-btn">SUBMIT</button>
+            <button type="button" id="newSubmitBtn" class="primary-btn pin-submit-btn">MOVE ON</button>
         </div>
         </div>
         <div id="newMessage" class="position-cons-message"></div>
@@ -8716,6 +9455,11 @@ function setupFeatureListeners(feature, callback, options) {
                             } else {
                                 filteredWords = filterWordsByLength(currentFilteredWords, length);
                             }
+                            pendingWorkflowStepPayload = {
+                                feature: 'length',
+                                submittedLength: length,
+                                buffer1: !!(appSettings && appSettings.lengthBuffer1)
+                            };
                             callback(filteredWords);
                             document.getElementById('lengthFeature').dispatchEvent(new Event('completed'));
                         } else {
@@ -8735,6 +9479,7 @@ function setupFeatureListeners(feature, callback, options) {
             
             if (lengthSkipButton) {
                 lengthSkipButton.onclick = () => {
+                    pendingWorkflowStepPayload = { feature: 'length', skipped: true };
                     callback(currentFilteredWords);
                     document.getElementById('lengthFeature').dispatchEvent(new Event('completed'));
                 };
@@ -8763,6 +9508,11 @@ function setupFeatureListeners(feature, callback, options) {
                             const filteredWords = useBuffer
                                 ? filterWordsByScrabble1(currentFilteredWords, score)
                                 : filterWordsByScrabble(currentFilteredWords, score);
+                            pendingWorkflowStepPayload = {
+                                feature: 'scrabble',
+                                score,
+                                buffer1: useBuffer
+                            };
                             callback(filteredWords);
                             document.getElementById('scrabbleFeature').classList.add('completed');
                             document.getElementById('scrabbleFeature').dispatchEvent(new Event('completed'));
@@ -8783,6 +9533,7 @@ function setupFeatureListeners(feature, callback, options) {
             
             if (scrabbleSkipButton) {
                 scrabbleSkipButton.onclick = () => {
+                    pendingWorkflowStepPayload = { feature: 'scrabble', skipped: true };
                     callback(currentFilteredWords);
                     document.getElementById('scrabbleFeature').classList.add('completed');
                     document.getElementById('scrabbleFeature').dispatchEvent(new Event('completed'));
@@ -8809,6 +9560,7 @@ function setupFeatureListeners(feature, callback, options) {
                         const score = parseInt(input);
                         if (!isNaN(score) && score > 0) {
                             const filteredWords = filterWordsByScrabble1(currentFilteredWords, score);
+                            pendingWorkflowStepPayload = { feature: 'scrabble1', score };
                             callback(filteredWords);
                             document.getElementById('scrabble1Feature').classList.add('completed');
                             document.getElementById('scrabble1Feature').dispatchEvent(new Event('completed'));
@@ -8829,6 +9581,7 @@ function setupFeatureListeners(feature, callback, options) {
             if (scrabble1SkipButton) {
                 scrabble1SkipButton.onclick = () => {
                     scrabble1ExactMatchSet = new Set();
+                    pendingWorkflowStepPayload = { feature: 'scrabble1', skipped: true };
                     callback(currentFilteredWords);
                     document.getElementById('scrabble1Feature').classList.add('completed');
                     document.getElementById('scrabble1Feature').dispatchEvent(new Event('completed'));
@@ -8877,6 +9630,7 @@ function setupFeatureListeners(feature, callback, options) {
                     if (ynOnly.length > 0) {
                         lastSologramYnString = ynOnly;
                         const filteredWords = filterWordsBySologram(currentFilteredWords, ynOnly);
+                        pendingWorkflowStepPayload = { feature: 'sologram', ynString: ynOnly };
                         callback(filteredWords);
                         document.getElementById('sologramFeature').classList.add('completed');
                         document.getElementById('sologramFeature').dispatchEvent(new Event('completed'));
@@ -8888,6 +9642,7 @@ function setupFeatureListeners(feature, callback, options) {
             }
             if (sologramSkipButton) {
                 sologramSkipButton.onclick = () => {
+                    pendingWorkflowStepPayload = { feature: 'sologram', skipped: true };
                     callback(currentFilteredWords);
                     document.getElementById('sologramFeature').classList.add('completed');
                     document.getElementById('sologramFeature').dispatchEvent(new Event('completed'));
@@ -12279,6 +13034,7 @@ function setupFeatureListeners(feature, callback, options) {
             const savedNewMode = appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode);
             const scrollMode = savedNewMode === 'alternating' ? 'alternating' : 'mixed';
             const newAnswerCountMode = (appSettings && appSettings.newAnswerCountMode === 'exact') ? 'exact' : 'more';
+            const newDigitBuffer = (appSettings && appSettings.newAnswerDigitBuffer) ? 1 : 0;
             const newAutoStopSeconds = Math.max(1, Math.min(60, parseInt((appSettings && appSettings.newAutoStopSeconds) ?? 10, 10) || 10));
             const customModeOn = !!(appSettings && appSettings.newCustomMode);
             const vowelShownSinceLastStop = { A: 0, E: 0, I: 0, O: 0, U: 0 };
@@ -12412,7 +13168,7 @@ function setupFeatureListeners(feature, callback, options) {
             };
 
             const applyScrollFilter = () => {
-                const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops, newAnswerCountMode);
+                const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops, newAnswerCountMode, newDigitBuffer);
                 callback(filtered);
                 setMessage(scrollStops.length
                     ? `${filtered.length} words (${scrollStops.length} stop(s)).`
@@ -12529,9 +13285,31 @@ function setupFeatureListeners(feature, callback, options) {
 
             if (submitBtn) {
                 submitBtn.onclick = () => {
-                    const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops, newAnswerCountMode);
+                    const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops, newAnswerCountMode, newDigitBuffer);
                     callback(filtered);
-                    setMessage(`${filtered.length} words — step complete.`);
+                    const stopsSnapshot = scrollStops.map((s) => {
+                        const o = { kind: s.kind, batchStr: s.batchStr, digit: s.digit == null || Number.isNaN(s.digit) ? null : s.digit };
+                        if (s.kind === 'position' && s.position != null) o.position = s.position;
+                        return o;
+                    });
+                    pendingWorkflowStepPayload = {
+                        feature: 'new',
+                        answerCountMode: newAnswerCountMode,
+                        digitBuffer: !!newDigitBuffer,
+                        stops: stopsSnapshot,
+                        wordsAfter: filtered.length
+                    };
+                    let msg = `${filtered.length} words — step complete.`;
+                    if (appSettings && appSettings.newShowCompletionDebug !== false && scrollStops.length) {
+                        const lines = scrollStops.map((s, idx) => {
+                            const batch = (s.batchStr || '').toUpperCase().split('').join(' ');
+                            const kindLabel = s.kind === 'position' ? `position ${s.position}` : s.kind;
+                            const ans = s.digit != null && !Number.isNaN(s.digit) ? String(s.digit) : '—';
+                            return `Stop ${idx + 1}: ${batch || '—'} | ${kindLabel} | answer: ${ans}`;
+                        });
+                        msg += '\n\n' + lines.join('\n');
+                    }
+                    setMessage(msg);
                     const featureDiv = document.getElementById('newFeature');
                     if (featureDiv) {
                         featureDiv.classList.add('completed');
@@ -15303,12 +16081,12 @@ function handleCloseClick(e) {
 }
 
 function handleOutsideClick(e) {
-    console.log('Outside clicked');
+    // Only handle true "backdrop" hits. Do not preventDefault on inner content or
+    // <details>/<summary> toggles inside modals (e.g. Workflow REPORT) will break.
+    if (e.target !== this) return;
     e.preventDefault();
-    if (e.target === this) {
-        const featureId = this.id.replace('Info', '');
-        hideFeatureInfo(featureId);
-    }
+    const featureId = this.id.replace('Info', '');
+    hideFeatureInfo(featureId);
 }
 
 // Initialize info buttons when the DOM is loaded
@@ -15414,6 +16192,31 @@ function filterWordsByLetterShapesPrefilter(words, positionOneBased, category) {
         if (!/[a-zA-Z]/.test(ch)) return false;
         return set.has(ch.toUpperCase());
     });
+}
+
+function initWorkflowReportUI() {
+    const openBtn = document.getElementById('workflowReportOpenBtn');
+    const clearBtn = document.getElementById('workflowReportClearBtn');
+    if (openBtn) {
+        openBtn.addEventListener('click', () => {
+            refreshWorkflowReportModalContent();
+            showFeatureInfo('workflowReport');
+        });
+    }
+    if (clearBtn) {
+        clearBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (confirm('Clear all stored workflow run reports (last 10 runs)?')) {
+                clearWorkflowReports();
+                refreshWorkflowReportModalContent();
+            }
+        });
+    }
+    const human = document.getElementById('workflowReportHuman');
+    if (human && !human.dataset.workflowReportDelegated) {
+        human.dataset.workflowReportDelegated = '1';
+        human.addEventListener('click', onWorkflowReportHumanClick);
+    }
 }
 
 function initSettingsUI() {
@@ -15673,6 +16476,22 @@ function initSettingsUI() {
         newCustomModeToggle.checked = !!(appSettings && appSettings.newCustomMode);
         newCustomModeToggle.addEventListener('change', () => {
             appSettings.newCustomMode = newCustomModeToggle.checked;
+            saveAppSettings();
+        });
+    }
+    const newAnswerDigitBufferToggle = document.getElementById('newAnswerDigitBufferToggle');
+    if (newAnswerDigitBufferToggle) {
+        newAnswerDigitBufferToggle.checked = !!(appSettings && appSettings.newAnswerDigitBuffer);
+        newAnswerDigitBufferToggle.addEventListener('change', () => {
+            appSettings.newAnswerDigitBuffer = newAnswerDigitBufferToggle.checked;
+            saveAppSettings();
+        });
+    }
+    const newShowCompletionDebugToggle = document.getElementById('newShowCompletionDebugToggle');
+    if (newShowCompletionDebugToggle) {
+        newShowCompletionDebugToggle.checked = appSettings.newShowCompletionDebug !== false;
+        newShowCompletionDebugToggle.addEventListener('change', () => {
+            appSettings.newShowCompletionDebug = newShowCompletionDebugToggle.checked;
             saveAppSettings();
         });
     }
