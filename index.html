@@ -1012,7 +1012,34 @@
                 <button type="button" id="settingsBackButton" class="settings-back-btn" title="Back to Home">BACK</button>
                 <h2 class="settings-page-title">Settings</h2>
                 <div class="settings-sections">
-                    <div class="settings-section">
+                    <nav class="settings-jump-nav" aria-label="Jump to settings section">
+                        <p class="settings-jump-nav-label">Jump to</p>
+                        <div class="settings-jump-links">
+                            <a href="#settings-section-adv-lex">ADV-LEX</a>
+                            <a href="#settings-section-alpha">ALPHA</a>
+                            <a href="#settings-section-atlas">ATLAS</a>
+                            <a href="#settings-section-mute-binary" title="BINARY (MUTE / MUTE DUO)">BINARY</a>
+                            <a href="#settings-section-calculus">CALCULUS</a>
+                            <a href="#settings-section-connective">CONNECTIVE</a>
+                            <a href="#settings-section-decode">DECODE</a>
+                            <a href="#settings-section-e21">E21</a>
+                            <a href="#settings-section-eye-test">EYE TEST</a>
+                            <a href="#settings-section-length">LENGTH</a>
+                            <a href="#settings-section-letter-lying">Letter Lying</a>
+                            <a href="#settings-section-lexicon">Lexicon</a>
+                            <a href="#settings-section-love-letters">Love Letters</a>
+                            <a href="#settings-section-name-engine">NAME ENGINE</a>
+                            <a href="#settings-section-new">NEW</a>
+                            <a href="#settings-section-omega">OMEGA</a>
+                            <a href="#settings-section-piano-forte">PIANO FORTE</a>
+                            <a href="#settings-section-report">REPORT</a>
+                            <a href="#settings-section-scrabble">SCRABBLE</a>
+                            <a href="#settings-section-sologram">SOLOGRAM</a>
+                            <a href="#settings-section-t9-length">T9 LENGTH</a>
+                            <a href="#settings-section-zero-curves">ZERO CURVES</a>
+                        </div>
+                    </nav>
+                    <div class="settings-section" id="settings-section-mute-binary">
                         <h3 class="settings-section-title">BINARY (MUTE / MUTE DUO)</h3>
                         <p class="settings-section-subtitle">Letter selection mode</p>
                         <label for="muteLetterModeSelect">Mode:</label>
@@ -1027,7 +1054,7 @@
                             <p class="settings-field-help">MUTE/MUTE DUO will step through this string first, then switch to Most Frequent letters automatically.</p>
                         </div>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-name-engine">
                         <h3 class="settings-section-title">NAME ENGINE</h3>
                         <p class="settings-section-subtitle">Word Count — after you enter a name and filmography loads, ask for a number and keep only titles with that many words (punctuation-only tokens don’t count).</p>
                         <label class="toggle-switch" style="margin-top: 8px;">
@@ -1044,7 +1071,7 @@
                             <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">1 Buffer</span>
                         </div>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-length">
                         <h3 class="settings-section-title">LENGTH</h3>
                         <p class="settings-section-subtitle">1 Buffer</p>
                         <label class="toggle-switch">
@@ -1052,7 +1079,7 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-t9-length">
                         <h3 class="settings-section-title">T9 LENGTH</h3>
                         <p class="settings-section-subtitle">1 Buffer</p>
                         <label class="toggle-switch">
@@ -1060,7 +1087,7 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-e21">
                         <h3 class="settings-section-title">E21</h3>
                         <p class="settings-section-subtitle">E in the word?</p>
                         <label class="toggle-switch">
@@ -1068,7 +1095,7 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-connective">
                         <h3 class="settings-section-title">CONNECTIVE</h3>
                         <p class="settings-section-subtitle">Is Y a vowel?</p>
                         <label class="toggle-switch">
@@ -1080,7 +1107,7 @@
                             <input type="number" id="connectiveMinLengthInput" min="1" max="99" value="7" style="width: 90px; margin-left: 8px;">
                         </div>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-scrabble">
                         <h3 class="settings-section-title">SCRABBLE</h3>
                         <p class="settings-section-subtitle">1 Buffer (score ±1, like SCRABBLE1)</p>
                         <label class="toggle-switch">
@@ -1088,7 +1115,7 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-decode">
                         <h3 class="settings-section-title">DECODE</h3>
                         <p class="settings-section-subtitle">Position: which character in the string is the correct one (1-based)</p>
                         <label class="toggle-switch">
@@ -1100,7 +1127,7 @@
                             <input type="number" id="decodePositionInput" min="1" max="20" value="1">
                         </div>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-sologram">
                         <h3 class="settings-section-title">SOLOGRAM</h3>
                         <p class="settings-section-subtitle">Which word list to use for the SOLOGRAM step</p>
                         <label for="sologramBookSelect">Book:</label>
@@ -1114,7 +1141,7 @@
                             <option value="other">OTHER</option>
                         </select>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-piano-forte">
                         <h3 class="settings-section-title">PIANO FORTE</h3>
                         <p class="settings-section-subtitle">Default is A–G. Use custom range to set start and end letter (order = button order).</p>
                         <label class="toggle-switch">
@@ -1129,7 +1156,7 @@
                             <input type="text" id="pianoForteEndLetterInput" placeholder="G" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
                         </div>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-calculus">
                         <h3 class="settings-section-title">CALCULUS</h3>
                         <p class="settings-section-subtitle">Input mode</p>
                         <label for="calculusModeSelect">Mode:</label>
@@ -1138,7 +1165,7 @@
                             <option value="curvesStraight">CURVES/STRAIGHT (C/S)</option>
                         </select>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-lexicon">
                         <h3 class="settings-section-title">Lexicon</h3>
                         <p class="settings-section-subtitle">Lexicon OVERRIDE: when the workflow drops to ≤ N words, show Lexicon next.</p>
                         <label class="toggle-switch">
@@ -1155,7 +1182,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-eye-test">
                         <h3 class="settings-section-title">EYE TEST</h3>
                         <p class="settings-section-subtitle">Default = E</p>
                         <label for="eyeTestFirstLetterInput">First line letter:</label>
@@ -1202,7 +1229,7 @@
                         </div>
                         <p style="font-size: 12px; color: #666; margin-top: 8px;">Saving stores the first-line letter and all six groups. Loading a chart turns on “Use fixed letter groups” and fills the fields.</p>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-new">
                         <h3 class="settings-section-title">NEW</h3>
                         <p class="settings-section-subtitle">4-letter batch generation for the NEW filter</p>
                         <label for="newLetterModeSelect">Letter mode:</label>
@@ -1227,7 +1254,7 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-omega">
                         <h3 class="settings-section-title">OMEGA</h3>
                         <p class="settings-section-subtitle">Which shape/object set to use for the OMEGA filter</p>
                         <label for="omegaShapesCountInput">Number of shapes (0 = until SUBMIT):</label>
@@ -1249,7 +1276,7 @@
                             <button type="button" id="omegaCustomAddShapeBtn" class="small-button">Add shape</button>
                         </div>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-alpha">
                         <h3 class="settings-section-title">ALPHA</h3>
                         <label for="alphaDirectionsCountInput">Number of directions (0 = until SUBMIT):</label>
                         <input type="number" id="alphaDirectionsCountInput" min="0" max="99" value="0" style="width: 4em;">
@@ -1258,6 +1285,16 @@
                             <label for="alphaSwapPovToggle">Swap POV (Left = toward Z, Right = toward A):</label>
                             <input type="checkbox" id="alphaSwapPovToggle">
                         </div>
+                        <div id="alphaEfficiencyCustomLineSettingsWrap" style="display:none;" aria-hidden="true">
+                            <label for="alphaEfficiencyCustomLineInput" style="display:block;margin-top:14px;">Efficiency custom line (optional):</label>
+                            <textarea id="alphaEfficiencyCustomLineInput" rows="2" autocomplete="off" placeholder="Sentence; 10+ letters A–Z after strip. Uses unified line in efficiency; includes N/A in search when some A–Z are missing." style="width:100%;max-width:520px;padding:8px;font-family:inherit;resize:vertical;"></textarea>
+                            <p class="settings-field-help" style="margin-top:6px;">Leave empty for standard A–Z efficiency (Left / Right / Repeat only).</p>
+                        </div>
+                        <p class="settings-field-group-label" style="margin-top: 14px;">Trigger Words</p>
+                        <label for="alphaSpeechStartPhraseInput">Start Trigger Word</label>
+                        <input type="text" id="alphaSpeechStartPhraseInput" autocomplete="off" placeholder="e.g. line is" style="width:100%;max-width:520px;padding:6px;">
+                        <label for="alphaSpeechEndPhraseInput" style="display:block;margin-top:8px;">End Trigger Word</label>
+                        <input type="text" id="alphaSpeechEndPhraseInput" autocomplete="off" placeholder="e.g. over" style="width:100%;max-width:520px;padding:6px;">
                         <p class="settings-field-group-label" style="margin-top: 16px;">First-letter bands (Dictionary B/M/E)</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="dictionaryAlphaUseCustomRangeToggle">
@@ -1282,7 +1319,7 @@
                             <input type="text" id="dictionaryAlphaEndEndInput" placeholder="Z" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
                         </div>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-atlas">
                         <h3 class="settings-section-title">ATLAS letters</h3>
                         <p class="settings-section-subtitle">Which letters count in ATLAS (COLOUR3 always uses Colours)</p>
                         <label for="atlasLetterSourceSelect">Source:</label>
@@ -1299,7 +1336,7 @@
                             <input type="text" id="atlasCustomLetters" placeholder="e.g. ABC or A B C" maxlength="80">
                         </div>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-letter-lying">
                         <h3 class="settings-section-title">Letter Lying</h3>
                         <p class="settings-section-subtitle">Multi-part filter: ask if each letter is in the word (YES/NO)</p>
                         <label for="letterLyingModeSelect">Mode:</label>
@@ -1345,7 +1382,7 @@
                             <label>Dynamic: most frequent letter each step (uses internal defaults)</label>
                         </div>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-zero-curves">
                         <h3 class="settings-section-title">ZERO CURVES</h3>
                         <p class="settings-section-subtitle">APPROX: do not assume non-entered positions are straight</p>
                         <label class="toggle-switch">
@@ -1353,7 +1390,7 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-adv-lex">
                         <h3 class="settings-section-title">ADV-LEX</h3>
                         <p class="settings-section-subtitle">Ignore Position 1: do not suggest Position 1 as best; use the next best position instead.</p>
                         <label class="toggle-switch">
@@ -1362,7 +1399,7 @@
                         </label>
                         <span class="settings-toggle-label">Ignore Position 1</span>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-love-letters">
                         <h3 class="settings-section-title">Love Letters</h3>
                         <p class="settings-section-subtitle">Letter groups per row (1–5 rows). Spectator counts how many distinct letters from each row appear in the word.</p>
                         <label for="loveLettersRowCountSelect">Number of rows:</label>
@@ -1397,7 +1434,7 @@
                         </div>
                         <button type="button" id="loveLettersResetDefaultBtn" class="small-button">Reset to Default</button>
                     </div>
-                    <div class="settings-section">
+                    <div class="settings-section" id="settings-section-report">
                         <h3 class="settings-section-title">REPORT</h3>
                         <p class="settings-section-subtitle">The last 10 runs — word counts per step, NEW settings snapshot when NEW was in the workflow, optional target word per run, readable view plus JSON export. Stored in this browser only.</p>
                         <button type="button" id="workflowReportOpenBtn" class="secondary-btn">Open REPORT</button>

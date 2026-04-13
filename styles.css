@@ -498,6 +498,11 @@ body {
     text-align: center;
 }
 
+/* Unified ALPHA (full / word / repeat): tighter title-to-content spacing */
+.feature-title.alpha-unified-feature-title {
+    margin-bottom: 15px;
+}
+
 /* NAME ENGINE – TMDB person disambiguation */
 .name-engine-picker-hint {
     text-align: center;
@@ -857,6 +862,91 @@ body {
 .alpha-left { border-color: #4a90d9; color: #4a90d9; }
 .alpha-left:hover { background: #e8f0fa; }
 .alpha-repeat { border-color: #888; }
+.alpha-na { border-color: #e67e22; color: #c0392b; }
+.alpha-na:hover { background: #fdf2e9; }
+
+.alpha-line-mic-btn {
+    font-size: 1.75rem;
+    line-height: 1;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 8px 12px;
+    border-radius: 50%;
+    border: 2px solid #3498db;
+    background: #ebf5fb;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.alpha-line-mic-btn:hover { background: #d6eaf8; }
+.alpha-line-mic-btn:active { background: #aed6f1; }
+.alpha-line-mic-btn--listening {
+    background: #fdebd0;
+    border-color: #e67e22;
+    box-shadow: 0 0 0 2px rgba(230, 126, 34, 0.35);
+}
+
+.alpha-line-overlay-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+}
+.alpha-line-overlay-panel {
+    background: #fff;
+    border-radius: 12px;
+    max-width: 440px;
+    width: 100%;
+    padding: 18px 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    box-sizing: border-box;
+}
+.alpha-line-overlay-title {
+    margin: 0 0 8px;
+    font-size: 1.15rem;
+}
+.alpha-line-overlay-help {
+    margin: 0 0 12px;
+    font-size: 0.9rem;
+    color: #555;
+    line-height: 1.4;
+}
+.alpha-line-overlay-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+    font-family: inherit;
+    font-size: 15px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    resize: vertical;
+    min-height: 100px;
+}
+.alpha-line-overlay-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+}
+
+.alpha-unified-saved-lines-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    width: 100%;
+    max-width: 440px;
+    margin: 4px 0 0;
+}
+.alpha-saved-line-btn {
+    max-width: 100%;
+}
 .alpha-right { border-color: #4a90d9; color: #4a90d9; }
 .alpha-right:hover { background: #e8f0fa; }
 .alpha-actions {
@@ -1625,6 +1715,10 @@ input:checked + .slider:before {
         margin-bottom: 20px;
     }
 
+    .feature-title.alpha-unified-feature-title {
+        margin-bottom: 10px;
+    }
+
     .button-container {
         gap: 15px;
     }
@@ -2168,6 +2262,74 @@ input[type="text"] {
 /* Ensure settings sections are centred within the page container */
 .settings-sections {
     width: 100%;
+}
+
+/* Full Settings page: jump links (A–Z) + light cards */
+#settingsPage .settings-jump-nav {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 0 18px 0;
+    padding: 14px 16px;
+    background: #f0f4f1;
+    border: 1px solid #d5ded8;
+    border-radius: 10px;
+    box-sizing: border-box;
+}
+#settingsPage .settings-jump-nav-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #5a6b5f;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 10px 0;
+    text-align: center;
+}
+#settingsPage .settings-jump-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+}
+#settingsPage .settings-jump-links a {
+    font-size: 0.8rem;
+    padding: 7px 12px;
+    background: #fff;
+    border: 1px solid #c5d0c8;
+    border-radius: 999px;
+    color: #1b5e20;
+    text-decoration: none;
+    font-weight: 600;
+    text-transform: uppercase;
+    -webkit-tap-highlight-color: transparent;
+}
+#settingsPage .settings-jump-links a:hover {
+    background: #e8f5e9;
+    border-color: #1b5e20;
+}
+#settingsPage .settings-jump-links a:focus-visible {
+    outline: 2px solid #1b5e20;
+    outline-offset: 2px;
+}
+#settingsPage .settings-sections {
+    gap: 14px;
+}
+#settingsPage .settings-section {
+    scroll-margin-top: 16px;
+    background: #fafbfa;
+    border: 1px solid #e8ebe8;
+    border-radius: 10px;
+    padding: 14px 16px 16px;
+    margin: 0;
+}
+#settingsPage .settings-section:last-child {
+    padding-bottom: 16px;
+}
+
+#settingsPage .settings-page-title,
+#settingsPage .settings-section-title,
+#settingsPage .settings-field-group-label,
+#settingsPage .settings-jump-nav-label {
+    text-transform: uppercase;
 }
 
 /* Settings page: larger, clearer dropdowns (roughly double size) */

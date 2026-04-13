@@ -996,6 +996,13 @@ const DEFAULT_SETTINGS = {
     skipWorkflowDeleteConfirm: false,
     alphaDirectionsCount: 0,  // 0 = enter until SUBMIT; N = auto-submit after N directions
     alphaSwapPov: false,       // OFF: Left=toward A, Right=toward Z; ON: swap
+    /** Optional sentence for ALPHA efficiency (10+ letters A–Z after strip); uses custom line + N/A in search when applicable */
+    alphaEfficiencyCustomLine: '',
+    /** Optional phrases (Settings) trimmed from speech transcript; end phrase also stops recognition */
+    alphaSpeechStartPhrase: 'Okay',
+    alphaSpeechEndPhrase: 'Amazing',
+    /** Unified ALPHA: user-saved letter lines [{ id, name, letters }] for quick-select buttons */
+    alphaSavedCustomLines: [],
     eyeTestFirstLetter: 'E',
     /** Saved EYE TEST letter charts: [{ id, name, eyeTestFirstLetter, eyeTestFixedGroup1..6 }] */
     eyeTestSavedCharts: [],
@@ -4532,16 +4539,22 @@ function updateOmegaEfficiencySubtitle() {
 function updateAlphaEfficiencySubtitle() {
     const el = document.getElementById('alphaEfficiencySubtitle');
     if (!el) return;
-    const n = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
+    const nSetting = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
     const swapPov = !!(appSettings && appSettings.alphaSwapPov);
-    if (n === 0) {
+    const effLineRaw = (appSettings && appSettings.alphaEfficiencyCustomLine) || '';
+    const effParsed = parseUnifiedCustomAlphaLine(effLineRaw);
+    const useEffCustom = effParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN;
+    const includeNaEff = useEffCustom && alphaUnifiedNaDirectionAllowed(effParsed);
+    const cap = includeNaEff ? 5 : 6;
+    const nUsed = nSetting === 0 ? 0 : Math.min(nSetting, cap);
+    if (nSetting === 0) {
         el.textContent = 'Set number of directions to see efficiency';
         return;
     }
     el.textContent = 'Loading…';
     loadWordsForEfficiency()
         .then(words => {
-            const pct = computeAlphaEfficiency(words, n, swapPov);
+            const pct = computeAlphaEfficiency(words, nUsed, swapPov, effLineRaw);
             const wordlistSelect = document.getElementById('wordlistSelect');
             const label = (wordlistSelect && wordlistSelect.options[wordlistSelect.selectedIndex])
                 ? wordlistSelect.options[wordlistSelect.selectedIndex].textContent
@@ -4550,7 +4563,20 @@ function updateAlphaEfficiencySubtitle() {
                 el.textContent = '';
                 return;
             }
-            el.textContent = pct + '% effective with ' + n + ' direction(s) (vs ' + label + ')';
+            const modeNote = useEffCustom
+                ? includeNaEff
+                    ? ' · custom line + N/A in search'
+                    : ' · custom line'
+                : '';
+            el.textContent =
+                pct +
+                '% effective with ' +
+                nUsed +
+                ' direction(s)' +
+                modeNote +
+                ' (vs ' +
+                label +
+                ')';
         })
         .catch(() => {
             el.textContent = '—';
@@ -5721,8 +5747,18 @@ function createUnifiedAlphaFeature(workflowKind) {
     const title =
         workflowKind === 'alphaWord' ? 'ALPHA-WORD' : workflowKind === 'alphaRepeat' ? 'ALPHA-REPEAT' : 'ALPHA';
     div.innerHTML = `
-        <h2 class="feature-title">${title}</h2>
-        <p style="text-align:center;margin:0 0 6px;font-weight:600;">First letter</p>
+        <h2 class="feature-title alpha-unified-feature-title">${title}</h2>
+        <div class="alpha-unified-line-header" style="margin:0 auto 7px;display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;max-width:440px;">
+            <p id="alphaUnifiedLineSummary" class="alpha-unified-line-summary" style="margin:0;text-align:center;font-size:14px;line-height:1.35;color:#333;word-break:break-word;">Letter order: <strong>A–Z</strong> (standard alphabet)</p>
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">
+                <button type="button" id="alphaUnifiedLineMicBtn" class="alpha-line-mic-btn" title="Tap: dictate line. Hold 1.5s: type or paste." aria-label="Tap to dictate custom letter line, or hold 1.5 seconds to type">\u{1F3A4}</button>
+                <button type="button" id="alphaUnifiedLinePangramBtn" class="secondary-btn small-button" title="Use pangram line (quick brown fox…; all A–Z)">Quick brown fox</button>
+                <button type="button" id="alphaUnifiedLineResetBtn" class="secondary-btn small-button" style="display:none;" title="Use standard A–Z order">A–Z</button>
+            </div>
+            <div id="alphaUnifiedSavedLinesRow" class="alpha-unified-saved-lines-row"></div>
+            <p id="alphaUnifiedMicStatus" class="alpha-unified-mic-status" style="margin:0;font-size:12px;color:#444;text-align:center;min-height:1.25em;" aria-live="polite"></p>
+        </div>
+        <p style="text-align:center;margin:0 0 3px;font-weight:600;">First letter</p>
         <div class="section-buttons" style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
             <button type="button" class="section-btn alpha-unified-section-btn" data-alpha-section="begin">Beginning</button>
             <button type="button" class="section-btn alpha-unified-section-btn" data-alpha-section="mid">Middle</button>
@@ -5738,9 +5774,10 @@ function createUnifiedAlphaFeature(workflowKind) {
             <input type="text" id="alphaUnifiedLastLettersInput" autocomplete="off" autocapitalize="characters" style="width:100%;padding:8px;text-transform:uppercase;">
         </div>
         <p class="alpha-sequence-display" id="alphaSequenceDisplay">—</p>
-        <div class="alpha-direction-buttons">
+        <div class="alpha-direction-buttons" style="flex-wrap:wrap;justify-content:center;">
             <button type="button" class="alpha-btn alpha-left" id="alphaLeftBtn" aria-label="Left (toward A)">← Left</button>
             <button type="button" class="alpha-btn alpha-repeat" id="alphaRepeatDirBtn" aria-label="Repeat (same letter)">Repeat</button>
+            <button type="button" class="alpha-btn alpha-na" id="alphaNaBtn" aria-label="Not on line (next letter not in custom line)">N/A</button>
             <button type="button" class="alpha-btn alpha-right" id="alphaRightBtn" aria-label="Right (toward Z)">Right →</button>
         </div>
         <div class="alpha-actions">
@@ -7338,6 +7375,158 @@ function parseAlphaWordLastLettersInput(input) {
     return set;
 }
 
+/** Letters only, uppercase (for custom ALPHA line). */
+function parseUnifiedCustomAlphaLine(raw) {
+    return String(raw || '')
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '');
+}
+
+const ALPHA_CUSTOM_LINE_MIN_LEN = 10;
+const ALPHA_SAVED_CUSTOM_LINES_MAX = 20;
+const ALPHA_SAVED_LINE_NAME_MAX_LEN = 40;
+
+/** Classic pangram as letters-only line (all A–Z present; N/A not used on this preset). */
+const ALPHA_PRESET_QUICK_BROWN_FOX_LINE = parseUnifiedCustomAlphaLine(
+    'The quick brown fox jumps over the lazy dog'
+);
+
+/** True if the line contains at least one occurrence of every A–Z. */
+function customAlphaLineHasAllLettersAZ(line) {
+    const s = typeof line === 'string' ? line : parseUnifiedCustomAlphaLine(line);
+    const set = customAlphaLineCharSet(s);
+    for (let i = 0; i < 26; i++) {
+        if (!set.has(String.fromCharCode(65 + i))) return false;
+    }
+    return true;
+}
+
+/** N/A is only valid when using a custom line (10+ letters) that omits at least one letter A–Z. */
+function alphaUnifiedNaDirectionAllowed(activeCustomLine) {
+    if (!activeCustomLine || activeCustomLine.length < ALPHA_CUSTOM_LINE_MIN_LEN) return false;
+    return !customAlphaLineHasAllLettersAZ(activeCustomLine);
+}
+
+function normalizeAlphaSpeechPhrase(s) {
+    return String(s || '')
+        .trim()
+        .replace(/\s+/g, ' ');
+}
+
+function escapeRegExp(str) {
+    return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Remove optional start/end phrases (case-insensitive) from speech transcript before letter extraction. */
+function stripAlphaSpeechPhrasesFromTranscript(text, startPhrase, endPhrase) {
+    let t = String(text || '');
+    const sp = normalizeAlphaSpeechPhrase(startPhrase);
+    const ep = normalizeAlphaSpeechPhrase(endPhrase);
+    if (sp) {
+        t = t.replace(new RegExp('^\\s*' + escapeRegExp(sp) + '\\s*', 'i'), '');
+    }
+    if (ep) {
+        const low = t.toLowerCase();
+        const epLow = ep.toLowerCase();
+        const idx = low.lastIndexOf(epLow);
+        if (idx >= 0) t = t.slice(0, idx);
+    }
+    return t.trim();
+}
+
+function transcriptHasEndPhrase(text, endPhrase) {
+    const ep = normalizeAlphaSpeechPhrase(endPhrase);
+    if (!ep) return false;
+    return String(text || '').toLowerCase().includes(ep.toLowerCase());
+}
+
+function getAlphaSpeechRecognitionConstructor() {
+    if (typeof window === 'undefined') return null;
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function customAlphaLineCharSet(line) {
+    return new Set((line || '').split(''));
+}
+
+/** B/M/E as index ranges on the custom line (inclusive). Requires line length >= ALPHA_CUSTOM_LINE_MIN_LEN. */
+function getCustomAlphaLineBands(n) {
+    if (n < ALPHA_CUSTOM_LINE_MIN_LEN) return null;
+    const beginHi = Math.ceil(n * 0.5) - 1;
+    const begin = { lo: 0, hi: Math.min(beginHi, n - 1) };
+    const endLo = Math.floor(n * 0.5);
+    const end = { lo: Math.min(endLo, n - 1), hi: n - 1 };
+    const midLo = Math.floor(n * 0.25);
+    const midHi = Math.ceil(n * 0.75) - 1;
+    const mid = { lo: midLo, hi: Math.max(midLo, Math.min(midHi, n - 1)) };
+    return { begin, mid, end };
+}
+
+function customAlphaIndexInBand(i, band) {
+    if (!band) return true;
+    return i >= band.lo && i <= band.hi;
+}
+
+/**
+ * Custom letter line: L/R move by string index (strict); Repeat = same letter as previous step, same index;
+ * NA = next letter must not appear anywhere on the line; anchor index unchanged for following L/R.
+ * firstLetterSection: begin | mid | end uses % bands on the line; null = any position for first char.
+ */
+function alphaDirectionsMatchCustomLine(line, spelling, directions, firstLetterSection, swapPov) {
+    const s = (spelling || '').toUpperCase();
+    const dirs = directions || [];
+    const L = 1 + dirs.length;
+    if (s.length !== L) return false;
+    const n = line.length;
+    if (n < ALPHA_CUSTOM_LINE_MIN_LEN) return false;
+    const bands = getCustomAlphaLineBands(n);
+    const charSet = customAlphaLineCharSet(line);
+    const section = firstLetterSection != null && firstLetterSection !== '' ? firstLetterSection : null;
+    const band = section && bands ? bands[section] : null;
+
+    function dfs(k, anchorIdx) {
+        if (k === L) return true;
+        if (k === 0) {
+            for (let i = 0; i < n; i++) {
+                if (line[i] !== s[0]) continue;
+                if (band && !customAlphaIndexInBand(i, band)) continue;
+                if (dfs(1, i)) return true;
+            }
+            return false;
+        }
+        const d = dirs[k - 1];
+        if (d === 'NA') {
+            if (charSet.has(s[k])) return false;
+            return dfs(k + 1, anchorIdx);
+        }
+        if (anchorIdx < 0) return false;
+        if (d === 'Repeat') {
+            if (s[k] !== s[k - 1]) return false;
+            if (line[anchorIdx] !== s[k]) return false;
+            return dfs(k + 1, anchorIdx);
+        }
+        const towardLo = (d === 'L' && !swapPov) || (d === 'R' && swapPov);
+        for (let j = 0; j < n; j++) {
+            if (line[j] !== s[k]) continue;
+            if (towardLo) {
+                if (j >= anchorIdx) continue;
+            } else if (j <= anchorIdx) {
+                continue;
+            }
+            if (dfs(k + 1, j)) return true;
+        }
+        return false;
+    }
+    return dfs(0, -1);
+}
+
+function alphaDirectionsMatchCustomLinePrefix(wUpper, directions, firstLetterSection, swapPov, line) {
+    const dirs = directions || [];
+    const needLen = 1 + dirs.length;
+    if (wUpper.length < needLen) return false;
+    return alphaDirectionsMatchCustomLine(line, wUpper.slice(0, needLen), dirs, firstLetterSection, swapPov);
+}
+
 /** Spelling length must be exactly 1 + directions.length.
  *  firstLetterSection: 'begin' | 'mid' | 'end' from Dictionary (Alpha), or null/undefined if that step did not run (any A–Z). */
 function alphaDirectionsMatchSpelling(spelling, directions, firstLetterSection, swapPov) {
@@ -7428,16 +7617,19 @@ function filterWordsByAlphaRepeatYes(words, directions, firstLetterSection, swap
 }
 
 /**
- * Unified ALPHA: optional first-letter band, optional repeat YES/NO, optional last-letter set, L/R/Repeat directions.
+ * Unified ALPHA: optional first-letter band, optional repeat YES/NO, optional last-letter set, L/R/Repeat/NA directions.
  * @param {null|'yes'|'no'} repeatMode - null = do not filter on consecutive doubles; yes/no = ALPHA-REPEAT rules
  * @param {Set|null} lastLetterSet - null or empty Set = no last-letter constraint
+ * @param {string} [customLineRaw] - optional; 10+ letters A–Z uses index-based line instead of alphabet (non-letters stripped)
  */
-function filterWordsByAlphaUnified(words, directions, firstLetterSection, swapPov, repeatMode, lastLetterSet) {
+function filterWordsByAlphaUnified(words, directions, firstLetterSection, swapPov, repeatMode, lastLetterSet, customLineRaw) {
     if (!directions || directions.length === 0) return words;
     const dirs = directions;
     const needLen = 1 + dirs.length;
     const useLast = lastLetterSet instanceof Set && lastLetterSet.size > 0;
     const mode = repeatMode === 'yes' || repeatMode === 'no' ? repeatMode : null;
+    const customLine = parseUnifiedCustomAlphaLine(customLineRaw);
+    const useCustom = customLine.length >= ALPHA_CUSTOM_LINE_MIN_LEN;
 
     return words.filter((word) => {
         const w = (word || '').toUpperCase();
@@ -7446,20 +7638,28 @@ function filterWordsByAlphaUnified(words, directions, firstLetterSection, swapPo
             const collapsed = collapseConsecutiveDuplicateLetters(w);
             if (collapsed.length !== needLen) return false;
             if (useLast && !lastLetterSet.has(w[w.length - 1])) return false;
-            return alphaDirectionsMatchSpelling(collapsed, dirs, firstLetterSection, swapPov);
+            return useCustom
+                ? alphaDirectionsMatchCustomLine(customLine, collapsed, dirs, firstLetterSection, swapPov)
+                : alphaDirectionsMatchSpelling(collapsed, dirs, firstLetterSection, swapPov);
         }
         if (mode === 'no') {
             if (hasConsecutiveDuplicateLetters(w)) return false;
             if (w.length !== needLen) return false;
             if (useLast && !lastLetterSet.has(w[w.length - 1])) return false;
-            return alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
+            return useCustom
+                ? alphaDirectionsMatchCustomLine(customLine, w, dirs, firstLetterSection, swapPov)
+                : alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
         }
         if (useLast) {
             if (w.length !== needLen) return false;
             if (!lastLetterSet.has(w[w.length - 1])) return false;
-            return alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
+            return useCustom
+                ? alphaDirectionsMatchCustomLine(customLine, w, dirs, firstLetterSection, swapPov)
+                : alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
         }
-        return alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
+        return useCustom
+            ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
+            : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
     });
 }
 
@@ -7472,9 +7672,9 @@ function filterWordsByRepeatQuestion(words, hasRepeat) {
     });
 }
 
-function alphaDirectionSequences(n) {
+function alphaDirectionSequences(n, includeNa) {
     if (n <= 0) return [[]];
-    const options = ['L', 'R', 'Repeat'];
+    const options = includeNa ? ['L', 'R', 'Repeat', 'NA'] : ['L', 'R', 'Repeat'];
     const out = [];
     function build(seq) {
         if (seq.length === n) {
@@ -7491,17 +7691,26 @@ function alphaDirectionSequences(n) {
     return out;
 }
 
-function computeAlphaEfficiency(words, nDirections, swapPov) {
+/**
+ * @param {string} [customLineRaw] - optional; 10+ letters uses custom-line + unified filter; N/A included in search when line omits some A–Z
+ */
+function computeAlphaEfficiency(words, nDirections, swapPov, customLineRaw) {
     if (!words || words.length === 0) return null;
-    const n = Math.max(0, Math.min(6, nDirections)); // cap at 6 so 3^6 sequences is manageable
+    const customLine = parseUnifiedCustomAlphaLine(customLineRaw || '');
+    const useCustom = customLine.length >= ALPHA_CUSTOM_LINE_MIN_LEN;
+    const includeNa = useCustom && alphaUnifiedNaDirectionAllowed(customLine);
+    const maxN = includeNa ? 5 : 6; // 4^5 and 3^6 are similar sizes
+    const n = Math.max(0, Math.min(maxN, nDirections));
     if (n === 0) return null;
-    const sequences = alphaDirectionSequences(n);
+    const sequences = alphaDirectionSequences(n, includeNa);
     let minWords = words.length + 1;
     let zeroCount = 0;
     const totalCount = sequences.length;
     const section = null; // no Dictionary: efficiency over any first letter
     for (const seq of sequences) {
-        const filtered = filterWordsByAlpha(words, seq, section, swapPov);
+        const filtered = useCustom
+            ? filterWordsByAlphaUnified(words, seq, section, swapPov, null, null, customLine)
+            : filterWordsByAlpha(words, seq, section, swapPov);
         if (filtered.length === 0) zeroCount++;
         else if (filtered.length < minWords) minWords = filtered.length;
     }
@@ -12482,112 +12691,108 @@ function setupFeatureListeners(feature, callback, options) {
                 }
             }
 
-            if (upBtn) {
-                upBtn.onclick = () => {
-                    singingDirections.push('U');
-                    singingUpdateDisplay();
-                    singingApplyIncremental();
-                };
-                upBtn.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    upBtn.click();
-                }, { passive: false });
-            }
-
-            if (downBtn) {
-                downBtn.onclick = () => {
-                    singingDirections.push('D');
-                    singingUpdateDisplay();
-                    singingApplyIncremental();
-                };
-                downBtn.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    downBtn.click();
-                }, { passive: false });
-            }
-
-            if (unfinishedBtn) {
-                unfinishedBtn.onclick = () => {
-                    if (!singingDirections.length) {
-                        alert('Enter at least one UP or DOWN before UNFINISHED.');
+            /** Reliable on iOS: run action on touchstart; suppress duplicate synthetic click. */
+            function attachSingingTapButton(btn, run) {
+                if (!btn) return;
+                let touchHandled = false;
+                btn.addEventListener(
+                    'touchstart',
+                    (e) => {
+                        e.preventDefault();
+                        touchHandled = true;
+                        run();
+                    },
+                    { passive: false }
+                );
+                btn.addEventListener('click', () => {
+                    if (touchHandled) {
+                        touchHandled = false;
                         return;
                     }
-                    const filtered = filterWordsByT9SingingPrefixUnfinished(singingBaseWords, singingDirections, singingMergeRepeatedDigits);
-                    if (filtered.length === 0) {
-                        alert('No words remain that still have more T9 steps after this prefix.');
-                        return;
-                    }
-                    singingUnfinishedPresses++;
-                    const tokens = singingDirections.slice();
-                    const directionsHuman = tokens.map(d => d === 'U' ? 'UP' : 'DOWN').join(', ');
-                    const wordsAfter = filtered.length;
-                    const t9SingingRepeatedLetters = !!singingMergeRepeatedDigits;
-                    const prefixLen = tokens.length + 1;
-                    pendingWorkflowStepPayload = {
-                        feature: 't9Singing',
-                        skipped: false,
-                        directionsTokens: tokens,
-                        directionsHuman,
-                        userInputSummary: `SINGING: ${directionsHuman}${t9SingingRepeatedLetters ? ' (T9: merge consecutive digits)' : ''} · UNFINISHED (T9 length > ${prefixLen})`,
-                        directionCount: tokens.length,
-                        impliedT9Length: null,
-                        impliedT9LengthMin: prefixLen,
-                        t9SingingIncremental: true,
-                        t9SingingSubmitExactLength: false,
-                        t9SingingCompletedVia: 'unfinished',
-                        t9SingingUnfinishedPresses: singingUnfinishedPresses,
-                        t9SingingRepeatedLetters,
-                        t9SingingEncoding: t9SingingRepeatedLetters ? 'collapsedAdjacentT9Digits' : 'standard',
-                        wordsBefore: singingWordsAtStepStart,
-                        wordsAfter
-                    };
-                    callback(filtered);
-                    const featureEl = document.getElementById('t9SingingFeature');
-                    if (featureEl) {
-                        featureEl.classList.add('completed');
-                        dispatchWorkflowFeatureComplete(featureEl, 't9Singing', null);
-                    }
-                };
-                unfinishedBtn.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    unfinishedBtn.click();
-                }, { passive: false });
+                    run();
+                });
             }
 
-            if (submitBtn) {
-                submitBtn.onclick = () => {
-                    singingSubmit();
-                };
-                submitBtn.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    submitBtn.click();
-                }, { passive: false });
-            }
+            attachSingingTapButton(upBtn, () => {
+                singingDirections.push('U');
+                singingUpdateDisplay();
+                singingApplyIncremental();
+            });
 
-            if (skipBtn) {
-                skipBtn.onclick = () => {
-                    const t9SingingRepeatedLetters = !!singingMergeRepeatedDigits;
-                    pendingWorkflowStepPayload = {
-                        feature: 't9Singing',
-                        skipped: true,
-                        userInputSummary: 'SKIP — list unchanged',
-                        t9SingingRepeatedLetters,
-                        t9SingingEncoding: t9SingingRepeatedLetters ? 'collapsedAdjacentT9Digits' : 'standard',
-                        wordsBefore: singingWordsAtStepStart,
-                        wordsAfter: Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null
-                    };
-                    callback(currentFilteredWords);
-                    const featureEl = document.getElementById('t9SingingFeature');
-                    if (featureEl) {
-                        featureEl.classList.add('completed');
-                        dispatchWorkflowFeatureComplete(featureEl, 't9Singing', null);
-                    }
+            attachSingingTapButton(downBtn, () => {
+                singingDirections.push('D');
+                singingUpdateDisplay();
+                singingApplyIncremental();
+            });
+
+            attachSingingTapButton(unfinishedBtn, () => {
+                if (!singingDirections.length) {
+                    alert('Enter at least one UP or DOWN before UNFINISHED.');
+                    return;
+                }
+                const filtered = filterWordsByT9SingingPrefixUnfinished(
+                    singingBaseWords,
+                    singingDirections,
+                    singingMergeRepeatedDigits
+                );
+                if (filtered.length === 0) {
+                    alert('No words remain that still have more T9 steps after this prefix.');
+                    return;
+                }
+                singingUnfinishedPresses++;
+                const tokens = singingDirections.slice();
+                const directionsHuman = tokens.map((d) => (d === 'U' ? 'UP' : 'DOWN')).join(', ');
+                const wordsAfter = filtered.length;
+                const t9SingingRepeatedLetters = !!singingMergeRepeatedDigits;
+                const prefixLen = tokens.length + 1;
+                pendingWorkflowStepPayload = {
+                    feature: 't9Singing',
+                    skipped: false,
+                    directionsTokens: tokens,
+                    directionsHuman,
+                    userInputSummary: `SINGING: ${directionsHuman}${t9SingingRepeatedLetters ? ' (T9: merge consecutive digits)' : ''} · UNFINISHED (T9 length > ${prefixLen})`,
+                    directionCount: tokens.length,
+                    impliedT9Length: null,
+                    impliedT9LengthMin: prefixLen,
+                    t9SingingIncremental: true,
+                    t9SingingSubmitExactLength: false,
+                    t9SingingCompletedVia: 'unfinished',
+                    t9SingingUnfinishedPresses: singingUnfinishedPresses,
+                    t9SingingRepeatedLetters,
+                    t9SingingEncoding: t9SingingRepeatedLetters ? 'collapsedAdjacentT9Digits' : 'standard',
+                    wordsBefore: singingWordsAtStepStart,
+                    wordsAfter
                 };
-                skipBtn.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    skipBtn.click();
-                }, { passive: false });
-            }
+                callback(filtered);
+                const featureEl = document.getElementById('t9SingingFeature');
+                if (featureEl) {
+                    featureEl.classList.add('completed');
+                    dispatchWorkflowFeatureComplete(featureEl, 't9Singing', null);
+                }
+            });
+
+            attachSingingTapButton(submitBtn, () => {
+                singingSubmit();
+            });
+
+            attachSingingTapButton(skipBtn, () => {
+                const t9SingingRepeatedLetters = !!singingMergeRepeatedDigits;
+                pendingWorkflowStepPayload = {
+                    feature: 't9Singing',
+                    skipped: true,
+                    userInputSummary: 'SKIP — list unchanged',
+                    t9SingingRepeatedLetters,
+                    t9SingingEncoding: t9SingingRepeatedLetters ? 'collapsedAdjacentT9Digits' : 'standard',
+                    wordsBefore: singingWordsAtStepStart,
+                    wordsAfter: Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null
+                };
+                callback(currentFilteredWords);
+                const featureEl = document.getElementById('t9SingingFeature');
+                if (featureEl) {
+                    featureEl.classList.add('completed');
+                    dispatchWorkflowFeatureComplete(featureEl, 't9Singing', null);
+                }
+            });
 
             break;
         }
@@ -13076,6 +13281,12 @@ function setupFeatureListeners(feature, callback, options) {
             const alphaSkipBtn = document.getElementById('alphaSkipBtn');
             const alphaSequenceDisplay = document.getElementById('alphaSequenceDisplay');
             const alphaUnifiedLastLettersInput = document.getElementById('alphaUnifiedLastLettersInput');
+            const alphaUnifiedLineSummaryEl = document.getElementById('alphaUnifiedLineSummary');
+            const alphaUnifiedLineMicBtn = document.getElementById('alphaUnifiedLineMicBtn');
+            const alphaUnifiedLinePangramBtn = document.getElementById('alphaUnifiedLinePangramBtn');
+            const alphaUnifiedLineResetBtn = document.getElementById('alphaUnifiedLineResetBtn');
+            const alphaNaBtn = document.getElementById('alphaNaBtn');
+            let unifiedAlphaCustomLineParsed = '';
             const sectionBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-section-btn')) : [];
             const repeatBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-repeat-btn')) : [];
             const alphaDirectionsCount = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
@@ -13083,6 +13294,241 @@ function setupFeatureListeners(feature, callback, options) {
             let alphaDirections = [];
             let selectedFirstSection = null;
             let selectedRepeatMode = null;
+
+            function attachUnifiedAlphaTapBtn(btn, run) {
+                if (!btn) return;
+                let touchHandled = false;
+                btn.addEventListener(
+                    'touchstart',
+                    (e) => {
+                        e.preventDefault();
+                        touchHandled = true;
+                        run();
+                    },
+                    { passive: false }
+                );
+                btn.addEventListener('click', () => {
+                    if (touchHandled) {
+                        touchHandled = false;
+                        return;
+                    }
+                    run();
+                });
+            }
+
+            function ensureAlphaSavedCustomLinesArray() {
+                if (!Array.isArray(appSettings.alphaSavedCustomLines)) appSettings.alphaSavedCustomLines = [];
+            }
+
+            const ALPHA_SAVED_LINE_LONGPRESS_MS = 550;
+
+            function saveAlphaUnifiedNamedLine(displayName, lettersParsed, editingId) {
+                ensureAlphaSavedCustomLinesArray();
+                const name = String(displayName || '')
+                    .trim()
+                    .slice(0, ALPHA_SAVED_LINE_NAME_MAX_LEN);
+                if (!name) {
+                    alert('Enter a title for this saved line.');
+                    return false;
+                }
+                const letters =
+                    typeof lettersParsed === 'string'
+                        ? lettersParsed.toUpperCase().replace(/[^A-Z]/g, '')
+                        : parseUnifiedCustomAlphaLine(lettersParsed);
+                if (letters.length < ALPHA_CUSTOM_LINE_MIN_LEN) {
+                    alert(`Saved line needs at least ${ALPHA_CUSTOM_LINE_MIN_LEN} letters A–Z.`);
+                    return false;
+                }
+                const arr = appSettings.alphaSavedCustomLines;
+                const dupIdx = arr.findIndex((e) => e && e.letters === letters && e.id !== editingId);
+                if (dupIdx >= 0 && !confirm(`Replace saved “${arr[dupIdx].name}” with this entry?`)) return false;
+                if (dupIdx >= 0) arr.splice(dupIdx, 1);
+                if (editingId) {
+                    const idx = arr.findIndex((e) => e.id === editingId);
+                    if (idx >= 0) {
+                        arr[idx] = { id: editingId, name, letters };
+                        saveAppSettings();
+                        renderSavedAlphaLineButtons();
+                        return true;
+                    }
+                }
+                while (arr.length >= ALPHA_SAVED_CUSTOM_LINES_MAX) arr.shift();
+                arr.push({
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                    name,
+                    letters
+                });
+                saveAppSettings();
+                renderSavedAlphaLineButtons();
+                return true;
+            }
+
+            function openAlphaSavedLineActionSheet(entry) {
+                if (!entry || !entry.id) return;
+                const backdrop = document.createElement('div');
+                backdrop.className = 'alpha-line-overlay-backdrop';
+                backdrop.setAttribute('role', 'dialog');
+                backdrop.setAttribute('aria-modal', 'true');
+                backdrop.setAttribute('aria-label', 'Saved line options');
+                const box = document.createElement('div');
+                box.className = 'alpha-line-overlay-panel';
+                box.style.maxWidth = '340px';
+                const h = document.createElement('h3');
+                h.className = 'alpha-line-overlay-title';
+                h.textContent = entry.name || 'Saved line';
+                h.style.wordBreak = 'break-word';
+                const p = document.createElement('p');
+                p.className = 'alpha-line-overlay-help';
+                p.textContent = 'Edit reopens the editor; Delete removes this button.';
+                const stack = document.createElement('div');
+                stack.style.cssText = 'display:flex;flex-direction:column;gap:10px;margin-top:12px;';
+                const editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.className = 'primary-btn';
+                editBtn.textContent = 'Edit';
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'secondary-btn';
+                delBtn.textContent = 'Delete';
+                const cancelBtn = document.createElement('button');
+                cancelBtn.type = 'button';
+                cancelBtn.className = 'secondary-btn';
+                cancelBtn.textContent = 'Cancel';
+                stack.appendChild(editBtn);
+                stack.appendChild(delBtn);
+                stack.appendChild(cancelBtn);
+                box.appendChild(h);
+                box.appendChild(p);
+                box.appendChild(stack);
+                backdrop.appendChild(box);
+                document.body.appendChild(backdrop);
+                function close() {
+                    if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+                }
+                cancelBtn.onclick = close;
+                backdrop.addEventListener('click', (e) => {
+                    if (e.target === backdrop) close();
+                });
+                editBtn.onclick = () => {
+                    close();
+                    openAlphaCustomLineOverlay({
+                        id: entry.id,
+                        name: entry.name,
+                        letters: entry.letters
+                    });
+                };
+                delBtn.onclick = () => {
+                    if (!confirm(`Delete saved line “${entry.name}”?`)) return;
+                    appSettings.alphaSavedCustomLines = appSettings.alphaSavedCustomLines.filter((e) => e.id !== entry.id);
+                    saveAppSettings();
+                    renderSavedAlphaLineButtons();
+                    close();
+                };
+            }
+
+            function attachSavedAlphaLineButton(btn, entry) {
+                if (!btn || !entry) return;
+                function applyLetters() {
+                    unifiedAlphaCustomLineParsed = entry.letters;
+                    refreshLineSummaryAndNa();
+                }
+                let lpTimer = null;
+                let longPressFired = false;
+                let mouseSuppressClick = false;
+
+                btn.addEventListener(
+                    'touchstart',
+                    () => {
+                        longPressFired = false;
+                        if (lpTimer) clearTimeout(lpTimer);
+                        lpTimer = setTimeout(() => {
+                            lpTimer = null;
+                            longPressFired = true;
+                            openAlphaSavedLineActionSheet(entry);
+                        }, ALPHA_SAVED_LINE_LONGPRESS_MS);
+                    },
+                    { passive: true }
+                );
+                btn.addEventListener('touchend', () => {
+                    if (lpTimer) {
+                        clearTimeout(lpTimer);
+                        lpTimer = null;
+                        if (!longPressFired) applyLetters();
+                    }
+                    longPressFired = false;
+                });
+                btn.addEventListener('touchcancel', () => {
+                    if (lpTimer) clearTimeout(lpTimer);
+                    lpTimer = null;
+                    longPressFired = false;
+                });
+
+                btn.addEventListener('mousedown', () => {
+                    longPressFired = false;
+                    mouseSuppressClick = false;
+                    if (lpTimer) clearTimeout(lpTimer);
+                    lpTimer = setTimeout(() => {
+                        lpTimer = null;
+                        longPressFired = true;
+                        openAlphaSavedLineActionSheet(entry);
+                    }, ALPHA_SAVED_LINE_LONGPRESS_MS);
+                });
+                btn.addEventListener('mouseleave', () => {
+                    if (lpTimer) {
+                        clearTimeout(lpTimer);
+                        lpTimer = null;
+                    }
+                });
+                btn.addEventListener('mouseup', () => {
+                    if (lpTimer) {
+                        clearTimeout(lpTimer);
+                        lpTimer = null;
+                        if (!longPressFired) {
+                            applyLetters();
+                            mouseSuppressClick = true;
+                        }
+                    }
+                    longPressFired = false;
+                });
+                btn.addEventListener('click', (ev) => {
+                    if (mouseSuppressClick) {
+                        mouseSuppressClick = false;
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                    }
+                });
+                btn.addEventListener('contextmenu', (ev) => {
+                    ev.preventDefault();
+                    openAlphaSavedLineActionSheet(entry);
+                });
+            }
+
+            function renderSavedAlphaLineButtons() {
+                const row = document.getElementById('alphaUnifiedSavedLinesRow');
+                if (!row) return;
+                ensureAlphaSavedCustomLinesArray();
+                row.innerHTML = '';
+                const arr = appSettings.alphaSavedCustomLines.filter(
+                    (e) =>
+                        e &&
+                        typeof e.id === 'string' &&
+                        typeof e.name === 'string' &&
+                        typeof e.letters === 'string' &&
+                        e.letters.length >= ALPHA_CUSTOM_LINE_MIN_LEN
+                );
+                for (const entry of arr) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'secondary-btn small-button alpha-saved-line-btn';
+                    const rawName = entry.name || 'Saved';
+                    const short = rawName.length > 26 ? `${rawName.slice(0, 26)}…` : rawName;
+                    btn.textContent = short;
+                    btn.title = `${rawName} · ${entry.letters.length} letters · tap = use · hold = edit/delete`;
+                    btn.setAttribute('data-alpha-saved-id', entry.id);
+                    attachSavedAlphaLineButton(btn, { id: entry.id, name: entry.name, letters: entry.letters });
+                    row.appendChild(btn);
+                }
+            }
 
             function syncSectionHighlight() {
                 sectionBtns.forEach((btn) => {
@@ -13156,9 +13602,317 @@ function setupFeatureListeners(feature, callback, options) {
             function alphaUpdateDisplay() {
                 if (alphaSequenceDisplay) {
                     alphaSequenceDisplay.textContent = alphaDirections.length
-                        ? alphaDirections.map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat')).join(', ')
+                        ? alphaDirections
+                              .map((d) =>
+                                  d === 'L' ? 'Left' : d === 'R' ? 'Right' : d === 'NA' ? 'N/A' : 'Repeat'
+                              )
+                              .join(', ')
                         : '—';
                 }
+            }
+
+            function refreshLineSummaryAndNa() {
+                const line =
+                    unifiedAlphaCustomLineParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN
+                        ? unifiedAlphaCustomLineParsed
+                        : '';
+                if (alphaUnifiedLineSummaryEl) {
+                    if (!line) {
+                        alphaUnifiedLineSummaryEl.innerHTML =
+                            'Letter order: <strong>A–Z</strong> (standard alphabet)';
+                    } else {
+                        alphaUnifiedLineSummaryEl.innerHTML =
+                            '<span style="font-size:14px;font-weight:600;letter-spacing:0.04em;word-break:break-all;line-height:1.35;">' +
+                            line +
+                            '</span>';
+                    }
+                }
+                if (alphaUnifiedLineResetBtn) {
+                    alphaUnifiedLineResetBtn.style.display = line ? '' : 'none';
+                }
+                if (alphaNaBtn) {
+                    const showNa = alphaUnifiedNaDirectionAllowed(line);
+                    alphaNaBtn.style.display = showNa ? '' : 'none';
+                    alphaNaBtn.disabled = !showNa;
+                    alphaNaBtn.setAttribute('aria-hidden', showNa ? 'false' : 'true');
+                    if (!showNa) {
+                        const before = alphaDirections.length;
+                        alphaDirections = alphaDirections.filter((d) => d !== 'NA');
+                        if (before !== alphaDirections.length) alphaUpdateDisplay();
+                    }
+                }
+            }
+
+            function openAlphaCustomLineOverlay(editingEntry) {
+                const editingId = editingEntry && editingEntry.id ? editingEntry.id : null;
+                const backdrop = document.createElement('div');
+                backdrop.className = 'alpha-line-overlay-backdrop';
+                backdrop.setAttribute('role', 'dialog');
+                backdrop.setAttribute('aria-modal', 'true');
+                backdrop.setAttribute('aria-label', editingId ? 'Edit saved letter line' : 'Custom letter line');
+                const box = document.createElement('div');
+                box.className = 'alpha-line-overlay-panel';
+                const titleText = editingId ? 'Edit saved line' : 'Custom letter line';
+                box.innerHTML =
+                    '<h3 class="alpha-line-overlay-title" id="alphaLineOverlayHeading">' +
+                    titleText +
+                    '</h3>' +
+                    '<p class="alpha-line-overlay-help">Type or paste text. Only A–Z are kept; need at least ' +
+                    ALPHA_CUSTOM_LINE_MIN_LEN +
+                    ' letters. <strong>SAVE</strong> needs a title and creates or updates your quick button.</p>' +
+                    '<textarea id="alphaLineOverlayTextarea" class="alpha-line-overlay-textarea" rows="5" autocomplete="off"></textarea>' +
+                    '<label for="alphaLineOverlaySaveNameInput" class="alpha-line-overlay-help" style="display:block;margin-top:12px;margin-bottom:4px;">Title (button label)</label>' +
+                    '<input type="text" id="alphaLineOverlaySaveNameInput" maxlength="' +
+                    ALPHA_SAVED_LINE_NAME_MAX_LEN +
+                    '" placeholder="e.g. Show opener" autocomplete="off" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #ccc;border-radius:8px;font-family:inherit;margin-bottom:4px;">' +
+                    '<div class="alpha-line-overlay-actions">' +
+                    '<button type="button" class="secondary-btn" id="alphaLineOverlayCancel">Cancel</button>' +
+                    '<button type="button" class="secondary-btn" id="alphaLineOverlayApplyOnly">Apply only</button>' +
+                    '<button type="button" class="primary-btn" id="alphaLineOverlaySave">SAVE</button>' +
+                    '</div>';
+                backdrop.appendChild(box);
+                document.body.appendChild(backdrop);
+                const ta = box.querySelector('#alphaLineOverlayTextarea');
+                const nameInput = box.querySelector('#alphaLineOverlaySaveNameInput');
+                if (editingEntry && editingEntry.letters && ta) {
+                    ta.value = editingEntry.letters;
+                } else if (ta) {
+                    ta.value = unifiedAlphaCustomLineParsed || '';
+                }
+                if (nameInput && editingEntry && editingEntry.name) {
+                    nameInput.value = editingEntry.name;
+                }
+                function close() {
+                    if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+                }
+                const cancelBtn = box.querySelector('#alphaLineOverlayCancel');
+                const applyOnlyBtn = box.querySelector('#alphaLineOverlayApplyOnly');
+                const saveBtn = box.querySelector('#alphaLineOverlaySave');
+                if (cancelBtn) cancelBtn.onclick = close;
+                backdrop.addEventListener('click', (e) => {
+                    if (e.target === backdrop) close();
+                });
+                if (applyOnlyBtn) {
+                    applyOnlyBtn.onclick = () => {
+                        const parsed = parseUnifiedCustomAlphaLine(ta && ta.value);
+                        if (parsed.length < ALPHA_CUSTOM_LINE_MIN_LEN) {
+                            alert(
+                                `Need at least ${ALPHA_CUSTOM_LINE_MIN_LEN} letters A–Z (after removing other characters). Currently ${parsed.length}.`
+                            );
+                            return;
+                        }
+                        unifiedAlphaCustomLineParsed = parsed;
+                        refreshLineSummaryAndNa();
+                        close();
+                    };
+                }
+                if (saveBtn) {
+                    saveBtn.onclick = () => {
+                        const parsed = parseUnifiedCustomAlphaLine(ta && ta.value);
+                        if (parsed.length < ALPHA_CUSTOM_LINE_MIN_LEN) {
+                            alert(
+                                `Need at least ${ALPHA_CUSTOM_LINE_MIN_LEN} letters A–Z (after removing other characters). Currently ${parsed.length}.`
+                            );
+                            return;
+                        }
+                        const titleVal = nameInput && nameInput.value.trim();
+                        if (!saveAlphaUnifiedNamedLine(titleVal, parsed, editingId)) return;
+                        unifiedAlphaCustomLineParsed = parsed;
+                        refreshLineSummaryAndNa();
+                        close();
+                    };
+                }
+                setTimeout(() => {
+                    if (ta) ta.focus();
+                }, 50);
+            }
+
+            const ALPHA_MIC_HOLD_MS = 1500;
+            let alphaMicHoldTimer = null;
+            let alphaMicDownAt = 0;
+            let alphaMicLongPressConsumed = false;
+            let alphaMicTouchActive = false;
+            let alphaUnifiedSpeechRec = null;
+            let alphaUnifiedSpeechListening = false;
+            let alphaUnifiedSpeechApplyOnEnd = true;
+            let alphaUnifiedSpeechFinalBuf = '';
+            let alphaUnifiedSpeechLastInterim = '';
+            const alphaUnifiedMicStatusEl = document.getElementById('alphaUnifiedMicStatus');
+
+            function clearAlphaMicHoldTimer() {
+                if (alphaMicHoldTimer) {
+                    clearTimeout(alphaMicHoldTimer);
+                    alphaMicHoldTimer = null;
+                }
+            }
+
+            function stopAlphaUnifiedSpeechFromWorkflow() {
+                alphaUnifiedSpeechApplyOnEnd = false;
+                if (!alphaUnifiedSpeechRec) return;
+                try {
+                    alphaUnifiedSpeechRec.stop();
+                } catch (e) {
+                    /* ignore */
+                }
+            }
+
+            function applyAlphaUnifiedTranscriptToLine(rawText) {
+                const startP = (appSettings && appSettings.alphaSpeechStartPhrase) || '';
+                const endP = (appSettings && appSettings.alphaSpeechEndPhrase) || '';
+                const stripped = stripAlphaSpeechPhrasesFromTranscript(rawText, startP, endP);
+                const parsed = parseUnifiedCustomAlphaLine(stripped);
+                if (parsed.length < ALPHA_CUSTOM_LINE_MIN_LEN) {
+                    alert(
+                        `After speech, need at least ${ALPHA_CUSTOM_LINE_MIN_LEN} letters A–Z (currently ${parsed.length}). Try a longer phrase or use hold-to-type.`
+                    );
+                    return;
+                }
+                unifiedAlphaCustomLineParsed = parsed;
+                refreshLineSummaryAndNa();
+            }
+
+            function toggleAlphaUnifiedSpeech(micBtn) {
+                const Ctor = getAlphaSpeechRecognitionConstructor();
+                if (!Ctor) {
+                    alert('Speech recognition is not available in this browser. Use hold 1.5s on the mic to type your line.');
+                    return;
+                }
+                if (alphaUnifiedSpeechListening && alphaUnifiedSpeechRec) {
+                    alphaUnifiedSpeechApplyOnEnd = true;
+                    try {
+                        alphaUnifiedSpeechRec.stop();
+                    } catch (e) {
+                        /* ignore */
+                    }
+                    return;
+                }
+                alphaUnifiedSpeechFinalBuf = '';
+                alphaUnifiedSpeechLastInterim = '';
+                alphaUnifiedSpeechApplyOnEnd = true;
+                const rec = new Ctor();
+                alphaUnifiedSpeechRec = rec;
+                rec.lang = (navigator.language || 'en-US').replace('_', '-');
+                rec.continuous = true;
+                rec.interimResults = true;
+                rec.onstart = () => {
+                    alphaUnifiedSpeechListening = true;
+                    if (micBtn) micBtn.classList.add('alpha-line-mic-btn--listening');
+                    if (alphaUnifiedMicStatusEl) alphaUnifiedMicStatusEl.textContent = 'Listening…';
+                };
+                rec.onerror = () => {
+                    if (alphaUnifiedMicStatusEl) alphaUnifiedMicStatusEl.textContent = '';
+                    if (micBtn) micBtn.classList.remove('alpha-line-mic-btn--listening');
+                    alphaUnifiedSpeechListening = false;
+                    alphaUnifiedSpeechRec = null;
+                };
+                rec.onresult = (ev) => {
+                    let interim = '';
+                    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+                        const r = ev.results[i];
+                        if (r.isFinal) alphaUnifiedSpeechFinalBuf += r[0].transcript;
+                        else interim += r[0].transcript;
+                    }
+                    alphaUnifiedSpeechLastInterim = interim;
+                    const endPhrase = (appSettings && appSettings.alphaSpeechEndPhrase) || '';
+                    const live = (alphaUnifiedSpeechFinalBuf + interim).trim();
+                    if (alphaUnifiedMicStatusEl) {
+                        alphaUnifiedMicStatusEl.textContent = live ? `Hearing: ${live}` : 'Listening…';
+                    }
+                    if (endPhrase && transcriptHasEndPhrase(alphaUnifiedSpeechFinalBuf + interim, endPhrase)) {
+                        alphaUnifiedSpeechApplyOnEnd = true;
+                        try {
+                            rec.stop();
+                        } catch (e) {
+                            /* ignore */
+                        }
+                    }
+                };
+                rec.onend = () => {
+                    if (micBtn) micBtn.classList.remove('alpha-line-mic-btn--listening');
+                    alphaUnifiedSpeechListening = false;
+                    alphaUnifiedSpeechRec = null;
+                    const shouldApply = alphaUnifiedSpeechApplyOnEnd;
+                    alphaUnifiedSpeechApplyOnEnd = true;
+                    const combined = (alphaUnifiedSpeechFinalBuf + alphaUnifiedSpeechLastInterim).trim();
+                    alphaUnifiedSpeechFinalBuf = '';
+                    alphaUnifiedSpeechLastInterim = '';
+                    if (!shouldApply) {
+                        if (alphaUnifiedMicStatusEl) alphaUnifiedMicStatusEl.textContent = '';
+                        return;
+                    }
+                    if (combined) applyAlphaUnifiedTranscriptToLine(combined);
+                    else if (alphaUnifiedMicStatusEl) alphaUnifiedMicStatusEl.textContent = '';
+                };
+                try {
+                    rec.start();
+                } catch (e) {
+                    alphaUnifiedSpeechRec = null;
+                    if (micBtn) micBtn.classList.remove('alpha-line-mic-btn--listening');
+                    alert('Could not start speech recognition. Check microphone permission and use HTTPS.');
+                }
+            }
+
+            function attachAlphaMicControls(btn) {
+                if (!btn) return;
+                let lastShortTapTs = 0;
+                function onPointerDown(ev) {
+                    if (ev.type === 'mousedown' && ev.button !== 0) return;
+                    alphaMicDownAt = Date.now();
+                    alphaMicLongPressConsumed = false;
+                    clearAlphaMicHoldTimer();
+                    alphaMicHoldTimer = setTimeout(() => {
+                        alphaMicHoldTimer = null;
+                        alphaMicLongPressConsumed = true;
+                        openAlphaCustomLineOverlay();
+                    }, ALPHA_MIC_HOLD_MS);
+                }
+                function onPointerUp() {
+                    clearAlphaMicHoldTimer();
+                    const dt = Date.now() - alphaMicDownAt;
+                    if (alphaMicLongPressConsumed) {
+                        alphaMicLongPressConsumed = false;
+                        return;
+                    }
+                    if (dt >= 30 && dt < ALPHA_MIC_HOLD_MS) {
+                        const now = Date.now();
+                        if (now - lastShortTapTs < 450) return;
+                        lastShortTapTs = now;
+                        toggleAlphaUnifiedSpeech(btn);
+                    }
+                }
+                btn.addEventListener('mousedown', (e) => {
+                    if (alphaMicTouchActive) return;
+                    onPointerDown(e);
+                });
+                btn.addEventListener('mouseup', (e) => {
+                    if (alphaMicTouchActive) return;
+                    onPointerUp();
+                });
+                btn.addEventListener('mouseleave', () => {
+                    clearAlphaMicHoldTimer();
+                });
+                btn.addEventListener(
+                    'touchstart',
+                    (e) => {
+                        alphaMicTouchActive = true;
+                        e.preventDefault();
+                        onPointerDown(e);
+                    },
+                    { passive: false }
+                );
+                btn.addEventListener(
+                    'touchend',
+                    (e) => {
+                        e.preventDefault();
+                        onPointerUp();
+                        alphaMicTouchActive = false;
+                    },
+                    { passive: false }
+                );
+                btn.addEventListener('touchcancel', () => {
+                    clearAlphaMicHoldTimer();
+                    alphaMicTouchActive = false;
+                });
             }
 
             function firstLetterSectionForFilter() {
@@ -13172,7 +13926,15 @@ function setupFeatureListeners(feature, callback, options) {
 
             function unifiedAlphaSubmit() {
                 if (alphaDirections.length === 0) {
-                    alert('Add at least one direction (Left, Right, or Repeat), then SUBMIT.');
+                    alert('Add at least one direction (Left, Right, Repeat, or N/A), then SUBMIT.');
+                    return;
+                }
+                const customLineParsed =
+                    unifiedAlphaCustomLineParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN
+                        ? unifiedAlphaCustomLineParsed
+                        : '';
+                if (alphaDirections.includes('NA') && !alphaUnifiedNaDirectionAllowed(customLineParsed)) {
+                    alert('N/A is only available when using a custom line that does not include every letter A–Z.');
                     return;
                 }
                 const firstLetterSection = firstLetterSectionForFilter();
@@ -13184,35 +13946,53 @@ function setupFeatureListeners(feature, callback, options) {
                     firstLetterSection,
                     alphaSwapPov,
                     repeatMode,
-                    lastLetterSet
+                    lastLetterSet,
+                    customLineParsed
                 );
                 const directionsHuman = alphaDirections
-                    .map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat'))
+                    .map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : d === 'NA' ? 'N/A' : 'Repeat'))
                     .join(', ');
                 const sectionLabel = selectedFirstSection == null ? 'first letter unset' : selectedFirstSection;
                 const repeatLabel = selectedRepeatMode == null ? 'doubles unset' : selectedRepeatMode.toUpperCase();
                 const lastLettersSorted = lastLetterSet.size ? [...lastLetterSet].sort().join('') : '';
                 const lastSummary = lastLetterSet.size ? `last ∈ {${lastLettersSorted}}` : 'no last-letter filter';
+                const customSummary =
+                    customLineParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN
+                        ? `custom line (${customLineParsed.length} letters)`
+                        : 'alphabet order';
                 pendingWorkflowStepPayload = {
                     feature: workflowFeatureKey,
                     skipped: false,
-                    userInputSummary: `${workflowFeatureKey}: ${sectionLabel} · doubles ${repeatLabel} · ${lastSummary} · ${directionsHuman}`,
+                    userInputSummary: `${workflowFeatureKey}: ${customSummary} · ${sectionLabel} · doubles ${repeatLabel} · ${lastSummary} · ${directionsHuman}`,
                     userInput: {
                         firstLetterSection,
                         repeatMode,
                         lastLetters: lastLettersSorted,
+                        customAlphaLine:
+                            customLineParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN ? customLineParsed : null,
                         directions: alphaDirections.slice(),
                         directionsHuman
                     },
                     wordsBefore: currentFilteredWords.length,
                     wordsAfter: filtered.length
                 };
+                stopAlphaUnifiedSpeechFromWorkflow();
                 callback(filtered);
                 if (rootEl) rootEl.classList.add('completed');
                 dispatchWorkflowFeatureComplete(rootEl, workflowFeatureKey, null);
             }
 
             function pushAlphaDir(dir) {
+                if (
+                    dir === 'NA' &&
+                    !alphaUnifiedNaDirectionAllowed(
+                        unifiedAlphaCustomLineParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN
+                            ? unifiedAlphaCustomLineParsed
+                            : ''
+                    )
+                ) {
+                    return;
+                }
                 alphaDirections.push(dir);
                 alphaUpdateDisplay();
                 if (alphaDirectionsCount > 0 && alphaDirections.length >= alphaDirectionsCount) unifiedAlphaSubmit();
@@ -13232,6 +14012,13 @@ function setupFeatureListeners(feature, callback, options) {
                     alphaRepeatDirBtn.click();
                 }, { passive: false });
             }
+            if (alphaNaBtn) {
+                alphaNaBtn.onclick = () => pushAlphaDir('NA');
+                alphaNaBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaNaBtn.click();
+                }, { passive: false });
+            }
             if (alphaRightBtn) {
                 alphaRightBtn.onclick = () => pushAlphaDir('R');
                 alphaRightBtn.addEventListener('touchstart', (e) => {
@@ -13248,6 +14035,7 @@ function setupFeatureListeners(feature, callback, options) {
             }
             if (alphaSkipBtn) {
                 alphaSkipBtn.onclick = () => {
+                    stopAlphaUnifiedSpeechFromWorkflow();
                     callback(currentFilteredWords);
                     if (rootEl) rootEl.classList.add('completed');
                     dispatchWorkflowFeatureComplete(rootEl, workflowFeatureKey, {
@@ -13261,6 +14049,17 @@ function setupFeatureListeners(feature, callback, options) {
                     alphaSkipBtn.click();
                 }, { passive: false });
             }
+            attachUnifiedAlphaTapBtn(alphaUnifiedLinePangramBtn, () => {
+                unifiedAlphaCustomLineParsed = ALPHA_PRESET_QUICK_BROWN_FOX_LINE;
+                refreshLineSummaryAndNa();
+            });
+            attachUnifiedAlphaTapBtn(alphaUnifiedLineResetBtn, () => {
+                unifiedAlphaCustomLineParsed = '';
+                refreshLineSummaryAndNa();
+            });
+            attachAlphaMicControls(alphaUnifiedLineMicBtn);
+            refreshLineSummaryAndNa();
+            renderSavedAlphaLineButtons();
             break;
         }
 
@@ -17567,6 +18366,31 @@ function initSettingsUI() {
             appSettings.alphaSwapPov = alphaSwapPovToggle.checked;
             saveAppSettings();
             updateAlphaEfficiencySubtitle();
+        });
+    }
+    const alphaEfficiencyCustomLineInput = document.getElementById('alphaEfficiencyCustomLineInput');
+    const alphaSpeechStartPhraseInput = document.getElementById('alphaSpeechStartPhraseInput');
+    const alphaSpeechEndPhraseInput = document.getElementById('alphaSpeechEndPhraseInput');
+    if (alphaEfficiencyCustomLineInput) {
+        alphaEfficiencyCustomLineInput.value = (appSettings && appSettings.alphaEfficiencyCustomLine) || '';
+        alphaEfficiencyCustomLineInput.addEventListener('input', () => {
+            appSettings.alphaEfficiencyCustomLine = alphaEfficiencyCustomLineInput.value;
+            saveAppSettings();
+            updateAlphaEfficiencySubtitle();
+        });
+    }
+    if (alphaSpeechStartPhraseInput) {
+        alphaSpeechStartPhraseInput.value = (appSettings && appSettings.alphaSpeechStartPhrase) || '';
+        alphaSpeechStartPhraseInput.addEventListener('input', () => {
+            appSettings.alphaSpeechStartPhrase = alphaSpeechStartPhraseInput.value;
+            saveAppSettings();
+        });
+    }
+    if (alphaSpeechEndPhraseInput) {
+        alphaSpeechEndPhraseInput.value = (appSettings && appSettings.alphaSpeechEndPhrase) || '';
+        alphaSpeechEndPhraseInput.addEventListener('input', () => {
+            appSettings.alphaSpeechEndPhrase = alphaSpeechEndPhraseInput.value;
+            saveAppSettings();
         });
     }
     updateAlphaEfficiencySubtitle();
