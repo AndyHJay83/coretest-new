@@ -157,6 +157,53 @@ const WORKFLOW_REPORT_MAX = 10;
 /** Set before dispatching `completed` on a feature so REPORT can store step-specific data */
 let pendingWorkflowStepPayload = null;
 
+/** While SINGING is active: `(prevRepeated) => void` to re-filter after Repeated T9 digits changes; cleared on step complete */
+let t9SingingRepeatedRescanFn = null;
+
+/**
+ * Dispatch feature `completed` and attach debug payload for workflow REPORT.
+ * If `debug` is an object, it becomes (or merges into) pendingWorkflowStepPayload.
+ * If `debug` is omitted and no payload was set earlier (e.g. CALCULUS), records a fallback.
+ */
+function dispatchWorkflowFeatureComplete(element, featureId, debug) {
+    if (!element) return;
+    const hadPending = pendingWorkflowStepPayload != null && typeof pendingWorkflowStepPayload === 'object';
+
+    if (debug === undefined || debug === null) {
+        if (!hadPending) {
+            pendingWorkflowStepPayload = {
+                feature: featureId,
+                userInputRecorded: false,
+                userInputSummary: '— (no structured input recorded)'
+            };
+        } else if (!pendingWorkflowStepPayload.feature) {
+            pendingWorkflowStepPayload.feature = featureId;
+        }
+        element.dispatchEvent(new Event('completed'));
+        return;
+    }
+
+    if (typeof debug === 'object' && !Array.isArray(debug)) {
+        if (hadPending && pendingWorkflowStepPayload.feature === featureId) {
+            pendingWorkflowStepPayload = {
+                ...debug,
+                ...pendingWorkflowStepPayload,
+                feature: featureId,
+                userInputRecorded: true
+            };
+        } else {
+            pendingWorkflowStepPayload = { feature: featureId, userInputRecorded: true, ...debug };
+        }
+    } else if (typeof debug === 'string') {
+        pendingWorkflowStepPayload = {
+            feature: featureId,
+            userInputRecorded: true,
+            userInputSummary: debug
+        };
+    }
+    element.dispatchEvent(new Event('completed'));
+}
+
 function loadWorkflowReports() {
     try {
         const raw = localStorage.getItem(WORKFLOW_REPORT_STORAGE_KEY);
@@ -268,7 +315,7 @@ function formatNewSettingsAtPerformanceHuman(ns) {
     return [
         `Letter batches: ${ns.letterModeLabel || ns.letterMode}`,
         `Custom position (1–6 / ANY): ${ns.customPositionMode ? 'on' : 'off'}`,
-        `+1 answer digit buffer: ${ns.answerDigitBuffer ? 'on' : 'off'}`,
+        `+1 answer digit buffer (nominal or +1 only): ${ns.answerDigitBuffer ? 'on' : 'off'}`,
         `Answer count mode: ${ns.answerCountModeLabel || ns.answerCountMode}`,
         `Auto-stop: ${ns.autoStopSeconds}s`
     ].join(' · ');
@@ -335,6 +382,7 @@ const WORKFLOW_FEATURE_LABELS = {
     lettersAbove: 'Letters Above',
     dictionaryAlpha: 'DICTIONARY (B/M/E)',
     alpha: 'ALPHA (SHORT)',
+    alphaFull: 'ALPHA',
     alphaWord: 'ALPHA-WORD',
     alphaRepeat: 'ALPHA-REPEAT',
     repeatQuestion: 'REPEAT?',
@@ -441,7 +489,14 @@ function formatWorkflowStepQuickCaption(step) {
     }
     if (p.feature === 't9Singing') {
         if (p.skipped) return 'Skipped — list unchanged';
+        if (p.t9SingingCompletedVia === 'unfinished' && p.directionsHuman) {
+            return `SINGING (UNFINISHED): ${p.directionsHuman}`;
+        }
         if (p.directionsHuman) return `SINGING: ${p.directionsHuman}`;
+    }
+    if (typeof p.userInputSummary === 'string' && p.userInputSummary.length > 0) {
+        const s = p.userInputSummary;
+        return s.length > 64 ? `${s.slice(0, 61)}…` : s;
     }
     return null;
 }
@@ -461,7 +516,7 @@ function appendReportDefinitionList(parent, rows) {
     if (dl.children.length) parent.appendChild(dl);
 }
 
-function renderStepPayloadSection(payload) {
+function renderStepPayloadSection(payload, runForDebug) {
     const wrap = document.createElement('div');
     wrap.className = 'workflow-report-step-payload-section';
     const h = document.createElement('div');
@@ -480,7 +535,7 @@ function renderStepPayloadSection(payload) {
     if (payload.feature === 'new') {
         appendReportDefinitionList(wrap, [
             { term: 'NEW answer count mode', def: payload.answerCountMode === 'exact' ? 'Exact count' : 'How many MORE' },
-            { term: '+1 digit buffer (at MOVE ON)', def: payload.digitBuffer ? 'On' : 'Off' },
+            { term: '+1 digit buffer — nominal or +1 only (at MOVE ON)', def: payload.digitBuffer ? 'On' : 'Off' },
             { term: 'Words after MOVE ON', def: payload.wordsAfter != null ? String(payload.wordsAfter) : '—' }
         ]);
         const stops = payload.stops;
@@ -568,17 +623,51 @@ function renderStepPayloadSection(payload) {
     }
 
     if (payload.feature === 't9Singing') {
+        const rep = !!payload.t9SingingRepeatedLetters;
+        const enc = rep ? 'Merge consecutive duplicate T9 digits' : 'Standard (full T9, no digit merge)';
         appendReportDefinitionList(wrap, [
             { term: 'Skipped', def: payload.skipped ? 'Yes' : 'No' },
+            { term: 'Repeated T9 digits (Settings)', def: rep ? 'On' : 'Off' },
+            { term: 'T9 encoding', def: enc },
             { term: 'Directions (as entered)', def: payload.skipped ? '—' : (payload.directionsHuman || '—') },
             { term: 'Direction tokens', def: payload.skipped ? '—' : (Array.isArray(payload.directionsTokens) ? payload.directionsTokens.join(', ') : '—') },
             { term: 'Number of steps', def: payload.skipped ? '—' : (payload.directionCount != null ? String(payload.directionCount) : '—') },
-            { term: 'Required T9 length (steps + 1)', def: payload.skipped ? '—' : (payload.impliedT9Length != null ? String(payload.impliedT9Length) : '—') },
+            { term: 'Completed via', def: payload.skipped ? '—' : (payload.t9SingingCompletedVia === 'unfinished' ? 'UNFINISHED (longer T9 only)' : (payload.t9SingingCompletedVia === 'submit' ? 'SUBMIT (exact T9 length)' : '—')) },
+            { term: 'Required T9 length (exact on SUBMIT)', def: payload.skipped ? '—' : (payload.impliedT9Length != null ? String(payload.impliedT9Length) : '—') },
+            { term: 'Prefix min T9 digits', def: payload.skipped ? '—' : (payload.impliedT9LengthMin != null ? String(payload.impliedT9LengthMin) : '—') },
+            { term: 'SUBMIT exact length', def: payload.skipped ? '—' : (payload.t9SingingSubmitExactLength ? 'Yes' : 'No') },
+            { term: 'Incremental filtering', def: payload.skipped ? '—' : (payload.t9SingingIncremental ? 'Yes (each UP/DOWN; UNFINISHED ends step with longer-only list)' : 'No (legacy)') },
+            { term: 'UNFINISHED (step ended)', def: payload.skipped ? '—' : (payload.t9SingingCompletedVia === 'unfinished' ? 'Yes' : 'No') },
             { term: 'Words before filter', def: payload.wordsBefore != null ? String(payload.wordsBefore) : '—' },
             { term: 'Words after filter', def: payload.skipped ? '— (unchanged)' : (payload.wordsAfter != null ? String(payload.wordsAfter) : '—') }
         ]);
+        const tw = (typeof payload.debugTargetWord === 'string' ? payload.debugTargetWord.trim() : '')
+            || (runForDebug && typeof runForDebug.targetWord === 'string' ? runForDebug.targetWord.trim() : '');
+        if (tw) {
+            const fullT9 = wordToT9(tw) || '';
+            appendReportDefinitionList(wrap, [
+                { term: 'Debug target word', def: tw },
+                { term: 'T9 (full spelling)', def: fullT9 || '—' },
+                { term: 'T9 (SINGING, consecutive digits merged)', def: collapseAdjacentDuplicateT9Digits(fullT9) || '—' }
+            ]);
+        }
         return wrap;
     }
+
+    const genericDebugRows = [];
+    if (payload.userInputSummary != null && String(payload.userInputSummary).trim() !== '') {
+        genericDebugRows.push({ term: 'User input (summary)', def: String(payload.userInputSummary) });
+    }
+    if (payload.userInputRecorded != null) {
+        genericDebugRows.push({ term: 'Structured input recorded', def: payload.userInputRecorded ? 'Yes' : 'No' });
+    }
+    if (payload.skipped != null) {
+        genericDebugRows.push({ term: 'Skipped', def: payload.skipped ? 'Yes' : 'No' });
+    }
+    if (payload.userInput != null && typeof payload.userInput === 'object') {
+        genericDebugRows.push({ term: 'User input (detail)', def: JSON.stringify(payload.userInput) });
+    }
+    if (genericDebugRows.length) appendReportDefinitionList(wrap, genericDebugRows);
 
     const pre = document.createElement('pre');
     pre.className = 'workflow-report-json-local';
@@ -587,7 +676,7 @@ function renderStepPayloadSection(payload) {
     return wrap;
 }
 
-function buildWorkflowStepDeepPanel(step, stepIndex, totalSteps) {
+function buildWorkflowStepDeepPanel(step, stepIndex, totalSteps, run) {
     const panel = document.createElement('div');
     panel.className = 'workflow-report-step-deep';
 
@@ -627,7 +716,7 @@ function buildWorkflowStepDeepPanel(step, stepIndex, totalSteps) {
         panel.appendChild(p2);
     }
 
-    panel.appendChild(renderStepPayloadSection(step.payload));
+    panel.appendChild(renderStepPayloadSection(step.payload, run));
     return panel;
 }
 
@@ -842,7 +931,7 @@ function renderWorkflowReportHumanView(container, runs) {
 
             stepSum.append(row, sub);
 
-            const deep = buildWorkflowStepDeepPanel(s, i, steps.length);
+            const deep = buildWorkflowStepDeepPanel(s, i, steps.length, run);
             stepDetails.append(stepSum, deep);
             li.appendChild(stepDetails);
             stepList.appendChild(li);
@@ -922,12 +1011,12 @@ const DEFAULT_SETTINGS = {
     /** NEW generation mode: 'mixed' | 'alternating' */
     newLetterMode: 'mixed',
     /** NEW answer mode: 'more' | 'exact' */
-    newAnswerCountMode: 'more',
+    newAnswerCountMode: 'exact',
     /** NEW auto-stop timer in seconds */
     newAutoStopSeconds: 10,
     /** NEW custom position mode toggle */
     newCustomMode: false,
-    /** NEW: allow ±1 on each answered digit when filtering */
+    /** NEW: when on, each answered count may match the digit or digit+1 (not digit−1) */
     newAnswerDigitBuffer: false,
     calculusMode: 'abstract',  // 'abstract' (digits 0–9) or 'curvesStraight' (C/S)
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
@@ -946,6 +1035,8 @@ const DEFAULT_SETTINGS = {
     connectiveYIsVowel: false,
     // CONNECTIVE pre-filter default minimum word length
     connectiveMinLength: 7,
+    /** SINGING: when ON, merge consecutive identical digits in the T9 string (after full spelling T9) */
+    t9SingingRepeatedLetters: false,
 };
 
 const DEFAULT_LETTER_LYING_STRING = 'NTRLCSAIEUO';
@@ -1382,6 +1473,30 @@ const t9Mapping = {
 // Convert word to T9 string
 function wordToT9(word) {
     return word.toUpperCase().split('').map(char => t9Mapping[char] || '').join('');
+}
+
+/** Collapse adjacent identical digits in a T9 string (e.g. 7362452273 → 736245273). */
+function collapseAdjacentDuplicateT9Digits(t9Str) {
+    const s = String(t9Str || '');
+    let out = '';
+    let lastKept = null;
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (ch < '2' || ch > '9') continue;
+        if (lastKept === ch) continue;
+        out += ch;
+        lastKept = ch;
+    }
+    return out;
+}
+
+/** T9 string used by SINGING: optional merge of consecutive equal T9 digits (after full-word T9). */
+function wordToT9ForSinging(word, repeatedT9DigitsOn) {
+    const full = wordToT9(word);
+    if (repeatedT9DigitsOn) {
+        return collapseAdjacentDuplicateT9Digits(full);
+    }
+    return full;
 }
 
 // Calculate and store T9 strings for wordlist (only when needed)
@@ -2827,6 +2942,8 @@ let lastLoadedWordlist = '';
 
 // ALPHA: if Dictionary (Alpha) ran, first letter is limited to that B/M/E band; else any A–Z
 let lastDictionaryAlphaSection = null;
+/** When non-null, VOWEL step appends YES/NO choices here for workflow REPORT */
+let vowelWorkflowDebugTrail = null;
 // NUMBER START: section (low/mid/high) when that step ran in this workflow
 let lastNumberStartSection = null;
 
@@ -3189,6 +3306,7 @@ async function executeWorkflow(steps) {
         // ALPHA: reset; Dictionary (Alpha) later sets B/M/E, else any A–Z for first letter
         lastDictionaryAlphaSection = null;
         lastNumberStartSection = null;
+        vowelWorkflowDebugTrail = null;
 
         console.log('Starting workflow with steps:', steps);
         console.log('Using wordlist:', selectedWordlist);
@@ -3644,16 +3762,19 @@ async function executeWorkflow(steps) {
                     featureElement = createDictionaryAlphaFeature();
                     break;
                 case 'alpha':
-                    featureElement = createAlphaFeature();
+                    featureElement = createAlphaShortFeature();
+                    break;
+                case 'alphaFull':
+                    featureElement = createUnifiedAlphaFeature('alphaFull');
                     break;
                 case 'repeatQuestion':
                     featureElement = createRepeatQuestionFeature();
                     break;
                 case 'alphaWord':
-                    featureElement = createAlphaWordFeature();
+                    featureElement = createUnifiedAlphaFeature('alphaWord');
                     break;
                 case 'alphaRepeat':
-                    featureElement = createAlphaRepeatFeature();
+                    featureElement = createUnifiedAlphaFeature('alphaRepeat');
                     break;
                 case 'smlLength':
                     featureElement = createSmlLengthFeature();
@@ -5425,32 +5546,21 @@ function createT9SingingFeature() {
     div.className = 'feature-section';
     div.innerHTML = `
         <h2 class="feature-title">SINGING</h2>
-        <p class="alpha-sequence-display" id="t9SingingSequenceDisplay">—</p>
-        <div class="alpha-direction-buttons">
-            <button type="button" class="alpha-btn" id="t9SingingUpBtn" aria-label="Up (higher digit)">↑ UP</button>
-            <button type="button" class="alpha-btn" id="t9SingingDownBtn" aria-label="Down (lower digit)">DOWN ↓</button>
+        <p id="t9SingingRepeatedLettersHint" class="settings-field-help" style="text-align: center; margin: 6px 0 10px;"></p>
+        <div class="t9-singing-repeated-row" style="display: flex; align-items: center; justify-content: center; gap: 10px; margin: 10px 0; flex-wrap: wrap;">
+            <label class="toggle-switch" style="margin: 0;">
+                <input type="checkbox" id="t9SingingRepeatedDigitsFeatureToggle">
+                <span class="toggle-slider"></span>
+            </label>
+            <span class="settings-toggle-label" style="margin: 0;">Repeated T9 digits</span>
         </div>
-        <div class="alpha-actions">
-            <button type="button" id="t9SingingSubmitBtn" class="alpha-submit-btn">SUBMIT</button>
-            <button type="button" id="t9SingingSkipBtn" class="skip-button">SKIP</button>
-        </div>
-    `;
-    return div;
-}
-
-// --- T9 SINGING Feature Logic (directional UP/DOWN on T9 digits) ---
-function createT9SingingFeature() {
-    const div = document.createElement('div');
-    div.id = 't9SingingFeature';
-    div.className = 'feature-section';
-    div.innerHTML = `
-        <h2 class="feature-title">SINGING</h2>
         <p class="alpha-sequence-display" id="t9SingingSequenceDisplay">—</p>
         <div class="alpha-direction-buttons">
             <button type="button" class="alpha-btn t9-singing-up" id="t9SingingUpBtn" aria-label="UP (higher digit)">UP ↑</button>
             <button type="button" class="alpha-btn t9-singing-down" id="t9SingingDownBtn" aria-label="DOWN (lower digit)">DOWN ↓</button>
         </div>
         <div class="alpha-actions">
+            <button type="button" id="t9SingingUnfinishedBtn" class="secondary-btn">UNFINISHED</button>
             <button type="button" id="t9SingingSubmitBtn" class="alpha-submit-btn">SUBMIT</button>
             <button type="button" id="t9SingingSkipBtn" class="skip-button">SKIP</button>
         </div>
@@ -5575,17 +5685,18 @@ function createDictionaryAlphaFeature() {
     return div;
 }
 
-// --- ALPHA Feature Logic ---
-function createAlphaFeature() {
+// --- ALPHA (SHORT): directions only; first-letter band from Dictionary (Alpha) if that step ran ---
+function createAlphaShortFeature() {
     const div = document.createElement('div');
     div.id = 'alphaFeature';
     div.className = 'feature-section';
     div.innerHTML = `
-        <h2 class="feature-title">ALPHA (ORIGIN)</h2>
+        <h2 class="feature-title">ALPHA (SHORT)</h2>
+        <p class="settings-field-help" style="text-align:center;margin:0 0 10px;font-size:13px;color:#666;">Left / Right / Repeat, then SUBMIT. If Dictionary (Alpha) ran earlier, the first letter matches that band; otherwise any A–Z.</p>
         <p class="alpha-sequence-display" id="alphaSequenceDisplay">—</p>
         <div class="alpha-direction-buttons">
             <button type="button" class="alpha-btn alpha-left" id="alphaLeftBtn" aria-label="Left (toward A)">← Left</button>
-            <button type="button" class="alpha-btn alpha-repeat" id="alphaRepeatBtn" aria-label="Repeat (same letter)">Repeat</button>
+            <button type="button" class="alpha-btn alpha-repeat" id="alphaRepeatDirBtn" aria-label="Repeat (same letter)">Repeat</button>
             <button type="button" class="alpha-btn alpha-right" id="alphaRightBtn" aria-label="Right (toward Z)">Right →</button>
         </div>
         <div class="alpha-actions">
@@ -5596,53 +5707,57 @@ function createAlphaFeature() {
     return div;
 }
 
-function createAlphaWordFeature() {
+// --- ALPHA (full): optional B/M/E, optional repeat Y/N, optional last letters, then L/R/Repeat ---
+function createUnifiedAlphaFeature(workflowKind) {
+    const idSuffix =
+        workflowKind === 'alphaFull'
+            ? 'alphaFull'
+            : workflowKind === 'alphaWord'
+              ? 'alphaWord'
+              : workflowKind === 'alphaRepeat'
+                ? 'alphaRepeat'
+                : null;
+    if (!idSuffix) {
+        throw new Error('createUnifiedAlphaFeature: unsupported workflowKind ' + String(workflowKind));
+    }
     const div = document.createElement('div');
-    div.id = 'alphaWordFeature';
+    div.id = idSuffix + 'Feature';
     div.className = 'feature-section';
+    const title =
+        workflowKind === 'alphaWord' ? 'ALPHA-WORD' : workflowKind === 'alphaRepeat' ? 'ALPHA-REPEAT' : 'ALPHA';
     div.innerHTML = `
-        <h2 class="feature-title">ALPHA-WORD</h2>
-        <p class="alpha-sequence-display" id="alphaWordSequenceDisplay">—</p>
-        <div class="alpha-direction-buttons">
-            <button type="button" class="alpha-btn alpha-left" id="alphaWordLeftBtn" aria-label="Left (toward A)">← Left</button>
-            <button type="button" class="alpha-btn alpha-repeat" id="alphaWordRepeatBtn" aria-label="Repeat (same letter)">Repeat</button>
-            <button type="button" class="alpha-btn alpha-right" id="alphaWordRightBtn" aria-label="Right (toward Z)">Right →</button>
+        <h2 class="feature-title">${title}</h2>
+        <p style="text-align:center;margin:0 0 6px;font-weight:600;">First letter</p>
+        <div class="section-buttons" style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+            <button type="button" class="section-btn alpha-unified-section-btn" data-alpha-section="begin">Beginning</button>
+            <button type="button" class="section-btn alpha-unified-section-btn" data-alpha-section="mid">Middle</button>
+            <button type="button" class="section-btn alpha-unified-section-btn" data-alpha-section="end">End</button>
         </div>
-        <div class="alpha-word-last-row" style="margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; max-width: 320px;">
-            <label for="alphaWordLastLettersInput">Possible last letters (letters only; duplicates ignored, e.g. SHEEP → S,H,E,P)</label>
-            <input type="text" id="alphaWordLastLettersInput" autocomplete="off" autocapitalize="characters" style="width: 100%; padding: 8px; text-transform: uppercase;">
+        <p style="text-align:center;margin:0 0 6px;font-weight:600;">Repeated letters in spelling?</p>
+        <div class="alpha-unified-repeat-yn" style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+            <button type="button" class="yes-btn alpha-unified-repeat-btn" data-alpha-repeat="yes">YES</button>
+            <button type="button" class="no-btn alpha-unified-repeat-btn" data-alpha-repeat="no">NO</button>
+        </div>
+        <div class="alpha-word-last-row" style="margin:0 auto 14px;display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;max-width:360px;">
+            <label for="alphaUnifiedLastLettersInput">Possible last letters</label>
+            <input type="text" id="alphaUnifiedLastLettersInput" autocomplete="off" autocapitalize="characters" style="width:100%;padding:8px;text-transform:uppercase;">
+        </div>
+        <p class="alpha-sequence-display" id="alphaSequenceDisplay">—</p>
+        <div class="alpha-direction-buttons">
+            <button type="button" class="alpha-btn alpha-left" id="alphaLeftBtn" aria-label="Left (toward A)">← Left</button>
+            <button type="button" class="alpha-btn alpha-repeat" id="alphaRepeatDirBtn" aria-label="Repeat (same letter)">Repeat</button>
+            <button type="button" class="alpha-btn alpha-right" id="alphaRightBtn" aria-label="Right (toward Z)">Right →</button>
         </div>
         <div class="alpha-actions">
-            <button type="button" id="alphaWordSubmitBtn" class="alpha-submit-btn">SUBMIT</button>
-            <button type="button" id="alphaWordSkipBtn" class="skip-button">SKIP</button>
+            <button type="button" id="alphaSubmitBtn" class="alpha-submit-btn">SUBMIT</button>
+            <button type="button" id="alphaSkipBtn" class="skip-button">SKIP</button>
         </div>
     `;
     return div;
 }
 
-function createAlphaRepeatFeature() {
-    const div = document.createElement('div');
-    div.id = 'alphaRepeatFeature';
-    div.className = 'feature-section';
-    div.innerHTML = `
-        <h2 class="feature-title">ALPHA-REPEAT</h2>
-        <p class="alpha-repeat-prompt" style="text-align: center; margin-bottom: 10px;">Consecutive identical letters in the word?</p>
-        <div class="alpha-repeat-yn" style="display: flex; justify-content: center; gap: 12px; margin-bottom: 16px;">
-            <button type="button" id="alphaRepeatYesBtn" class="yes-btn">YES</button>
-            <button type="button" id="alphaRepeatNoBtn" class="no-btn">NO</button>
-        </div>
-        <p class="alpha-sequence-display" id="alphaRepeatSequenceDisplay">—</p>
-        <div class="alpha-direction-buttons">
-            <button type="button" class="alpha-btn alpha-left" id="alphaRepeatLeftBtn" aria-label="Left (toward A)">← Left</button>
-            <button type="button" class="alpha-btn alpha-repeat" id="alphaRepeatRepeatBtn" aria-label="Repeat (same letter)">Repeat</button>
-            <button type="button" class="alpha-btn alpha-right" id="alphaRepeatRightBtn" aria-label="Right (toward Z)">Right →</button>
-        </div>
-        <div class="alpha-actions">
-            <button type="button" id="alphaRepeatSubmitBtn" class="alpha-submit-btn">SUBMIT</button>
-            <button type="button" id="alphaRepeatSkipBtn" class="skip-button">SKIP</button>
-        </div>
-    `;
-    return div;
+function createAlphaFeature() {
+    return createAlphaShortFeature();
 }
 
 function createRepeatQuestionFeature() {
@@ -6233,11 +6348,11 @@ function buildScrollAccountingContext(stops) {
     return ctx;
 }
 
-/** When buffer is 1, treat user digit as nominal ±1 for equality-style checks. */
+/** When buffer is 1, treat user digit as nominal or +1 only (not −1). */
 function scrollObservedMatchesDigit(observed, digit, buffer) {
     const b = buffer > 0 ? 1 : 0;
     if (!b) return observed === digit;
-    return Math.abs(observed - digit) <= 1;
+    return observed >= digit && observed <= digit + 1;
 }
 
 function wordPassesScrollStop(word, stop, context) {
@@ -6299,7 +6414,7 @@ function wordPassesScrollStop(word, stop, context) {
         const unaccounted = scrollCountUnaccountedAnywhereOccurrences(w, batch, context);
         if (!hasDigit) return unaccounted >= 1;
         if (exactMode) return scrollObservedMatchesDigit(unaccounted, digit, digitBuffer);
-        const minRequired = Math.max(1, 1 + digit - digitBuffer);
+        const minRequired = Math.max(1, 1 + digit);
         return unaccounted >= minRequired;
     }
     return true;
@@ -6527,40 +6642,88 @@ function filterWordsByT9Higher(words, option) {
     });
 }
 
+function t9StringForSingingFilter(word, repeatedOn) {
+    if (repeatedOn) {
+        return wordToT9ForSinging(word, true);
+    }
+    return t9StringsMap.get(word) || wordToT9(word);
+}
+
+/** True if t9String has enough digits and each transition matches directions (U/D). */
+function t9SingingTransitionsMatch(t9String, directions) {
+    if (!t9String || !directions || directions.length === 0) return true;
+    if (t9String.length < directions.length + 1) return false;
+    for (let i = 0; i < directions.length; i++) {
+        const dir = directions[i];
+        const prevDigit = parseInt(t9String[i], 10);
+        const curDigit = parseInt(t9String[i + 1], 10);
+
+        if (Number.isNaN(prevDigit) || Number.isNaN(curDigit)) return false;
+
+        if (dir === 'U') {
+            if (!(curDigit > prevDigit)) return false;
+        } else if (dir === 'D') {
+            if (!(curDigit < prevDigit)) return false;
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
+// SINGING: prefix match — T9 length >= directions.length + 1 and first k transitions match.
+function filterWordsByT9SingingPrefix(words, directions) {
+    if (!directions || directions.length === 0) return words;
+
+    const repeatedOn = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+    if (!repeatedOn) {
+        calculateT9Strings(words);
+    }
+
+    const minLen = directions.length + 1;
+
+    return words.filter(word => {
+        const t9String = t9StringForSingingFilter(word, repeatedOn);
+        if (!t9String || t9String.length < minLen) return false;
+        return t9SingingTransitionsMatch(t9String, directions);
+    });
+}
+
+// SINGING: same prefix as above but drop words whose T9 length is already exactly (steps + 1) or shorter.
+function filterWordsByT9SingingPrefixUnfinished(words, directions) {
+    if (!directions || directions.length === 0) return words;
+
+    const repeatedOn = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+    if (!repeatedOn) {
+        calculateT9Strings(words);
+    }
+
+    const minLen = directions.length + 1;
+
+    return words.filter(word => {
+        const t9String = t9StringForSingingFilter(word, repeatedOn);
+        if (!t9String || t9String.length <= minLen) return false;
+        return t9SingingTransitionsMatch(t9String, directions);
+    });
+}
+
 // Filtering logic for T9 SINGING feature (directional UP/DOWN over consecutive T9 digits).
 // Exact length: word (T9) length must equal directions.length + 1.
 function filterWordsByT9Singing(words, directions) {
     if (!directions || directions.length === 0) return words;
 
-    // Calculate T9 strings if not already done
-    calculateT9Strings(words);
+    const repeatedOn = !!(appSettings && appSettings.t9SingingRepeatedLetters);
 
-    const neededLen = directions.length + 1;  // exact T9 length
+    if (!repeatedOn) {
+        calculateT9Strings(words);
+    }
+
+    const neededLen = directions.length + 1;
 
     return words.filter(word => {
-        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        const t9String = t9StringForSingingFilter(word, repeatedOn);
         if (!t9String || t9String.length !== neededLen) return false;
-
-        for (let i = 0; i < directions.length; i++) {
-            const dir = directions[i];
-            const prevDigit = parseInt(t9String[i], 10);
-            const curDigit = parseInt(t9String[i + 1], 10);
-
-            if (Number.isNaN(prevDigit) || Number.isNaN(curDigit)) return false;
-
-            if (dir === 'U') {
-                // UP: next digit must be strictly higher
-                if (!(curDigit > prevDigit)) return false;
-            } else if (dir === 'D') {
-                // DOWN: next digit must be strictly lower
-                if (!(curDigit < prevDigit)) return false;
-            } else {
-                // Unknown direction token; fail safe
-                return false;
-            }
-        }
-
-        return true;
+        return t9SingingTransitionsMatch(t9String, directions);
     });
 }
 
@@ -7269,6 +7432,42 @@ function filterWordsByAlphaRepeatYes(words, directions, firstLetterSection, swap
     });
 }
 
+/**
+ * Unified ALPHA: optional first-letter band, optional repeat YES/NO, optional last-letter set, L/R/Repeat directions.
+ * @param {null|'yes'|'no'} repeatMode - null = do not filter on consecutive doubles; yes/no = ALPHA-REPEAT rules
+ * @param {Set|null} lastLetterSet - null or empty Set = no last-letter constraint
+ */
+function filterWordsByAlphaUnified(words, directions, firstLetterSection, swapPov, repeatMode, lastLetterSet) {
+    if (!directions || directions.length === 0) return words;
+    const dirs = directions;
+    const needLen = 1 + dirs.length;
+    const useLast = lastLetterSet instanceof Set && lastLetterSet.size > 0;
+    const mode = repeatMode === 'yes' || repeatMode === 'no' ? repeatMode : null;
+
+    return words.filter((word) => {
+        const w = (word || '').toUpperCase();
+        if (mode === 'yes') {
+            if (!hasConsecutiveDuplicateLetters(w)) return false;
+            const collapsed = collapseConsecutiveDuplicateLetters(w);
+            if (collapsed.length !== needLen) return false;
+            if (useLast && !lastLetterSet.has(w[w.length - 1])) return false;
+            return alphaDirectionsMatchSpelling(collapsed, dirs, firstLetterSection, swapPov);
+        }
+        if (mode === 'no') {
+            if (hasConsecutiveDuplicateLetters(w)) return false;
+            if (w.length !== needLen) return false;
+            if (useLast && !lastLetterSet.has(w[w.length - 1])) return false;
+            return alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
+        }
+        if (useLast) {
+            if (w.length !== needLen) return false;
+            if (!lastLetterSet.has(w[w.length - 1])) return false;
+            return alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
+        }
+        return alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
+    });
+}
+
 // --- REPEAT? (letters) filter logic ---
 function filterWordsByRepeatQuestion(words, hasRepeat) {
     const wantRepeat = !!hasRepeat;
@@ -7497,7 +7696,10 @@ function setupFeatureListeners(feature, callback, options) {
                             // Store the input word for vowel feature
                             currentPosition1Word = input.toUpperCase(); // Ensure it's uppercase
                             callback(filteredWords);
-                            document.getElementById('position1Feature').dispatchEvent(new Event('completed'));
+                            dispatchWorkflowFeatureComplete(document.getElementById('position1Feature'), 'position1', {
+                                userInputSummary: `Word: "${input}" → consonants ${consonants.join('')}`,
+                                userInput: { rawWord: input, consonantsExtracted: consonants.join('') }
+                            });
     } else {
                             alert('Please enter a word with at least 2 consonants');
                         }
@@ -7516,7 +7718,10 @@ function setupFeatureListeners(feature, callback, options) {
             if (position1DoneButton) {
                 position1DoneButton.onclick = () => {
                     callback(currentFilteredWords);
-                    document.getElementById('position1Feature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('position1Feature'), 'position1', {
+                        skipped: true,
+                        userInputSummary: 'SKIP — list unchanged'
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -7543,7 +7748,10 @@ function setupFeatureListeners(feature, callback, options) {
                             // Store the input word for potential future use
                             currentPosition1Word = input.toUpperCase(); // Ensure it's uppercase
                             callback(filteredWords);
-                            document.getElementById('consMidFeature').dispatchEvent(new Event('completed'));
+                            dispatchWorkflowFeatureComplete(document.getElementById('consMidFeature'), 'consMid', {
+                                userInputSummary: `Word: "${input}"`,
+                                userInput: { rawWord: input, lettersUsed: letters.join('') }
+                            });
                         } else {
                             alert('Please enter a word with at least 2 letters');
                         }
@@ -7562,7 +7770,10 @@ function setupFeatureListeners(feature, callback, options) {
             if (consMidDoneButton) {
                 consMidDoneButton.onclick = () => {
                     callback(currentFilteredWords);
-                    document.getElementById('consMidFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('consMidFeature'), 'consMid', {
+                        skipped: true,
+                        userInputSummary: 'SKIP — list unchanged'
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -7589,7 +7800,10 @@ function setupFeatureListeners(feature, callback, options) {
                             // Store the input word for potential future use
                             currentPosition1Word = input.toUpperCase(); // Ensure it's uppercase
                             callback(filteredWords);
-                            document.getElementById('consMid2Feature').dispatchEvent(new Event('completed'));
+                            dispatchWorkflowFeatureComplete(document.getElementById('consMid2Feature'), 'consMid2', {
+                                userInputSummary: `Word: "${input}" → consonants ${consonants.join('')}`,
+                                userInput: { rawWord: input, consonantsExtracted: consonants.join('') }
+                            });
                         } else {
                             alert('Please enter a word with at least 2 consonants');
                         }
@@ -7608,7 +7822,10 @@ function setupFeatureListeners(feature, callback, options) {
             if (consMid2DoneButton) {
                 consMid2DoneButton.onclick = () => {
                     callback(currentFilteredWords);
-                    document.getElementById('consMid2Feature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('consMid2Feature'), 'consMid2', {
+                        skipped: true,
+                        userInputSummary: 'SKIP — list unchanged'
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -7624,7 +7841,8 @@ function setupFeatureListeners(feature, callback, options) {
             const vowelYesBtn = document.querySelector('#vowelFeature .yes-btn');
             const vowelNoBtn = document.querySelector('#vowelFeature .no-btn');
             const positionBtns = document.querySelectorAll('#vowelFeature .position-btn');
-            
+            vowelWorkflowDebugTrail = [];
+
             // Initialize vowel processing with current words
             currentFilteredWordsForVowels = [...currentFilteredWords];
             originalFilteredWords = [...currentFilteredWords];
@@ -7667,7 +7885,10 @@ function setupFeatureListeners(feature, callback, options) {
                     if (currentVowel) {
                         const filteredWords = filterWordsByVowelPosition(currentFilteredWords, currentVowel, position);
                         callback(filteredWords);
-                        document.getElementById('vowelFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('vowelFeature'), 'vowel', {
+                            userInputSummary: `Position ${position} for vowel ${String(currentVowel).toUpperCase()} (from word ${currentPosition1Word || '—'})`,
+                            userInput: { mode: 'positionPick', position, vowel: currentVowel, sourceWord: currentPosition1Word }
+                        });
                     }
                 };
                 
@@ -7716,27 +7937,36 @@ function setupFeatureListeners(feature, callback, options) {
                 vowel2YesBtn.parentNode.replaceChild(newYes, vowel2YesBtn);
                 vowel2NoBtn.parentNode.replaceChild(newNo, vowel2NoBtn);
                 vowel2SkipButton.parentNode.replaceChild(newSkip, vowel2SkipButton);
-                const complete = () => {
+                const complete = (debug) => {
                     document.getElementById('vowel2Feature').classList.add('completed');
-                    document.getElementById('vowel2Feature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('vowel2Feature'), 'vowel2', debug);
                 };
                 newYes.addEventListener('click', () => {
                     const filtered = filterWordsByVowel2(currentFilteredWords, 'yes');
                     currentFilteredWords = filtered;
                     displayResults(currentFilteredWords);
                     callback(currentFilteredWords);
-                    complete();
+                    complete({
+                        userInputSummary: 'YES — vowel in position 2',
+                        userInput: { choice: 'yes' }
+                    });
                 });
                 newNo.addEventListener('click', () => {
                     const filtered = filterWordsByVowel2(currentFilteredWords, 'no');
                     currentFilteredWords = filtered;
                     displayResults(currentFilteredWords);
                     callback(currentFilteredWords);
-                    complete();
+                    complete({
+                        userInputSummary: 'NO — no vowel in position 2',
+                        userInput: { choice: 'no' }
+                    });
                 });
                 newSkip.addEventListener('click', () => {
                     callback(currentFilteredWords);
-                    complete();
+                    complete({
+                        skipped: true,
+                        userInputSummary: 'SKIP — list unchanged'
+                    });
                 });
                 [newYes, newNo, newSkip].forEach(btn => {
                     btn.addEventListener('touchstart', (e) => {
@@ -7755,10 +7985,10 @@ function setupFeatureListeners(feature, callback, options) {
             const connectiveButton = document.getElementById('connectiveButton');
             const connectiveSkipButton = document.getElementById('connectiveSkipButton');
 
-            const complete = () => {
+            const complete = (debug) => {
                 if (!connectiveFeature) return;
                 connectiveFeature.classList.add('completed');
-                connectiveFeature.dispatchEvent(new Event('completed'));
+                dispatchWorkflowFeatureComplete(connectiveFeature, 'connective', debug);
             };
 
             if (connectiveButton) {
@@ -7780,7 +8010,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const minLen = Number.isFinite(rawMinLen) ? Math.max(1, Math.floor(rawMinLen)) : 7;
                     const filteredWords = filterWordsByConnective(currentFilteredWords, consonants, minLen);
                     callback(filteredWords);
-                    complete();
+                    complete({
+                        userInputSummary: `Word: "${input}" → consonants [${consonants.join(', ')}], minLen ${minLen}`,
+                        userInput: { rawWord: input, consonants, minLen, yIsVowel }
+                    });
                 };
 
                 connectiveButton.addEventListener('touchstart', (e) => {
@@ -7792,7 +8025,10 @@ function setupFeatureListeners(feature, callback, options) {
             if (connectiveSkipButton) {
                 connectiveSkipButton.onclick = () => {
                     callback(currentFilteredWords);
-                    complete();
+                    complete({
+                        skipped: true,
+                        userInputSummary: 'SKIP — list unchanged'
+                    });
                 };
                 connectiveSkipButton.addEventListener('touchstart', (e) => {
                     e.preventDefault();
@@ -7883,8 +8119,10 @@ function setupFeatureListeners(feature, callback, options) {
                     if (currentVowel) {
                         const filteredWords = filterWordsByVowelSection(currentFilteredWords, currentVowel, section);
                         callback(filteredWords);
-                        // Immediately advance to the next feature
-                        document.getElementById('vowelPosFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('vowelPosFeature'), 'vowelPos', {
+                            userInputSummary: `Section ${section} for vowel ${String(currentVowel).toUpperCase()} (from ${currentPosition1Word || '—'})`,
+                            userInput: { mode: 'section', section, vowel: currentVowel, sourceWord: currentPosition1Word }
+                        });
                     }
                 };
                 
@@ -7902,7 +8140,10 @@ function setupFeatureListeners(feature, callback, options) {
                     if (currentVowel) {
                         const filteredWords = currentFilteredWords.filter(word => word.toLowerCase().includes(currentVowel.toLowerCase()));
                         callback(filteredWords);
-                        document.getElementById('vowelPosFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('vowelPosFeature'), 'vowelPos', {
+                            userInputSummary: `YES — word contains ${String(currentVowel).toUpperCase()}`,
+                            userInput: { mode: 'yes', vowel: currentVowel }
+                        });
                     }
                 };
                 // Add touch event for mobile
@@ -7918,7 +8159,10 @@ function setupFeatureListeners(feature, callback, options) {
                     if (currentVowel) {
                         const filteredWords = currentFilteredWords.filter(word => !word.toLowerCase().includes(currentVowel.toLowerCase()));
                         callback(filteredWords);
-                        document.getElementById('vowelPosFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('vowelPosFeature'), 'vowelPos', {
+                            userInputSummary: `NO — word does not contain ${String(currentVowel).toUpperCase()}`,
+                            userInput: { mode: 'no', vowel: currentVowel }
+                        });
                     }
                 };
                 // Add touch event for mobile
@@ -8045,7 +8289,15 @@ function setupFeatureListeners(feature, callback, options) {
                     
                     callback(filteredWords);
                     document.getElementById('nameFeature').classList.add('completed');
-                    document.getElementById('nameFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('nameFeature'), 'name', {
+                        userInputSummary: `Name: "${nameInputValue}"${selectedVowel && selectedSection ? `; vowel ${selectedVowel} @ ${selectedSection}` : ''}`,
+                        userInput: {
+                            rawName: nameInputValue,
+                            selectedVowel,
+                            selectedSection,
+                            consonantsUsed: consonants.join('')
+                        }
+                    });
                 };
                 
                 nameSubmitButton.addEventListener('touchstart', (e) => {
@@ -8058,7 +8310,10 @@ function setupFeatureListeners(feature, callback, options) {
                 nameSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('nameFeature').classList.add('completed');
-                    document.getElementById('nameFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('nameFeature'), 'name', {
+                        skipped: true,
+                        userInputSummary: 'SKIP — list unchanged'
+                    });
                 };
                 
                 nameSkipButton.addEventListener('touchstart', (e) => {
@@ -8098,7 +8353,10 @@ function setupFeatureListeners(feature, callback, options) {
                     
                     callback(filteredWords);
                     document.getElementById('nameFeature').classList.add('completed');
-                    document.getElementById('nameFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('nameFeature'), 'name', {
+                        userInputSummary: `Name (no vowel filter): "${nameInputValue}"`,
+                        userInput: { rawName: nameInputValue, consonantsUsed: consonants.join(''), noVowelPath: true }
+                    });
                 };
                 
                 nameNoVowelButton.addEventListener('touchstart', (e) => {
@@ -8118,7 +8376,10 @@ function setupFeatureListeners(feature, callback, options) {
                 oYesBtn.onclick = () => {
                     const filteredWords = filterWordsByO(currentFilteredWords, true);
                     callback(filteredWords);
-                    document.getElementById('oFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('oFeature'), 'o', {
+                        userInputSummary: `Step completed (o)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8132,7 +8393,10 @@ function setupFeatureListeners(feature, callback, options) {
                 oNoBtn.onclick = () => {
                     const filteredWords = filterWordsByO(currentFilteredWords, false);
                     callback(filteredWords);
-                    document.getElementById('oFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('oFeature'), 'o', {
+                        userInputSummary: `Step completed (o)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8145,7 +8409,10 @@ function setupFeatureListeners(feature, callback, options) {
             if (oSkipBtn) {
                 oSkipBtn.onclick = () => {
                     callback(currentFilteredWords);
-                    document.getElementById('oFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('oFeature'), 'o', {
+                        userInputSummary: `Step completed (o)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8168,7 +8435,10 @@ function setupFeatureListeners(feature, callback, options) {
             const curvedSkipBtn = document.getElementById('oCurvesCurvedSkipBtn');
             const complete = () => {
                 document.getElementById('oCurvesFeature').classList.add('completed');
-                document.getElementById('oCurvesFeature').dispatchEvent(new Event('completed'));
+                dispatchWorkflowFeatureComplete(document.getElementById('oCurvesFeature'), 'oCurves', {
+                    userInputSummary: `Step completed (oCurves)`,
+                    userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                });
             };
             const showPart2 = () => {
                 if (part1) part1.style.display = 'none';
@@ -8234,7 +8504,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const letter = button.textContent;
                     const filteredWords = filterWordsByCurvedPositions(currentFilteredWords, letter);
                     callback(filteredWords);
-                    document.getElementById('curvedFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('curvedFeature'), 'curved', {
+                        userInputSummary: `Step completed (curved)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8247,7 +8520,10 @@ function setupFeatureListeners(feature, callback, options) {
             if (curvedSkipBtn) {
                 curvedSkipBtn.onclick = () => {
                     callback(currentFilteredWords);
-                    document.getElementById('curvedFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('curvedFeature'), 'curved', {
+                        userInputSummary: `Step completed (curved)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8267,7 +8543,10 @@ function setupFeatureListeners(feature, callback, options) {
                 colour3YesBtn.onclick = () => {
                     const filteredWords = filterWordsByColour3(currentFilteredWords);
                     callback(filteredWords);
-                    document.getElementById('colour3Feature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('colour3Feature'), 'colour3', {
+                        userInputSummary: `Step completed (colour3)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8280,7 +8559,10 @@ function setupFeatureListeners(feature, callback, options) {
             if (colour3SkipButton) {
                 colour3SkipButton.onclick = () => {
                     callback(currentFilteredWords);
-                    document.getElementById('colour3Feature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('colour3Feature'), 'colour3', {
+                        userInputSummary: `Step completed (colour3)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8313,12 +8595,18 @@ function setupFeatureListeners(feature, callback, options) {
                     displayResults(currentFilteredWords);
                     callback(currentFilteredWords);
                     document.getElementById('atlasFeature').classList.add('completed');
-                    document.getElementById('atlasFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('atlasFeature'), 'atlas', {
+                        userInputSummary: `Step completed (atlas)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 });
                 newAtlasSkipButton.addEventListener('click', () => {
                     callback(currentFilteredWords);
                     document.getElementById('atlasFeature').classList.add('completed');
-                    document.getElementById('atlasFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('atlasFeature'), 'atlas', {
+                        userInputSummary: `Step completed (atlas)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 });
                 newAtlasInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') newAtlasButton.click();
@@ -8389,7 +8677,10 @@ function setupFeatureListeners(feature, callback, options) {
                 const featureDiv = document.getElementById('numerologyFeature');
                 if (featureDiv) {
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'numerology', {
+                        userInputSummary: `Step completed (numerology)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 }
             };
 
@@ -8403,7 +8694,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const featureDiv = document.getElementById('numerologyFeature');
                     if (featureDiv) {
                         featureDiv.classList.add('completed');
-                        featureDiv.dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(featureDiv, 'numerology', {
+                            userInputSummary: `Step completed (numerology)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 };
                 skipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); skipBtn.click(); }, { passive: false });
@@ -8427,7 +8721,10 @@ function setupFeatureListeners(feature, callback, options) {
                     if (input) {
                         const filteredWords = filterWordsByLexicon(currentFilteredWords, input);
                         callback(filteredWords);
-                        document.getElementById('lexiconFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('lexiconFeature'), 'lexicon', {
+                            userInputSummary: `Step completed (lexicon)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     } else {
                         alert('Please enter positions (e.g., 123)');
                     }
@@ -8443,7 +8740,10 @@ function setupFeatureListeners(feature, callback, options) {
             if (lexiconSkipButton) {
                 lexiconSkipButton.onclick = () => {
                     callback(currentFilteredWords);
-                    document.getElementById('lexiconFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('lexiconFeature'), 'lexicon', {
+                        userInputSummary: `Step completed (lexicon)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8469,7 +8769,10 @@ function setupFeatureListeners(feature, callback, options) {
                         displayResults(currentFilteredWords);
                         callback(currentFilteredWords);
                         document.getElementById('zeroCurvesFeature').classList.add('completed');
-                        document.getElementById('zeroCurvesFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('zeroCurvesFeature'), 'zeroCurves', {
+                            userInputSummary: `Step completed (zeroCurves)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     } else {
                         alert('Please enter positions (e.g. 135 or 0)');
                     }
@@ -8480,7 +8783,10 @@ function setupFeatureListeners(feature, callback, options) {
                 zeroCurvesSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('zeroCurvesFeature').classList.add('completed');
-                    document.getElementById('zeroCurvesFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('zeroCurvesFeature'), 'zeroCurves', {
+                        userInputSummary: `Step completed (zeroCurves)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 zeroCurvesSkipButton.addEventListener('touchstart', (e) => { e.preventDefault(); zeroCurvesSkipButton.click(); }, { passive: false });
             }
@@ -8499,7 +8805,10 @@ function setupFeatureListeners(feature, callback, options) {
                     hasAdjacentConsonants = true;
                     const filteredWords = currentFilteredWords.filter(word => hasWordAdjacentConsonants(word));
                     callback(filteredWords);
-                    document.getElementById('consonantQuestion').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('consonantQuestion'), 'consonant', {
+                        userInputSummary: `Step completed (consonant)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8514,7 +8823,10 @@ function setupFeatureListeners(feature, callback, options) {
                     hasAdjacentConsonants = false;
                     const filteredWords = currentFilteredWords.filter(word => !hasWordAdjacentConsonants(word));
                     callback(filteredWords);
-                    document.getElementById('consonantQuestion').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('consonantQuestion'), 'consonant', {
+                        userInputSummary: `Step completed (consonant)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8565,7 +8877,10 @@ function setupFeatureListeners(feature, callback, options) {
             function completeCore(finalWords) {
                 callback(finalWords);
                 featureDiv.classList.add('completed');
-                featureDiv.dispatchEvent(new Event('completed'));
+                dispatchWorkflowFeatureComplete(featureDiv, 'theCore', {
+                    userInputSummary: `Step completed (theCore)`,
+                    userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                });
             }
 
             function getConsonantPairsFromWord(word) {
@@ -8817,7 +9132,10 @@ function setupFeatureListeners(feature, callback, options) {
                 eeeButton.onclick = () => {
                     const filteredWords = filterWordsByEee(currentFilteredWords, 'E');
                     callback(filteredWords);
-                    document.getElementById('eeeFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('eeeFeature'), 'eee', {
+                        userInputSummary: `Step completed (eee)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8831,7 +9149,10 @@ function setupFeatureListeners(feature, callback, options) {
                 eeeYesBtn.onclick = () => {
                     const filteredWords = filterWordsByEee(currentFilteredWords, 'YES');
                     callback(filteredWords);
-                    document.getElementById('eeeFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('eeeFeature'), 'eee', {
+                        userInputSummary: `Step completed (eee)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8845,7 +9166,10 @@ function setupFeatureListeners(feature, callback, options) {
                 eeeNoBtn.onclick = () => {
                     const filteredWords = filterWordsByEee(currentFilteredWords, 'NO');
                     callback(filteredWords);
-                    document.getElementById('eeeFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('eeeFeature'), 'eee', {
+                        userInputSummary: `Step completed (eee)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8867,7 +9191,10 @@ function setupFeatureListeners(feature, callback, options) {
                 eeeFirstButton.onclick = () => {
                     const filteredWords = filterWordsByEeeFirst(currentFilteredWords, 'E');
                     callback(filteredWords);
-                    document.getElementById('eeeFirstFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('eeeFirstFeature'), 'eeeFirst', {
+                        userInputSummary: `Step completed (eeeFirst)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8881,7 +9208,10 @@ function setupFeatureListeners(feature, callback, options) {
                 eeeFirstYesBtn.onclick = () => {
                     const filteredWords = filterWordsByEeeFirst(currentFilteredWords, 'YES');
                     callback(filteredWords);
-                    document.getElementById('eeeFirstFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('eeeFirstFeature'), 'eeeFirst', {
+                        userInputSummary: `Step completed (eeeFirst)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8895,7 +9225,10 @@ function setupFeatureListeners(feature, callback, options) {
                 eeeFirstNoBtn.onclick = () => {
                     const filteredWords = filterWordsByEeeFirst(currentFilteredWords, 'NO');
                     callback(filteredWords);
-                    document.getElementById('eeeFirstFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('eeeFirstFeature'), 'eeeFirst', {
+                        userInputSummary: `Step completed (eeeFirst)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8908,7 +9241,10 @@ function setupFeatureListeners(feature, callback, options) {
             if (eeeFirstSkipButton) {
                 eeeFirstSkipButton.onclick = () => {
                     callback(currentFilteredWords); // Keep the current word list unchanged
-                    document.getElementById('eeeFirstFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('eeeFirstFeature'), 'eeeFirst', {
+                        userInputSummary: `Step completed (eeeFirst)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -8947,7 +9283,10 @@ function setupFeatureListeners(feature, callback, options) {
                 const featureDiv = document.getElementById('e21Feature');
                 if (featureDiv) {
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'e21', {
+                        userInputSummary: `Step completed (e21)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 }
             };
 
@@ -9067,7 +9406,10 @@ function setupFeatureListeners(feature, callback, options) {
                 const featureDiv = document.getElementById('letterLyingFeature');
                 if (featureDiv) {
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'letterLying', {
+                        userInputSummary: `Step completed (letterLying)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 }
             };
 
@@ -9192,7 +9534,10 @@ function setupFeatureListeners(feature, callback, options) {
                     displayResults(currentFilteredWords);
                     callback(currentFilteredWords);
                     document.getElementById('loveLettersFeature').classList.add('completed');
-                    document.getElementById('loveLettersFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('loveLettersFeature'), 'loveLetters', {
+                        userInputSummary: `Step completed (loveLetters)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 loveLettersButton.addEventListener('touchstart', (e) => { e.preventDefault(); loveLettersButton.click(); }, { passive: false });
             }
@@ -9200,7 +9545,10 @@ function setupFeatureListeners(feature, callback, options) {
                 loveLettersSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('loveLettersFeature').classList.add('completed');
-                    document.getElementById('loveLettersFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('loveLettersFeature'), 'loveLetters', {
+                        userInputSummary: `Step completed (loveLetters)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 loveLettersSkipButton.addEventListener('touchstart', (e) => { e.preventDefault(); loveLettersSkipButton.click(); }, { passive: false });
             }
@@ -9243,7 +9591,10 @@ function setupFeatureListeners(feature, callback, options) {
                     if (letter) {
                         const filteredWords = filterWordsByOriginalLex(currentFilteredWords, originalLexPosition, letter);
                         callback(filteredWords);
-                        document.getElementById('originalLexFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('originalLexFeature'), 'originalLex', {
+                            userInputSummary: `Step completed (originalLex)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     } else {
                         alert('Please enter a word');
                     }
@@ -9259,7 +9610,10 @@ function setupFeatureListeners(feature, callback, options) {
             if (originalLexSkipButton) {
                 originalLexSkipButton.onclick = () => {
                     callback(currentFilteredWords);
-                    document.getElementById('originalLexFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('originalLexFeature'), 'originalLex', {
+                        userInputSummary: `Step completed (originalLex)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -9283,7 +9637,10 @@ function setupFeatureListeners(feature, callback, options) {
                 const featureDiv = document.getElementById('advLexFeature');
                 if (featureDiv) {
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'advLex', {
+                        userInputSummary: `Step completed (advLex)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 }
                 break;
             }
@@ -9309,7 +9666,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const featureDiv = document.getElementById('advLexFeature');
                     if (featureDiv) {
                         featureDiv.classList.add('completed');
-                        featureDiv.dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(featureDiv, 'advLex', {
+                            userInputSummary: `Step completed (advLex)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 };
                 skipBtn.addEventListener('touchstart', (e) => {
@@ -9404,7 +9764,10 @@ function setupFeatureListeners(feature, callback, options) {
                 const featureDiv = document.getElementById('advLexFeature');
                 if (featureDiv) {
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'advLex', {
+                        userInputSummary: `Step completed (advLex)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 }
             };
             submitBtn.addEventListener('touchstart', (e) => {
@@ -9417,7 +9780,10 @@ function setupFeatureListeners(feature, callback, options) {
                 const featureDiv = document.getElementById('advLexFeature');
                 if (featureDiv) {
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'advLex', {
+                        userInputSummary: `Step completed (advLex)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 }
             };
             skipBtn.addEventListener('touchstart', (e) => {
@@ -9452,7 +9818,10 @@ function setupFeatureListeners(feature, callback, options) {
                 }
                 const filtered = filterWordsByLetterShapesPrefilter(currentFilteredWords, pos, shape);
                 callback(filtered);
-                letterShapesRoot.dispatchEvent(new Event('completed'));
+                dispatchWorkflowFeatureComplete(letterShapesRoot, 'letterShapes', {
+                    userInputSummary: `Position ${pos}, shape ${shape}`,
+                    userInput: { position: pos, shape }
+                });
             };
 
             posBtns.forEach((btn) => {
@@ -9478,7 +9847,12 @@ function setupFeatureListeners(feature, callback, options) {
             if (skipBtn) {
                 skipBtn.onclick = () => {
                     callback(currentFilteredWords);
-                    if (letterShapesRoot) letterShapesRoot.dispatchEvent(new Event('completed'));
+                    if (letterShapesRoot) {
+                        dispatchWorkflowFeatureComplete(letterShapesRoot, 'letterShapes', {
+                            skipped: true,
+                            userInputSummary: 'SKIP — list unchanged'
+                        });
+                    }
                 };
                 skipBtn.addEventListener('touchstart', (e) => {
                     e.preventDefault();
@@ -9513,10 +9887,12 @@ function setupFeatureListeners(feature, callback, options) {
                             pendingWorkflowStepPayload = {
                                 feature: 'length',
                                 submittedLength: length,
-                                buffer1: !!(appSettings && appSettings.lengthBuffer1)
+                                buffer1: !!(appSettings && appSettings.lengthBuffer1),
+                                userInputSummary: `Length ${length}${(appSettings && appSettings.lengthBuffer1) ? ' (±1 buffer)' : ''}`,
+                                userInput: { rawInput: input, parsedLength: length }
                             };
                             callback(filteredWords);
-                            document.getElementById('lengthFeature').dispatchEvent(new Event('completed'));
+                            dispatchWorkflowFeatureComplete(document.getElementById('lengthFeature'), 'length', null);
                         } else {
                             alert('Please enter a length of 3 or more');
                         }
@@ -9534,9 +9910,13 @@ function setupFeatureListeners(feature, callback, options) {
             
             if (lengthSkipButton) {
                 lengthSkipButton.onclick = () => {
-                    pendingWorkflowStepPayload = { feature: 'length', skipped: true };
+                    pendingWorkflowStepPayload = {
+                        feature: 'length',
+                        skipped: true,
+                        userInputSummary: 'SKIP — list unchanged'
+                    };
                     callback(currentFilteredWords);
-                    document.getElementById('lengthFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('lengthFeature'), 'length', null);
                 };
                 
                 // Add touch event for mobile
@@ -9566,11 +9946,13 @@ function setupFeatureListeners(feature, callback, options) {
                             pendingWorkflowStepPayload = {
                                 feature: 'scrabble',
                                 score,
-                                buffer1: useBuffer
+                                buffer1: useBuffer,
+                                userInputSummary: `Scrabble score ${score}${useBuffer ? ' (±1 buffer)' : ''}`,
+                                userInput: { rawInput: input, score, buffer1: useBuffer }
                             };
                             callback(filteredWords);
                             document.getElementById('scrabbleFeature').classList.add('completed');
-                            document.getElementById('scrabbleFeature').dispatchEvent(new Event('completed'));
+                            dispatchWorkflowFeatureComplete(document.getElementById('scrabbleFeature'), 'scrabble', null);
                         } else {
                             alert('Please enter a valid positive number');
                         }
@@ -9588,10 +9970,14 @@ function setupFeatureListeners(feature, callback, options) {
             
             if (scrabbleSkipButton) {
                 scrabbleSkipButton.onclick = () => {
-                    pendingWorkflowStepPayload = { feature: 'scrabble', skipped: true };
+                    pendingWorkflowStepPayload = {
+                        feature: 'scrabble',
+                        skipped: true,
+                        userInputSummary: 'SKIP — list unchanged'
+                    };
                     callback(currentFilteredWords);
                     document.getElementById('scrabbleFeature').classList.add('completed');
-                    document.getElementById('scrabbleFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('scrabbleFeature'), 'scrabble', null);
                 };
                 
                 // Add touch event for mobile
@@ -9615,10 +10001,15 @@ function setupFeatureListeners(feature, callback, options) {
                         const score = parseInt(input);
                         if (!isNaN(score) && score > 0) {
                             const filteredWords = filterWordsByScrabble1(currentFilteredWords, score);
-                            pendingWorkflowStepPayload = { feature: 'scrabble1', score };
+                            pendingWorkflowStepPayload = {
+                                feature: 'scrabble1',
+                                score,
+                                userInputSummary: `Scrabble score ${score} (±1 band)`,
+                                userInput: { rawInput: input, score }
+                            };
                             callback(filteredWords);
                             document.getElementById('scrabble1Feature').classList.add('completed');
-                            document.getElementById('scrabble1Feature').dispatchEvent(new Event('completed'));
+                            dispatchWorkflowFeatureComplete(document.getElementById('scrabble1Feature'), 'scrabble1', null);
                         } else {
                             alert('Please enter a valid positive number');
                         }
@@ -9636,10 +10027,14 @@ function setupFeatureListeners(feature, callback, options) {
             if (scrabble1SkipButton) {
                 scrabble1SkipButton.onclick = () => {
                     scrabble1ExactMatchSet = new Set();
-                    pendingWorkflowStepPayload = { feature: 'scrabble1', skipped: true };
+                    pendingWorkflowStepPayload = {
+                        feature: 'scrabble1',
+                        skipped: true,
+                        userInputSummary: 'SKIP — list unchanged'
+                    };
                     callback(currentFilteredWords);
                     document.getElementById('scrabble1Feature').classList.add('completed');
-                    document.getElementById('scrabble1Feature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('scrabble1Feature'), 'scrabble1', null);
                 };
                 
                 scrabble1SkipButton.addEventListener('touchstart', (e) => {
@@ -9685,10 +10080,15 @@ function setupFeatureListeners(feature, callback, options) {
                     if (ynOnly.length > 0) {
                         lastSologramYnString = ynOnly;
                         const filteredWords = filterWordsBySologram(currentFilteredWords, ynOnly);
-                        pendingWorkflowStepPayload = { feature: 'sologram', ynString: ynOnly };
+                        pendingWorkflowStepPayload = {
+                            feature: 'sologram',
+                            ynString: ynOnly,
+                            userInputSummary: `Y/N string “${ynOnly}”`,
+                            userInput: { ynString: ynOnly }
+                        };
                         callback(filteredWords);
                         document.getElementById('sologramFeature').classList.add('completed');
-                        document.getElementById('sologramFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('sologramFeature'), 'sologram', null);
                     } else {
                         alert('Add at least one Y or N (use the Y and N buttons).');
                     }
@@ -9697,10 +10097,14 @@ function setupFeatureListeners(feature, callback, options) {
             }
             if (sologramSkipButton) {
                 sologramSkipButton.onclick = () => {
-                    pendingWorkflowStepPayload = { feature: 'sologram', skipped: true };
+                    pendingWorkflowStepPayload = {
+                        feature: 'sologram',
+                        skipped: true,
+                        userInputSummary: 'SKIP — list unchanged'
+                    };
                     callback(currentFilteredWords);
                     document.getElementById('sologramFeature').classList.add('completed');
-                    document.getElementById('sologramFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('sologramFeature'), 'sologram', null);
                 };
                 sologramSkipButton.addEventListener('touchstart', (e) => { e.preventDefault(); sologramSkipButton.click(); }, { passive: false });
             }
@@ -9758,7 +10162,10 @@ function setupFeatureListeners(feature, callback, options) {
                 );
                 callback(filteredWords);
                 document.getElementById('scrambleFeature').classList.add('completed');
-                document.getElementById('scrambleFeature').dispatchEvent(new Event('completed'));
+                dispatchWorkflowFeatureComplete(document.getElementById('scrambleFeature'), 'scramble', {
+                    userInputSummary: `Step completed (scramble)`,
+                    userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                });
             };
 
             const showDecodeStage = (stage) => {
@@ -9884,7 +10291,10 @@ function setupFeatureListeners(feature, callback, options) {
                     );
                     callback(filteredWords);
                     document.getElementById('scrambleFeature').classList.add('completed');
-                    document.getElementById('scrambleFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('scrambleFeature'), 'scramble', {
+                        userInputSummary: `Step completed (scramble)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 scrambleButton.addEventListener('touchstart', (e) => { e.preventDefault(); scrambleButton.click(); }, { passive: false });
             }
@@ -9892,7 +10302,10 @@ function setupFeatureListeners(feature, callback, options) {
                 scrambleSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('scrambleFeature').classList.add('completed');
-                    document.getElementById('scrambleFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('scrambleFeature'), 'scramble', {
+                        userInputSummary: `Step completed (scramble)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 scrambleSkipButton.addEventListener('touchstart', (e) => { e.preventDefault(); scrambleSkipButton.click(); }, { passive: false });
             }
@@ -9934,7 +10347,10 @@ function setupFeatureListeners(feature, callback, options) {
                         const filteredWords = filterWordsByMostFrequent(currentFilteredWords, mostFrequentLetter, true);
                         callback(filteredWords);
                         document.getElementById('mostFrequentFeature').classList.add('completed');
-                        document.getElementById('mostFrequentFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('mostFrequentFeature'), 'mostFrequent', {
+                            userInputSummary: `Step completed (mostFrequent)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 };
                 
@@ -9958,7 +10374,10 @@ function setupFeatureListeners(feature, callback, options) {
                         const filteredWords = filterWordsByMostFrequent(currentFilteredWords, mostFrequentLetter, false);
                         callback(filteredWords);
                         document.getElementById('mostFrequentFeature').classList.add('completed');
-                        document.getElementById('mostFrequentFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('mostFrequentFeature'), 'mostFrequent', {
+                            userInputSummary: `Step completed (mostFrequent)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 };
                 
@@ -9975,7 +10394,10 @@ function setupFeatureListeners(feature, callback, options) {
                 frequentSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('mostFrequentFeature').classList.add('completed');
-                    document.getElementById('mostFrequentFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('mostFrequentFeature'), 'mostFrequent', {
+                        userInputSummary: `Step completed (mostFrequent)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -10272,7 +10694,10 @@ function setupFeatureListeners(feature, callback, options) {
                         const filteredWords = filterWordsByLeastFrequent(currentFilteredWords, leastFrequentLetter, true);
                         callback(filteredWords);
                         document.getElementById('leastFrequentFeature').classList.add('completed');
-                        document.getElementById('leastFrequentFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('leastFrequentFeature'), 'leastFrequent', {
+                            userInputSummary: `Step completed (leastFrequent)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 };
                 
@@ -10296,7 +10721,10 @@ function setupFeatureListeners(feature, callback, options) {
                         const filteredWords = filterWordsByLeastFrequent(currentFilteredWords, leastFrequentLetter, false);
                         callback(filteredWords);
                         document.getElementById('leastFrequentFeature').classList.add('completed');
-                        document.getElementById('leastFrequentFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('leastFrequentFeature'), 'leastFrequent', {
+                            userInputSummary: `Step completed (leastFrequent)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 };
                 
@@ -10313,7 +10741,10 @@ function setupFeatureListeners(feature, callback, options) {
                 leastFrequentSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('leastFrequentFeature').classList.add('completed');
-                    document.getElementById('leastFrequentFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('leastFrequentFeature'), 'leastFrequent', {
+                        userInputSummary: `Step completed (leastFrequent)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 // Add touch event for mobile
@@ -10346,14 +10777,20 @@ function setupFeatureListeners(feature, callback, options) {
                         filterWordsByNotIn(letters);
                         callback(currentFilteredWords);
                         document.getElementById('notInFeature').classList.add('completed');
-                        document.getElementById('notInFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('notInFeature'), 'notIn', {
+                            userInputSummary: `Step completed (notIn)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 });
 
                 newNotInSkipButton.addEventListener('click', () => {
                     callback(currentFilteredWords);
                     document.getElementById('notInFeature').classList.add('completed');
-                    document.getElementById('notInFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('notInFeature'), 'notIn', {
+                        userInputSummary: `Step completed (notIn)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 });
 
                 // Add enter key support
@@ -10396,14 +10833,20 @@ function setupFeatureListeners(feature, callback, options) {
                         filterWordsByPresent(letters);
                         callback(currentFilteredWords);
                         document.getElementById('presentFeature').classList.add('completed');
-                        document.getElementById('presentFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('presentFeature'), 'present', {
+                            userInputSummary: `Step completed (present)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 });
 
                 newPresentSkipButton.addEventListener('click', () => {
                     callback(currentFilteredWords);
                     document.getElementById('presentFeature').classList.add('completed');
-                    document.getElementById('presentFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('presentFeature'), 'present', {
+                        userInputSummary: `Step completed (present)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 });
 
                 newPresentInput.addEventListener('keypress', (e) => {
@@ -10445,7 +10888,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByAnywhere(currentFilteredWords, two);
                     callback(filteredWords);
                     document.getElementById('anywhereFeature').classList.add('completed');
-                    document.getElementById('anywhereFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('anywhereFeature'), 'anywhere', {
+                        userInputSummary: `Step completed (anywhere)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 anywhereButton.addEventListener('touchstart', (e) => { e.preventDefault(); anywhereButton.click(); }, { passive: false });
             }
@@ -10453,7 +10899,10 @@ function setupFeatureListeners(feature, callback, options) {
                 anywhereSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('anywhereFeature').classList.add('completed');
-                    document.getElementById('anywhereFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('anywhereFeature'), 'anywhere', {
+                        userInputSummary: `Step completed (anywhere)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 anywhereSkipButton.addEventListener('touchstart', (e) => { e.preventDefault(); anywhereSkipButton.click(); }, { passive: false });
             }
@@ -10480,7 +10929,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByTogether(currentFilteredWords, two);
                     callback(filteredWords);
                     document.getElementById('togetherFeature').classList.add('completed');
-                    document.getElementById('togetherFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('togetherFeature'), 'together', {
+                        userInputSummary: `Step completed (together)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 togetherButton.addEventListener('touchstart', (e) => { e.preventDefault(); togetherButton.click(); }, { passive: false });
             }
@@ -10488,7 +10940,10 @@ function setupFeatureListeners(feature, callback, options) {
                 togetherSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('togetherFeature').classList.add('completed');
-                    document.getElementById('togetherFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('togetherFeature'), 'together', {
+                        userInputSummary: `Step completed (together)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 togetherSkipButton.addEventListener('touchstart', (e) => { e.preventDefault(); togetherSkipButton.click(); }, { passive: false });
             }
@@ -10515,7 +10970,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByMiddle(currentFilteredWords, two);
                     callback(filteredWords);
                     document.getElementById('middleFeature').classList.add('completed');
-                    document.getElementById('middleFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('middleFeature'), 'middle', {
+                        userInputSummary: `Step completed (middle)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 middleButton.addEventListener('touchstart', (e) => { e.preventDefault(); middleButton.click(); }, { passive: false });
             }
@@ -10523,7 +10981,10 @@ function setupFeatureListeners(feature, callback, options) {
                 middleSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('middleFeature').classList.add('completed');
-                    document.getElementById('middleFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('middleFeature'), 'middle', {
+                        userInputSummary: `Step completed (middle)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 middleSkipButton.addEventListener('touchstart', (e) => { e.preventDefault(); middleSkipButton.click(); }, { passive: false });
             }
@@ -10541,7 +11002,10 @@ function setupFeatureListeners(feature, callback, options) {
                 callback(filtered);
                 if (consonantsFeature) {
                     consonantsFeature.classList.add('completed');
-                    consonantsFeature.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(consonantsFeature, 'consonants', {
+                        userInputSummary: `Step completed (consonants)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 }
             }
             if (consonantsInput) {
@@ -10652,7 +11116,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(filteredWords);
                     const featureDiv = document.getElementById('abcdeFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'abcde', {
+                        userInputSummary: `Step completed (abcde)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 doneBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -10683,7 +11150,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(filteredWords);
                     const featureDiv = document.getElementById('abcdeFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'abcde', {
+                        userInputSummary: `Step completed (abcde)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 noneBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -10696,7 +11166,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(currentFilteredWords);
                     const featureDiv = document.getElementById('abcdeFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'abcde', {
+                        userInputSummary: `Step completed (abcde)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 skipBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -10755,7 +11228,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(filteredWords);
                     const featureDiv = document.getElementById('abcFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'abc', {
+                        userInputSummary: `Step completed (abc)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 doneBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -10786,7 +11262,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(filteredWords);
                     const featureDiv = document.getElementById('abcFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'abc', {
+                        userInputSummary: `Step completed (abc)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 noneBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -10799,7 +11278,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(currentFilteredWords);
                     const featureDiv = document.getElementById('abcFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'abc', {
+                        userInputSummary: `Step completed (abc)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 skipBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -10880,7 +11362,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(filteredWords);
                     const featureDiv = document.getElementById('pianoForteFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'pianoForte', {
+                        userInputSummary: `Step completed (pianoForte)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 submitBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -10910,7 +11395,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(filteredWords);
                     const featureDiv = document.getElementById('pianoForteFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'pianoForte', {
+                        userInputSummary: `Step completed (pianoForte)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 noneBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -10923,7 +11411,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(currentFilteredWords);
                     const featureDiv = document.getElementById('pianoForteFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'pianoForte', {
+                        userInputSummary: `Step completed (pianoForte)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 skipBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -10986,7 +11477,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(filteredWords);
                     const featureDiv = document.getElementById('pianoPianoFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'pianoPiano', {
+                        userInputSummary: `Step completed (pianoPiano)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 submitBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -11007,7 +11501,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(filteredWords);
                     const featureDiv = document.getElementById('pianoPianoFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'pianoPiano', {
+                        userInputSummary: `Step completed (pianoPiano)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 noneBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -11020,7 +11517,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(currentFilteredWords);
                     const featureDiv = document.getElementById('pianoPianoFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'pianoPiano', {
+                        userInputSummary: `Step completed (pianoPiano)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 skipBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -11059,7 +11559,10 @@ function setupFeatureListeners(feature, callback, options) {
                     }
                     callback(filteredWords);
                     document.getElementById('t9LengthFeature').classList.add('completed');
-                    document.getElementById('t9LengthFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9LengthFeature'), 't9Length', {
+                        userInputSummary: `Step completed (t9Length)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9LengthButton.addEventListener('touchstart', (e) => {
@@ -11079,7 +11582,10 @@ function setupFeatureListeners(feature, callback, options) {
                 t9LengthSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('t9LengthFeature').classList.add('completed');
-                    document.getElementById('t9LengthFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9LengthFeature'), 't9Length', {
+                        userInputSummary: `Step completed (t9Length)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9LengthSkipButton.addEventListener('touchstart', (e) => {
@@ -11144,7 +11650,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByT9LastTwo(currentFilteredWords, lastTwo);
                     callback(filteredWords);
                     document.getElementById('t9LastTwoFeature').classList.add('completed');
-                    document.getElementById('t9LastTwoFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9LastTwoFeature'), 't9LastTwo', {
+                        userInputSummary: `Step completed (t9LastTwo)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9LastTwoSubmitButton.addEventListener('touchstart', (e) => {
@@ -11176,7 +11685,10 @@ function setupFeatureListeners(feature, callback, options) {
                 t9LastTwoSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('t9LastTwoFeature').classList.add('completed');
-                    document.getElementById('t9LastTwoFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9LastTwoFeature'), 't9LastTwo', {
+                        userInputSummary: `Step completed (t9LastTwo)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9LastTwoSkipButton.addEventListener('touchstart', (e) => {
@@ -11210,7 +11722,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByT9Last(currentFilteredWords, actual);
                     callback(filteredWords);
                     document.getElementById('t9LastFeature').classList.add('completed');
-                    document.getElementById('t9LastFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9LastFeature'), 't9Last', {
+                        userInputSummary: `Step completed (t9Last)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                     // Show SEND TO HYDRA label (sum of GUESS + ACTUAL) for rest of workflow
                     // Use raw digit parse for sum - GUESS filter strips to 2-9, but HYDRA sum needs all digits (e.g. 11)
                     const guessForSum = (t9LastGuessInput?.value || '').trim().replace(/\D/g, '').slice(0, 2) || '0';
@@ -11232,7 +11747,10 @@ function setupFeatureListeners(feature, callback, options) {
                 t9LastSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('t9LastFeature').classList.add('completed');
-                    document.getElementById('t9LastFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9LastFeature'), 't9Last', {
+                        userInputSummary: `Step completed (t9Last)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 t9LastSkipButton.addEventListener('touchstart', (e) => {
                     e.preventDefault();
@@ -11263,7 +11781,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByT9Position5(currentFilteredWords, actual);
                     callback(filteredWords);
                     document.getElementById('t9Position5Feature').classList.add('completed');
-                    document.getElementById('t9Position5Feature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9Position5Feature'), 't9Position5', {
+                        userInputSummary: `Step completed (t9Position5)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                     const guessForSum = (t9Position5GuessInput?.value || '').trim().replace(/\D/g, '').slice(0, 1) || '0';
                     const actualForSum = (t9Position5ActualInput?.value || '').trim().replace(/\D/g, '').slice(0, 1) || '0';
                     const hydraSum = parseInt(guessForSum, 10) + parseInt(actualForSum, 10);
@@ -11283,7 +11804,10 @@ function setupFeatureListeners(feature, callback, options) {
                 t9Position5SkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('t9Position5Feature').classList.add('completed');
-                    document.getElementById('t9Position5Feature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9Position5Feature'), 't9Position5', {
+                        userInputSummary: `Step completed (t9Position5)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 t9Position5SkipButton.addEventListener('touchstart', (e) => {
                     e.preventDefault();
@@ -11333,7 +11857,10 @@ function setupFeatureListeners(feature, callback, options) {
                             const filteredWords = filterWordsByT9Guess(currentFilteredWords, t9LastGuessDigits, answers);
                             callback(filteredWords);
                             document.getElementById('t9GuessFeature').classList.add('completed');
-                            document.getElementById('t9GuessFeature').dispatchEvent(new Event('completed'));
+                            dispatchWorkflowFeatureComplete(document.getElementById('t9GuessFeature'), 't9Guess', {
+                                userInputSummary: `Step completed (t9Guess)`,
+                                userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                            });
                         }
                     };
                     yesBtn.onclick = () => setAnswer(true);
@@ -11358,7 +11885,10 @@ function setupFeatureListeners(feature, callback, options) {
                         const filteredWords = filterWordsByT9Guess(currentFilteredWords, t9LastGuessDigits, answers);
                         callback(filteredWords);
                         document.getElementById('t9GuessFeature').classList.add('completed');
-                        document.getElementById('t9GuessFeature').dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(document.getElementById('t9GuessFeature'), 't9Guess', {
+                            userInputSummary: `Step completed (t9Guess)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     };
                     t9GuessSubmitButton.addEventListener('touchstart', (e) => {
                         e.preventDefault();
@@ -11370,7 +11900,10 @@ function setupFeatureListeners(feature, callback, options) {
                 t9GuessSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('t9GuessFeature').classList.add('completed');
-                    document.getElementById('t9GuessFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9GuessFeature'), 't9Guess', {
+                        userInputSummary: `Step completed (t9Guess)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 t9GuessSkipButton.addEventListener('touchstart', (e) => {
                     e.preventDefault();
@@ -11513,7 +12046,10 @@ function setupFeatureListeners(feature, callback, options) {
                 t9BSubmitted = true;
                 callback(filteredWords);
                 document.getElementById('t9OneLieFeature').classList.add('completed');
-                document.getElementById('t9OneLieFeature').dispatchEvent(new Event('completed'));
+                dispatchWorkflowFeatureComplete(document.getElementById('t9OneLieFeature'), 't9OneLie', {
+                    userInputSummary: `Step completed (t9OneLie)`,
+                    userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                });
             };
 
             const renderTruthDigitButtons = (digits, onDigitClick) => {
@@ -11690,7 +12226,10 @@ function setupFeatureListeners(feature, callback, options) {
                 t9OneLieSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('t9OneLieFeature').classList.add('completed');
-                    document.getElementById('t9OneLieFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9OneLieFeature'), 't9OneLie', {
+                        userInputSummary: `Step completed (t9OneLie)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                     hidePreview();
                 };
                 t9OneLieSkipButton.addEventListener('touchstart', (e) => { e.preventDefault(); t9OneLieSkipButton.onclick(); }, { passive: false });
@@ -11708,7 +12247,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByT9Repeat(currentFilteredWords, true);
                     callback(filteredWords);
                     document.getElementById('t9RepeatFeature').classList.add('completed');
-                    document.getElementById('t9RepeatFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9RepeatFeature'), 't9Repeat', {
+                        userInputSummary: `Step completed (t9Repeat)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9RepeatYesBtn.addEventListener('touchstart', (e) => {
@@ -11723,7 +12265,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByT9Repeat(currentFilteredWords, false);
                     callback(filteredWords);
                     document.getElementById('t9RepeatFeature').classList.add('completed');
-                    document.getElementById('t9RepeatFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9RepeatFeature'), 't9Repeat', {
+                        userInputSummary: `Step completed (t9Repeat)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9RepeatNoBtn.addEventListener('touchstart', (e) => {
@@ -11736,7 +12281,10 @@ function setupFeatureListeners(feature, callback, options) {
                 t9RepeatSkipBtn.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('t9RepeatFeature').classList.add('completed');
-                    document.getElementById('t9RepeatFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9RepeatFeature'), 't9Repeat', {
+                        userInputSummary: `Step completed (t9Repeat)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9RepeatSkipBtn.addEventListener('touchstart', (e) => {
@@ -11758,7 +12306,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByT9Higher(currentFilteredWords, 'yes');
                     callback(filteredWords);
                     document.getElementById('t9HigherFeature').classList.add('completed');
-                    document.getElementById('t9HigherFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9HigherFeature'), 't9Higher', {
+                        userInputSummary: `Step completed (t9Higher)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9HigherYesBtn.addEventListener('touchstart', (e) => {
@@ -11773,7 +12324,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByT9Higher(currentFilteredWords, 'no');
                     callback(filteredWords);
                     document.getElementById('t9HigherFeature').classList.add('completed');
-                    document.getElementById('t9HigherFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9HigherFeature'), 't9Higher', {
+                        userInputSummary: `Step completed (t9Higher)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9HigherNoBtn.addEventListener('touchstart', (e) => {
@@ -11788,7 +12342,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByT9Higher(currentFilteredWords, 'same');
                     callback(filteredWords);
                     document.getElementById('t9HigherFeature').classList.add('completed');
-                    document.getElementById('t9HigherFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9HigherFeature'), 't9Higher', {
+                        userInputSummary: `Step completed (t9Higher)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9HigherSameBtn.addEventListener('touchstart', (e) => {
@@ -11801,7 +12358,10 @@ function setupFeatureListeners(feature, callback, options) {
                 t9HigherSkipBtn.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('t9HigherFeature').classList.add('completed');
-                    document.getElementById('t9HigherFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9HigherFeature'), 't9Higher', {
+                        userInputSummary: `Step completed (t9Higher)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9HigherSkipBtn.addEventListener('touchstart', (e) => {
@@ -11815,10 +12375,73 @@ function setupFeatureListeners(feature, callback, options) {
         case 't9Singing': {
             const upBtn = document.getElementById('t9SingingUpBtn');
             const downBtn = document.getElementById('t9SingingDownBtn');
+            const unfinishedBtn = document.getElementById('t9SingingUnfinishedBtn');
             const submitBtn = document.getElementById('t9SingingSubmitBtn');
             const skipBtn = document.getElementById('t9SingingSkipBtn');
             const sequenceDisplay = document.getElementById('t9SingingSequenceDisplay');
+            const singingHintEl = document.getElementById('t9SingingRepeatedLettersHint');
+            const featureRepeatedToggle = document.getElementById('t9SingingRepeatedDigitsFeatureToggle');
+            const singingBaseWords = Array.isArray(currentFilteredWords) ? currentFilteredWords.slice() : [];
+            const singingWordsAtStepStart = singingBaseWords.length;
+            let singingUnfinishedPresses = 0;
             let singingDirections = [];
+
+            function refreshSingingRepeatedHint() {
+                const on = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+                if (singingHintEl) {
+                    singingHintEl.textContent = on
+                        ? 'Repeated T9 digits ON: consecutive identical T9 digits merge.'
+                        : 'Repeated T9 digits OFF: full T9.';
+                }
+            }
+
+            function syncSingingSettingsPageRepeatedToggle() {
+                const st = document.getElementById('t9SingingRepeatedLettersToggle');
+                if (st) st.checked = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+            }
+
+            function performT9SingingRepeatedRescan(prevRepeatedForRevert) {
+                refreshSingingRepeatedHint();
+                if (!singingDirections.length) {
+                    callback(singingBaseWords);
+                    return;
+                }
+                const filtered = filterWordsByT9SingingPrefix(singingBaseWords, singingDirections);
+                if (filtered.length === 0) {
+                    appSettings.t9SingingRepeatedLetters = prevRepeatedForRevert;
+                    saveAppSettings();
+                    if (featureRepeatedToggle) featureRepeatedToggle.checked = !!appSettings.t9SingingRepeatedLetters;
+                    syncSingingSettingsPageRepeatedToggle();
+                    refreshSingingRepeatedHint();
+                    alert('No words match this sequence with that Repeated T9 digits setting. Reverted.');
+                    return;
+                }
+                callback(filtered);
+            }
+
+            const singingRescanBound = (prev) => performT9SingingRepeatedRescan(prev);
+            t9SingingRepeatedRescanFn = singingRescanBound;
+
+            refreshSingingRepeatedHint();
+            if (featureRepeatedToggle) {
+                featureRepeatedToggle.checked = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+                featureRepeatedToggle.addEventListener('change', () => {
+                    const prev = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+                    appSettings.t9SingingRepeatedLetters = featureRepeatedToggle.checked;
+                    saveAppSettings();
+                    syncSingingSettingsPageRepeatedToggle();
+                    performT9SingingRepeatedRescan(prev);
+                });
+            }
+
+            const singingFeatureEl = document.getElementById('t9SingingFeature');
+            if (singingFeatureEl) {
+                singingFeatureEl.addEventListener('completed', () => {
+                    if (t9SingingRepeatedRescanFn === singingRescanBound) {
+                        t9SingingRepeatedRescanFn = null;
+                    }
+                }, { once: true });
+            }
 
             function singingUpdateDisplay() {
                 if (!sequenceDisplay) return;
@@ -11831,6 +12454,17 @@ function setupFeatureListeners(feature, callback, options) {
                 }
             }
 
+            function singingApplyIncremental() {
+                const filtered = filterWordsByT9SingingPrefix(singingBaseWords, singingDirections);
+                if (filtered.length === 0) {
+                    singingDirections.pop();
+                    singingUpdateDisplay();
+                    alert('No words match that sequence. The last direction was removed.');
+                    return;
+                }
+                callback(filtered);
+            }
+
             function singingSubmit() {
                 if (!singingDirections.length) {
                     alert('Add at least one direction (UP or DOWN), then SUBMIT.');
@@ -11838,24 +12472,37 @@ function setupFeatureListeners(feature, callback, options) {
                 }
                 const tokens = singingDirections.slice();
                 const directionsHuman = tokens.map(d => d === 'U' ? 'UP' : 'DOWN').join(', ');
-                const wordsBefore = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null;
-                const filtered = filterWordsByT9Singing(currentFilteredWords, singingDirections);
-                const wordsAfter = Array.isArray(filtered) ? filtered.length : null;
+                const exactFiltered = filterWordsByT9Singing(singingBaseWords, singingDirections);
+                if (!exactFiltered.length) {
+                    alert('No words match this tune with exact T9 length (steps + 1). Try more UP/DOWN, use UNFINISHED to drop “complete” words, or adjust the sequence.');
+                    return;
+                }
+                callback(exactFiltered);
+                const wordsAfter = exactFiltered.length;
+                const t9SingingRepeatedLetters = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+                const exactLen = tokens.length + 1;
                 pendingWorkflowStepPayload = {
                     feature: 't9Singing',
                     skipped: false,
                     directionsTokens: tokens,
                     directionsHuman,
+                    userInputSummary: `SINGING: ${directionsHuman}${t9SingingRepeatedLetters ? ' (T9: merge consecutive digits)' : ''} · SUBMIT exact length ${exactLen}`,
                     directionCount: tokens.length,
-                    impliedT9Length: tokens.length + 1,
-                    wordsBefore,
+                    impliedT9Length: exactLen,
+                    impliedT9LengthMin: exactLen,
+                    t9SingingIncremental: true,
+                    t9SingingSubmitExactLength: true,
+                    t9SingingCompletedVia: 'submit',
+                    t9SingingUnfinishedPresses: singingUnfinishedPresses,
+                    t9SingingRepeatedLetters,
+                    t9SingingEncoding: t9SingingRepeatedLetters ? 'collapsedAdjacentT9Digits' : 'standard',
+                    wordsBefore: singingWordsAtStepStart,
                     wordsAfter
                 };
-                callback(filtered);
                 const featureEl = document.getElementById('t9SingingFeature');
                 if (featureEl) {
                     featureEl.classList.add('completed');
-                    featureEl.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureEl, 't9Singing', null);
                 }
             }
 
@@ -11863,6 +12510,7 @@ function setupFeatureListeners(feature, callback, options) {
                 upBtn.onclick = () => {
                     singingDirections.push('U');
                     singingUpdateDisplay();
+                    singingApplyIncremental();
                 };
                 upBtn.addEventListener('touchstart', (e) => {
                     e.preventDefault();
@@ -11874,10 +12522,59 @@ function setupFeatureListeners(feature, callback, options) {
                 downBtn.onclick = () => {
                     singingDirections.push('D');
                     singingUpdateDisplay();
+                    singingApplyIncremental();
                 };
                 downBtn.addEventListener('touchstart', (e) => {
                     e.preventDefault();
                     downBtn.click();
+                }, { passive: false });
+            }
+
+            if (unfinishedBtn) {
+                unfinishedBtn.onclick = () => {
+                    if (!singingDirections.length) {
+                        alert('Enter at least one UP or DOWN before UNFINISHED.');
+                        return;
+                    }
+                    const filtered = filterWordsByT9SingingPrefixUnfinished(singingBaseWords, singingDirections);
+                    if (filtered.length === 0) {
+                        alert('No words remain that still have more T9 steps after this prefix.');
+                        return;
+                    }
+                    singingUnfinishedPresses++;
+                    const tokens = singingDirections.slice();
+                    const directionsHuman = tokens.map(d => d === 'U' ? 'UP' : 'DOWN').join(', ');
+                    const wordsAfter = filtered.length;
+                    const t9SingingRepeatedLetters = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+                    const prefixLen = tokens.length + 1;
+                    pendingWorkflowStepPayload = {
+                        feature: 't9Singing',
+                        skipped: false,
+                        directionsTokens: tokens,
+                        directionsHuman,
+                        userInputSummary: `SINGING: ${directionsHuman}${t9SingingRepeatedLetters ? ' (T9: merge consecutive digits)' : ''} · UNFINISHED (T9 length > ${prefixLen})`,
+                        directionCount: tokens.length,
+                        impliedT9Length: null,
+                        impliedT9LengthMin: prefixLen,
+                        t9SingingIncremental: true,
+                        t9SingingSubmitExactLength: false,
+                        t9SingingCompletedVia: 'unfinished',
+                        t9SingingUnfinishedPresses: singingUnfinishedPresses,
+                        t9SingingRepeatedLetters,
+                        t9SingingEncoding: t9SingingRepeatedLetters ? 'collapsedAdjacentT9Digits' : 'standard',
+                        wordsBefore: singingWordsAtStepStart,
+                        wordsAfter
+                    };
+                    callback(filtered);
+                    const featureEl = document.getElementById('t9SingingFeature');
+                    if (featureEl) {
+                        featureEl.classList.add('completed');
+                        dispatchWorkflowFeatureComplete(featureEl, 't9Singing', null);
+                    }
+                };
+                unfinishedBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    unfinishedBtn.click();
                 }, { passive: false });
             }
 
@@ -11893,17 +12590,21 @@ function setupFeatureListeners(feature, callback, options) {
 
             if (skipBtn) {
                 skipBtn.onclick = () => {
+                    const t9SingingRepeatedLetters = !!(appSettings && appSettings.t9SingingRepeatedLetters);
                     pendingWorkflowStepPayload = {
                         feature: 't9Singing',
                         skipped: true,
-                        wordsBefore: Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null,
+                        userInputSummary: 'SKIP — list unchanged',
+                        t9SingingRepeatedLetters,
+                        t9SingingEncoding: t9SingingRepeatedLetters ? 'collapsedAdjacentT9Digits' : 'standard',
+                        wordsBefore: singingWordsAtStepStart,
                         wordsAfter: Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null
                     };
                     callback(currentFilteredWords);
                     const featureEl = document.getElementById('t9SingingFeature');
                     if (featureEl) {
                         featureEl.classList.add('completed');
-                        featureEl.dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(featureEl, 't9Singing', null);
                     }
                 };
                 skipBtn.addEventListener('touchstart', (e) => {
@@ -11929,7 +12630,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const el = document.getElementById('t9NumberStartFeature');
                     if (el) {
                         el.classList.add('completed');
-                        el.dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(el, 't9NumberStart', {
+                            userInputSummary: `Step completed (t9NumberStart)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 };
                 btn.addEventListener('touchstart', (e) => {
@@ -11943,7 +12647,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const el = document.getElementById('t9NumberStartFeature');
                     if (el) {
                         el.classList.add('completed');
-                        el.dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(el, 't9NumberStart', {
+                            userInputSummary: `Step completed (t9NumberStart)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 };
                 skipBtn.addEventListener('touchstart', (e) => {
@@ -12072,7 +12779,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByT9OneTruth(currentFilteredWords, selectedDigits);
                     callback(filteredWords);
                     document.getElementById('t9OneTruthFeature').classList.add('completed');
-                    document.getElementById('t9OneTruthFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9OneTruthFeature'), 't9OneTruth', {
+                        userInputSummary: `Step completed (t9OneTruth)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9OneTruthSubmitButton.addEventListener('touchstart', (e) => {
@@ -12107,7 +12817,10 @@ function setupFeatureListeners(feature, callback, options) {
                 t9OneTruthSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('t9OneTruthFeature').classList.add('completed');
-                    document.getElementById('t9OneTruthFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('t9OneTruthFeature'), 't9OneTruth', {
+                        userInputSummary: `Step completed (t9OneTruth)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 t9OneTruthSkipButton.addEventListener('touchstart', (e) => {
@@ -12127,7 +12840,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByAlphaNumeric(currentFilteredWords, true);
                     callback(filteredWords);
                     document.getElementById('alphaNumericFeature').classList.add('completed');
-                    document.getElementById('alphaNumericFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('alphaNumericFeature'), 'alphaNumeric', {
+                        userInputSummary: `Step completed (alphaNumeric)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 alphaNumericYesBtn.addEventListener('touchstart', (e) => {
@@ -12141,7 +12857,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByAlphaNumeric(currentFilteredWords, false);
                     callback(filteredWords);
                     document.getElementById('alphaNumericFeature').classList.add('completed');
-                    document.getElementById('alphaNumericFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('alphaNumericFeature'), 'alphaNumeric', {
+                        userInputSummary: `Step completed (alphaNumeric)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 alphaNumericNoBtn.addEventListener('touchstart', (e) => {
@@ -12154,7 +12873,10 @@ function setupFeatureListeners(feature, callback, options) {
                 alphaNumericSkipBtn.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('alphaNumericFeature').classList.add('completed');
-                    document.getElementById('alphaNumericFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('alphaNumericFeature'), 'alphaNumeric', {
+                        userInputSummary: `Step completed (alphaNumeric)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 alphaNumericSkipBtn.addEventListener('touchstart', (e) => {
@@ -12186,7 +12908,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByLettersAbove(currentFilteredWords, count);
                     callback(filteredWords);
                     document.getElementById('lettersAboveFeature').classList.add('completed');
-                    document.getElementById('lettersAboveFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('lettersAboveFeature'), 'lettersAbove', {
+                        userInputSummary: `Step completed (lettersAbove)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 lettersAboveButton.addEventListener('touchstart', (e) => {
@@ -12199,7 +12924,10 @@ function setupFeatureListeners(feature, callback, options) {
                 lettersAboveSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('lettersAboveFeature').classList.add('completed');
-                    document.getElementById('lettersAboveFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('lettersAboveFeature'), 'lettersAbove', {
+                        userInputSummary: `Step completed (lettersAbove)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 lettersAboveSkipButton.addEventListener('touchstart', (e) => {
@@ -12226,7 +12954,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsByDictionaryAlpha(currentFilteredWords, section);
                     callback(filteredWords);
                     document.getElementById('dictionaryAlphaFeature').classList.add('completed');
-                    document.getElementById('dictionaryAlphaFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('dictionaryAlphaFeature'), 'dictionaryAlpha', {
+                        userInputSummary: `Step completed (dictionaryAlpha)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 btn.addEventListener('touchstart', (e) => {
@@ -12240,7 +12971,10 @@ function setupFeatureListeners(feature, callback, options) {
                 dictionaryAlphaSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('dictionaryAlphaFeature').classList.add('completed');
-                    document.getElementById('dictionaryAlphaFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('dictionaryAlphaFeature'), 'dictionaryAlpha', {
+                        userInputSummary: `Step completed (dictionaryAlpha)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 dictionaryAlphaSkipButton.addEventListener('touchstart', (e) => {
@@ -12253,7 +12987,7 @@ function setupFeatureListeners(feature, callback, options) {
 
         case 'alpha': {
             const alphaLeftBtn = document.getElementById('alphaLeftBtn');
-            const alphaRepeatBtn = document.getElementById('alphaRepeatBtn');
+            const alphaRepeatDirBtn = document.getElementById('alphaRepeatDirBtn');
             const alphaRightBtn = document.getElementById('alphaRightBtn');
             const alphaSubmitBtn = document.getElementById('alphaSubmitBtn');
             const alphaSkipBtn = document.getElementById('alphaSkipBtn');
@@ -12264,41 +12998,62 @@ function setupFeatureListeners(feature, callback, options) {
 
             function alphaUpdateDisplay() {
                 if (alphaSequenceDisplay) {
-                    alphaSequenceDisplay.textContent = alphaDirections.length ? alphaDirections.map(d => d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat').join(', ') : '—';
+                    alphaSequenceDisplay.textContent = alphaDirections.length
+                        ? alphaDirections.map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat')).join(', ')
+                        : '—';
                 }
             }
 
-            function alphaSubmit() {
+            function alphaShortSubmit() {
                 const section = lastDictionaryAlphaSection;
                 const filtered = filterWordsByAlpha(currentFilteredWords, alphaDirections, section, alphaSwapPov);
+                const directionsHuman = alphaDirections
+                    .map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat'))
+                    .join(', ');
+                pendingWorkflowStepPayload = {
+                    feature: 'alpha',
+                    skipped: false,
+                    userInputSummary: `alpha (short): dictionary ${section == null ? 'unset' : section} · ${directionsHuman}`,
+                    userInput: {
+                        dictionaryAlphaSection: section,
+                        directions: alphaDirections.slice(),
+                        directionsHuman
+                    },
+                    wordsBefore: currentFilteredWords.length,
+                    wordsAfter: filtered.length
+                };
                 callback(filtered);
-                document.getElementById('alphaFeature').classList.add('completed');
-                document.getElementById('alphaFeature').dispatchEvent(new Event('completed'));
+                const rootEl = document.getElementById('alphaFeature');
+                if (rootEl) rootEl.classList.add('completed');
+                dispatchWorkflowFeatureComplete(rootEl, 'alpha', null);
+            }
+
+            function pushAlphaShortDir(dir) {
+                alphaDirections.push(dir);
+                alphaUpdateDisplay();
+                if (alphaDirectionsCount > 0 && alphaDirections.length >= alphaDirectionsCount) alphaShortSubmit();
             }
 
             if (alphaLeftBtn) {
-                alphaLeftBtn.onclick = () => {
-                    alphaDirections.push('L');
-                    alphaUpdateDisplay();
-                    if (alphaDirectionsCount > 0 && alphaDirections.length >= alphaDirectionsCount) alphaSubmit();
-                };
-                alphaLeftBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaLeftBtn.click(); }, { passive: false });
+                alphaLeftBtn.onclick = () => pushAlphaShortDir('L');
+                alphaLeftBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaLeftBtn.click();
+                }, { passive: false });
             }
-            if (alphaRepeatBtn) {
-                alphaRepeatBtn.onclick = () => {
-                    alphaDirections.push('Repeat');
-                    alphaUpdateDisplay();
-                    if (alphaDirectionsCount > 0 && alphaDirections.length >= alphaDirectionsCount) alphaSubmit();
-                };
-                alphaRepeatBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaRepeatBtn.click(); }, { passive: false });
+            if (alphaRepeatDirBtn) {
+                alphaRepeatDirBtn.onclick = () => pushAlphaShortDir('Repeat');
+                alphaRepeatDirBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaRepeatDirBtn.click();
+                }, { passive: false });
             }
             if (alphaRightBtn) {
-                alphaRightBtn.onclick = () => {
-                    alphaDirections.push('R');
-                    alphaUpdateDisplay();
-                    if (alphaDirectionsCount > 0 && alphaDirections.length >= alphaDirectionsCount) alphaSubmit();
-                };
-                alphaRightBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaRightBtn.click(); }, { passive: false });
+                alphaRightBtn.onclick = () => pushAlphaShortDir('R');
+                alphaRightBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaRightBtn.click();
+                }, { passive: false });
             }
             if (alphaSubmitBtn) {
                 alphaSubmitBtn.onclick = () => {
@@ -12306,17 +13061,229 @@ function setupFeatureListeners(feature, callback, options) {
                         alert('Add at least one direction (Left, Right, or Repeat), then SUBMIT.');
                         return;
                     }
-                    alphaSubmit();
+                    alphaShortSubmit();
                 };
-                alphaSubmitBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaSubmitBtn.click(); }, { passive: false });
+                alphaSubmitBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaSubmitBtn.click();
+                }, { passive: false });
             }
             if (alphaSkipBtn) {
                 alphaSkipBtn.onclick = () => {
                     callback(currentFilteredWords);
-                    document.getElementById('alphaFeature').classList.add('completed');
-                    document.getElementById('alphaFeature').dispatchEvent(new Event('completed'));
+                    const rootEl = document.getElementById('alphaFeature');
+                    if (rootEl) rootEl.classList.add('completed');
+                    dispatchWorkflowFeatureComplete(rootEl, 'alpha', {
+                        skipped: true,
+                        userInputSummary: 'Step skipped (alpha)',
+                        userInput: {}
+                    });
                 };
-                alphaSkipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaSkipBtn.click(); }, { passive: false });
+                alphaSkipBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaSkipBtn.click();
+                }, { passive: false });
+            }
+            break;
+        }
+
+        case 'alphaFull':
+        case 'alphaWord':
+        case 'alphaRepeat': {
+            const workflowFeatureKey = feature;
+            const rootId = workflowFeatureKey + 'Feature';
+            const rootEl = document.getElementById(rootId);
+            const alphaLeftBtn = document.getElementById('alphaLeftBtn');
+            const alphaRepeatDirBtn = document.getElementById('alphaRepeatDirBtn');
+            const alphaRightBtn = document.getElementById('alphaRightBtn');
+            const alphaSubmitBtn = document.getElementById('alphaSubmitBtn');
+            const alphaSkipBtn = document.getElementById('alphaSkipBtn');
+            const alphaSequenceDisplay = document.getElementById('alphaSequenceDisplay');
+            const alphaUnifiedLastLettersInput = document.getElementById('alphaUnifiedLastLettersInput');
+            const sectionBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-section-btn')) : [];
+            const repeatBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-repeat-btn')) : [];
+            const alphaDirectionsCount = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
+            const alphaSwapPov = !!(appSettings && appSettings.alphaSwapPov);
+            let alphaDirections = [];
+            let selectedFirstSection = null;
+            let selectedRepeatMode = null;
+
+            function syncSectionHighlight() {
+                sectionBtns.forEach((btn) => {
+                    const v = btn.getAttribute('data-alpha-section');
+                    btn.classList.toggle('active', v === selectedFirstSection);
+                });
+            }
+            function syncRepeatHighlight() {
+                repeatBtns.forEach((btn) => {
+                    const v = btn.getAttribute('data-alpha-repeat');
+                    btn.classList.toggle('active', v === selectedRepeatMode);
+                });
+            }
+
+            syncSectionHighlight();
+            syncRepeatHighlight();
+
+            sectionBtns.forEach((btn) => {
+                const run = () => {
+                    const val = btn.getAttribute('data-alpha-section');
+                    if (!val) return;
+                    if (selectedFirstSection === val) selectedFirstSection = null;
+                    else selectedFirstSection = val;
+                    syncSectionHighlight();
+                };
+                let touchHandled = false;
+                btn.addEventListener(
+                    'touchstart',
+                    (e) => {
+                        e.preventDefault();
+                        touchHandled = true;
+                        run();
+                    },
+                    { passive: false }
+                );
+                btn.addEventListener('click', (e) => {
+                    if (touchHandled) {
+                        touchHandled = false;
+                        return;
+                    }
+                    run();
+                });
+            });
+            repeatBtns.forEach((btn) => {
+                const run = () => {
+                    const val = btn.getAttribute('data-alpha-repeat');
+                    if (val !== 'yes' && val !== 'no') return;
+                    if (selectedRepeatMode === val) selectedRepeatMode = null;
+                    else selectedRepeatMode = val;
+                    syncRepeatHighlight();
+                };
+                let touchHandled = false;
+                btn.addEventListener(
+                    'touchstart',
+                    (e) => {
+                        e.preventDefault();
+                        touchHandled = true;
+                        run();
+                    },
+                    { passive: false }
+                );
+                btn.addEventListener('click', (e) => {
+                    if (touchHandled) {
+                        touchHandled = false;
+                        return;
+                    }
+                    run();
+                });
+            });
+
+            function alphaUpdateDisplay() {
+                if (alphaSequenceDisplay) {
+                    alphaSequenceDisplay.textContent = alphaDirections.length
+                        ? alphaDirections.map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat')).join(', ')
+                        : '—';
+                }
+            }
+
+            function firstLetterSectionForFilter() {
+                return selectedFirstSection == null || selectedFirstSection === '' ? null : selectedFirstSection;
+            }
+
+            function repeatModeForFilter() {
+                if (selectedRepeatMode === 'yes' || selectedRepeatMode === 'no') return selectedRepeatMode;
+                return null;
+            }
+
+            function unifiedAlphaSubmit() {
+                if (alphaDirections.length === 0) {
+                    alert('Add at least one direction (Left, Right, or Repeat), then SUBMIT.');
+                    return;
+                }
+                const firstLetterSection = firstLetterSectionForFilter();
+                const repeatMode = repeatModeForFilter();
+                const lastLetterSet = parseAlphaWordLastLettersInput(alphaUnifiedLastLettersInput && alphaUnifiedLastLettersInput.value);
+                const filtered = filterWordsByAlphaUnified(
+                    currentFilteredWords,
+                    alphaDirections,
+                    firstLetterSection,
+                    alphaSwapPov,
+                    repeatMode,
+                    lastLetterSet
+                );
+                const directionsHuman = alphaDirections
+                    .map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat'))
+                    .join(', ');
+                const sectionLabel = selectedFirstSection == null ? 'first letter unset' : selectedFirstSection;
+                const repeatLabel = selectedRepeatMode == null ? 'doubles unset' : selectedRepeatMode.toUpperCase();
+                const lastLettersSorted = lastLetterSet.size ? [...lastLetterSet].sort().join('') : '';
+                const lastSummary = lastLetterSet.size ? `last ∈ {${lastLettersSorted}}` : 'no last-letter filter';
+                pendingWorkflowStepPayload = {
+                    feature: workflowFeatureKey,
+                    skipped: false,
+                    userInputSummary: `${workflowFeatureKey}: ${sectionLabel} · doubles ${repeatLabel} · ${lastSummary} · ${directionsHuman}`,
+                    userInput: {
+                        firstLetterSection,
+                        repeatMode,
+                        lastLetters: lastLettersSorted,
+                        directions: alphaDirections.slice(),
+                        directionsHuman
+                    },
+                    wordsBefore: currentFilteredWords.length,
+                    wordsAfter: filtered.length
+                };
+                callback(filtered);
+                if (rootEl) rootEl.classList.add('completed');
+                dispatchWorkflowFeatureComplete(rootEl, workflowFeatureKey, null);
+            }
+
+            function pushAlphaDir(dir) {
+                alphaDirections.push(dir);
+                alphaUpdateDisplay();
+                if (alphaDirectionsCount > 0 && alphaDirections.length >= alphaDirectionsCount) unifiedAlphaSubmit();
+            }
+
+            if (alphaLeftBtn) {
+                alphaLeftBtn.onclick = () => pushAlphaDir('L');
+                alphaLeftBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaLeftBtn.click();
+                }, { passive: false });
+            }
+            if (alphaRepeatDirBtn) {
+                alphaRepeatDirBtn.onclick = () => pushAlphaDir('Repeat');
+                alphaRepeatDirBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaRepeatDirBtn.click();
+                }, { passive: false });
+            }
+            if (alphaRightBtn) {
+                alphaRightBtn.onclick = () => pushAlphaDir('R');
+                alphaRightBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaRightBtn.click();
+                }, { passive: false });
+            }
+            if (alphaSubmitBtn) {
+                alphaSubmitBtn.onclick = () => unifiedAlphaSubmit();
+                alphaSubmitBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaSubmitBtn.click();
+                }, { passive: false });
+            }
+            if (alphaSkipBtn) {
+                alphaSkipBtn.onclick = () => {
+                    callback(currentFilteredWords);
+                    if (rootEl) rootEl.classList.add('completed');
+                    dispatchWorkflowFeatureComplete(rootEl, workflowFeatureKey, {
+                        skipped: true,
+                        userInputSummary: `Step skipped (${workflowFeatureKey})`,
+                        userInput: {}
+                    });
+                };
+                alphaSkipBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaSkipBtn.click();
+                }, { passive: false });
             }
             break;
         }
@@ -12338,7 +13305,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filtered = filterWordsByRepeatQuestion(currentFilteredWords, true);
                     callback(filtered);
                     document.getElementById('repeatQuestionFeature').classList.add('completed');
-                    document.getElementById('repeatQuestionFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('repeatQuestionFeature'), 'repeatQuestion', {
+                        userInputSummary: `Step completed (repeatQuestion)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 yesBtn.addEventListener('touchstart', (e) => { e.preventDefault(); yesBtn.click(); }, { passive: false });
             }
@@ -12349,7 +13319,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filtered = filterWordsByRepeatQuestion(currentFilteredWords, false);
                     callback(filtered);
                     document.getElementById('repeatQuestionFeature').classList.add('completed');
-                    document.getElementById('repeatQuestionFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('repeatQuestionFeature'), 'repeatQuestion', {
+                        userInputSummary: `Step completed (repeatQuestion)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 noBtn.addEventListener('touchstart', (e) => { e.preventDefault(); noBtn.click(); }, { passive: false });
             }
@@ -12358,157 +13331,12 @@ function setupFeatureListeners(feature, callback, options) {
                 skipBtn.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('repeatQuestionFeature').classList.add('completed');
-                    document.getElementById('repeatQuestionFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('repeatQuestionFeature'), 'repeatQuestion', {
+                        userInputSummary: `Step completed (repeatQuestion)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 skipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); skipBtn.click(); }, { passive: false });
-            }
-            break;
-        }
-
-        case 'alphaWord': {
-            const alphaWordLeftBtn = document.getElementById('alphaWordLeftBtn');
-            const alphaWordRepeatBtn = document.getElementById('alphaWordRepeatBtn');
-            const alphaWordRightBtn = document.getElementById('alphaWordRightBtn');
-            const alphaWordSubmitBtn = document.getElementById('alphaWordSubmitBtn');
-            const alphaWordSkipBtn = document.getElementById('alphaWordSkipBtn');
-            const alphaWordSequenceDisplay = document.getElementById('alphaWordSequenceDisplay');
-            const alphaWordLastLettersInput = document.getElementById('alphaWordLastLettersInput');
-            const alphaDirectionsCount = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
-            const alphaSwapPov = !!(appSettings && appSettings.alphaSwapPov);
-            let alphaWordDirections = [];
-
-            function alphaWordUpdateDisplay() {
-                if (alphaWordSequenceDisplay) {
-                    alphaWordSequenceDisplay.textContent = alphaWordDirections.length
-                        ? alphaWordDirections.map(d => d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat').join(', ')
-                        : '—';
-                }
-            }
-
-            function alphaWordSubmit() {
-                const section = lastDictionaryAlphaSection;
-                const lastSet = parseAlphaWordLastLettersInput(alphaWordLastLettersInput && alphaWordLastLettersInput.value);
-                if (lastSet.size === 0) {
-                    alert('Enter at least one letter for possible last letters (A–Z).');
-                    return;
-                }
-                const filtered = filterWordsByAlphaWord(currentFilteredWords, alphaWordDirections, section, alphaSwapPov, lastSet);
-                callback(filtered);
-                document.getElementById('alphaWordFeature').classList.add('completed');
-                document.getElementById('alphaWordFeature').dispatchEvent(new Event('completed'));
-            }
-
-            function alphaWordPush(dir) {
-                alphaWordDirections.push(dir);
-                alphaWordUpdateDisplay();
-                if (alphaDirectionsCount > 0 && alphaWordDirections.length >= alphaDirectionsCount) alphaWordSubmit();
-            }
-
-            if (alphaWordLeftBtn) {
-                alphaWordLeftBtn.onclick = () => alphaWordPush('L');
-                alphaWordLeftBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaWordLeftBtn.click(); }, { passive: false });
-            }
-            if (alphaWordRepeatBtn) {
-                alphaWordRepeatBtn.onclick = () => alphaWordPush('Repeat');
-                alphaWordRepeatBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaWordRepeatBtn.click(); }, { passive: false });
-            }
-            if (alphaWordRightBtn) {
-                alphaWordRightBtn.onclick = () => alphaWordPush('R');
-                alphaWordRightBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaWordRightBtn.click(); }, { passive: false });
-            }
-            if (alphaWordSubmitBtn) {
-                alphaWordSubmitBtn.onclick = () => alphaWordSubmit();
-                alphaWordSubmitBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaWordSubmitBtn.click(); }, { passive: false });
-            }
-            if (alphaWordSkipBtn) {
-                alphaWordSkipBtn.onclick = () => {
-                    callback(currentFilteredWords);
-                    document.getElementById('alphaWordFeature').classList.add('completed');
-                    document.getElementById('alphaWordFeature').dispatchEvent(new Event('completed'));
-                };
-                alphaWordSkipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); alphaWordSkipBtn.click(); }, { passive: false });
-            }
-            break;
-        }
-
-        case 'alphaRepeat': {
-            const arLeft = document.getElementById('alphaRepeatLeftBtn');
-            const arRep = document.getElementById('alphaRepeatRepeatBtn');
-            const arRight = document.getElementById('alphaRepeatRightBtn');
-            const arSubmit = document.getElementById('alphaRepeatSubmitBtn');
-            const arSkip = document.getElementById('alphaRepeatSkipBtn');
-            const arDisplay = document.getElementById('alphaRepeatSequenceDisplay');
-            const arYes = document.getElementById('alphaRepeatYesBtn');
-            const arNo = document.getElementById('alphaRepeatNoBtn');
-            const alphaDirectionsCount = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
-            const alphaSwapPov = !!(appSettings && appSettings.alphaSwapPov);
-            let arDirections = [];
-            let arHasRepeats = null;
-
-            function arUpdateDisplay() {
-                if (arDisplay) {
-                    arDisplay.textContent = arDirections.length
-                        ? arDirections.map(d => d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat').join(', ')
-                        : '—';
-                }
-            }
-
-            function arHighlightYn() {
-                if (arYes) arYes.classList.toggle('active', arHasRepeats === true);
-                if (arNo) arNo.classList.toggle('active', arHasRepeats === false);
-            }
-
-            function arSubmitFn() {
-                if (arHasRepeats !== true && arHasRepeats !== false) {
-                    alert('Choose YES or NO: are there consecutive identical letters in the word?');
-                    return;
-                }
-                const section = lastDictionaryAlphaSection;
-                const filtered = arHasRepeats
-                    ? filterWordsByAlphaRepeatYes(currentFilteredWords, arDirections, section, alphaSwapPov)
-                    : filterWordsByAlphaRepeatNo(currentFilteredWords, arDirections, section, alphaSwapPov);
-                callback(filtered);
-                document.getElementById('alphaRepeatFeature').classList.add('completed');
-                document.getElementById('alphaRepeatFeature').dispatchEvent(new Event('completed'));
-            }
-
-            function arPush(dir) {
-                arDirections.push(dir);
-                arUpdateDisplay();
-                if (alphaDirectionsCount > 0 && arDirections.length >= alphaDirectionsCount) arSubmitFn();
-            }
-
-            if (arYes) {
-                arYes.onclick = () => { arHasRepeats = true; arHighlightYn(); };
-                arYes.addEventListener('touchstart', (e) => { e.preventDefault(); arYes.click(); }, { passive: false });
-            }
-            if (arNo) {
-                arNo.onclick = () => { arHasRepeats = false; arHighlightYn(); };
-                arNo.addEventListener('touchstart', (e) => { e.preventDefault(); arNo.click(); }, { passive: false });
-            }
-            if (arLeft) {
-                arLeft.onclick = () => arPush('L');
-                arLeft.addEventListener('touchstart', (e) => { e.preventDefault(); arLeft.click(); }, { passive: false });
-            }
-            if (arRep) {
-                arRep.onclick = () => arPush('Repeat');
-                arRep.addEventListener('touchstart', (e) => { e.preventDefault(); arRep.click(); }, { passive: false });
-            }
-            if (arRight) {
-                arRight.onclick = () => arPush('R');
-                arRight.addEventListener('touchstart', (e) => { e.preventDefault(); arRight.click(); }, { passive: false });
-            }
-            if (arSubmit) {
-                arSubmit.onclick = () => arSubmitFn();
-                arSubmit.addEventListener('touchstart', (e) => { e.preventDefault(); arSubmit.click(); }, { passive: false });
-            }
-            if (arSkip) {
-                arSkip.onclick = () => {
-                    callback(currentFilteredWords);
-                    document.getElementById('alphaRepeatFeature').classList.add('completed');
-                    document.getElementById('alphaRepeatFeature').dispatchEvent(new Event('completed'));
-                };
-                arSkip.addEventListener('touchstart', (e) => { e.preventDefault(); arSkip.click(); }, { passive: false });
             }
             break;
         }
@@ -12529,7 +13357,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const filteredWords = filterWordsBySmlLength(currentFilteredWords, category);
                     callback(filteredWords);
                     document.getElementById('smlLengthFeature').classList.add('completed');
-                    document.getElementById('smlLengthFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('smlLengthFeature'), 'smlLength', {
+                        userInputSummary: `Step completed (smlLength)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 btn.addEventListener('touchstart', (e) => {
@@ -12543,7 +13374,10 @@ function setupFeatureListeners(feature, callback, options) {
                 smlLengthSkipButton.onclick = () => {
                     callback(currentFilteredWords);
                     document.getElementById('smlLengthFeature').classList.add('completed');
-                    document.getElementById('smlLengthFeature').dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(document.getElementById('smlLengthFeature'), 'smlLength', {
+                        userInputSummary: `Step completed (smlLength)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 smlLengthSkipButton.addEventListener('touchstart', (e) => {
@@ -12604,7 +13438,10 @@ function setupFeatureListeners(feature, callback, options) {
                         // Move to next feature automatically
                         const featureDiv = document.getElementById('findEeeFeature');
                         featureDiv.classList.add('completed');
-                        featureDiv.dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(featureDiv, 'findEee', {
+                            userInputSummary: `Step completed (findEee)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 };
                 // Touch event for mobile
@@ -12627,7 +13464,10 @@ function setupFeatureListeners(feature, callback, options) {
                     
                     const featureDiv = document.getElementById('findEeeFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'findEee', {
+                        userInputSummary: `Step completed (findEee)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 skipBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
@@ -12815,7 +13655,10 @@ function setupFeatureListeners(feature, callback, options) {
                     // Complete feature
                     const featureDiv = document.getElementById('positionConsFeature');
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'positionCons', {
+                        userInputSummary: `Step completed (positionCons)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 };
                 
                 submitBtn.addEventListener('touchstart', (e) => {
@@ -12883,7 +13726,10 @@ function setupFeatureListeners(feature, callback, options) {
                 const featureDiv = document.getElementById('firstCurvedFeature');
                 if (featureDiv) {
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    dispatchWorkflowFeatureComplete(featureDiv, 'firstCurved', {
+                        userInputSummary: `Step completed (firstCurved)`,
+                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                    });
                 }
             };
 
@@ -12969,13 +13815,17 @@ function setupFeatureListeners(feature, callback, options) {
                     setMessage(`${filteredWords.length} matches found.`);
                 }
 
-                callback(filteredWords);
+                               callback(filteredWords);
 
                 // Complete feature
                 const featureDiv = document.getElementById('eyeTestFeature');
                 if (featureDiv) {
                     featureDiv.classList.add('completed');
-                    featureDiv.dispatchEvent(new Event('completed'));
+                    const wordsDbg = wordInputs.map((inp) => (inp?.value || '').trim()).filter(Boolean);
+                    dispatchWorkflowFeatureComplete(featureDiv, 'eyeTest', {
+                        userInputSummary: `Code ${digitsOnly}; words [${wordsDbg.join(' | ')}]`,
+                        userInput: { code: digitsOnly, words: wordsDbg, activeCount }
+                    });
                 }
             };
 
@@ -13383,7 +14233,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const featureDiv = document.getElementById('newFeature');
                     if (featureDiv) {
                         featureDiv.classList.add('completed');
-                        featureDiv.dispatchEvent(new Event('completed'));
+                        dispatchWorkflowFeatureComplete(featureDiv, 'new', {
+                            userInputSummary: `Step completed (new)`,
+                            userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                        });
                     }
                 };
                 submitBtn.addEventListener('touchstart', (e) => {
@@ -13885,7 +14738,13 @@ document.head.appendChild(style);
 function handleVowelSelection(includeVowel) {
     const currentVowel = uniqueVowels[currentVowelIndex];
     console.log('Handling vowel selection:', currentVowel, 'Include:', includeVowel);
-    
+    if (vowelWorkflowDebugTrail != null) {
+        vowelWorkflowDebugTrail.push({
+            vowel: currentVowel,
+            include: !!includeVowel
+        });
+    }
+
     if (includeVowel) {
         currentFilteredWordsForVowels = currentFilteredWordsForVowels.filter(word => 
             word.toLowerCase().includes(currentVowel)
@@ -13924,9 +14783,15 @@ function handleVowelSelection(includeVowel) {
         
         // Dispatch the completed event
         console.log('Dispatching vowel feature completed event');
-        const completedEvent = new Event('completed');
-        vowelFeature.dispatchEvent(completedEvent);
-        
+        const summary = (vowelWorkflowDebugTrail && vowelWorkflowDebugTrail.length)
+            ? vowelWorkflowDebugTrail.map((t) => `${String(t.vowel).toUpperCase()}:${t.include ? 'YES' : 'NO'}`).join('; ')
+            : '—';
+        dispatchWorkflowFeatureComplete(vowelFeature, 'vowel', {
+            userInputSummary: `Vowel Q&A: ${summary} (source: ${currentPosition1Word || '—'})`,
+            userInput: { mode: 'yesNoTrail', trail: vowelWorkflowDebugTrail ? [...vowelWorkflowDebugTrail] : [], sourceWord: currentPosition1Word }
+        });
+        vowelWorkflowDebugTrail = null;
+
         // Show next feature
         showNextFeature();
     }
@@ -15163,20 +16028,37 @@ function handleDrop(e) {
 
 function isFeatureAlreadySelected(featureType) {
     const selectedFeatures = document.getElementById('selectedFeaturesList');
-    // Allow multiple instances of MOST FREQUENT, LEAST FREQUENT, and POSITION-CONS
-    if (featureType === 'mostFrequent' || 
-        featureType === 'leastFrequent' || 
-        featureType === 'positionCons') {
+    if (!selectedFeatures) return false;
+
+    // Allow multiple instances of POSITION-CONS
+    if (featureType === 'positionCons') {
         return false;
     }
-    // For all other features, maintain the single instance rule
+
+    // Allow multiple instances of MOST FREQUENT, LEAST FREQUENT, and EYE TEST, but ignore rapid duplicate adds
+    if (featureType === 'mostFrequent' || featureType === 'leastFrequent' || featureType === 'eyeTest') {
+        const lastAdded = selectedFeatures.getAttribute('lastAdded');
+        const lastAddedTime = selectedFeatures.getAttribute('lastAddedTime');
+        const now = Date.now();
+
+        if (lastAdded === featureType && lastAddedTime && (now - parseInt(lastAddedTime, 10)) < 500) {
+            return true;
+        }
+
+        selectedFeatures.setAttribute('lastAdded', featureType);
+        selectedFeatures.setAttribute('lastAddedTime', now.toString());
+        return false;
+    }
+
     return selectedFeatures.querySelector(`[data-feature="${featureType}"]`) !== null;
 }
 
 function addFeatureToSelected(featureType) {
     const selectedFeatures = document.getElementById('selectedFeaturesList');
     const featureButton = document.querySelector(`.feature-button[data-feature="${featureType}"]`);
-    
+
+    if (!featureButton) return;
+
     const selectedFeature = document.createElement('div');
     selectedFeature.className = 'selected-feature-item';
     // Add T9 class if it's a T9 feature
@@ -15314,139 +16196,6 @@ document.addEventListener('DOMContentLoaded', function() {
 function reinitializeDragAndDrop() {
     initializeDragAndDrop();
 }
-
-// Initialize feature selection functionality
-function initializeFeatureSelection() {
-    const availableFeatures = document.getElementById('availableFeatures');
-    const selectedFeaturesList = document.getElementById('selectedFeaturesList');
-    
-    if (availableFeatures) {
-        const featureButtons = availableFeatures.querySelectorAll('.feature-button');
-        
-        featureButtons.forEach(button => {
-            // Remove existing event listeners
-            const newButton = button.cloneNode(true);
-            button.parentNode.replaceChild(newButton, button);
-            
-            // Track touch state for scroll detection
-            let touchStartX = 0;
-            let touchStartY = 0;
-            let touchStartTime = 0;
-            let hasMoved = false;
-            
-            // Add click event (desktop)
-            newButton.addEventListener('click', () => {
-                const featureType = newButton.dataset.feature;
-                if (!isFeatureAlreadySelected(featureType)) {
-                    addFeatureToSelected(featureType);
-                }
-            });
-            
-            // Track touch start
-            newButton.addEventListener('touchstart', (e) => {
-                touchStartX = e.touches[0].clientX;
-                touchStartY = e.touches[0].clientY;
-                touchStartTime = Date.now();
-                hasMoved = false;
-            }, { passive: true });
-            
-            // Track touch move to detect scrolling
-            newButton.addEventListener('touchmove', (e) => {
-                if (!hasMoved) {
-                    const deltaX = Math.abs(e.touches[0].clientX - touchStartX);
-                    const deltaY = Math.abs(e.touches[0].clientY - touchStartY);
-                    // If moved more than 18px, consider it a scroll (reduces accidental taps)
-                    if (deltaX > 18 || deltaY > 18) {
-                        hasMoved = true;
-                    }
-                }
-            }, { passive: true });
-            
-            // Handle touch end - only trigger if it was a tap, not a scroll
-            newButton.addEventListener('touchend', (e) => {
-                const touchEndTime = Date.now();
-                const touchDuration = touchEndTime - touchStartTime;
-                
-                // Only trigger if:
-                // 1. Touch didn't move significantly (not a scroll)
-                // 2. Touch duration was short (less than 300ms - indicates a tap)
-                if (!hasMoved && touchDuration < 300) {
-                    e.preventDefault();
-                    const featureType = newButton.dataset.feature;
-                if (!isFeatureAlreadySelected(featureType)) {
-                    addFeatureToSelected(featureType);
-                }
-                }
-                
-                // Reset state
-                hasMoved = false;
-            }, { passive: false });
-        });
-    }
-}
-
-function isFeatureAlreadySelected(featureType) {
-    const selectedFeatures = document.getElementById('selectedFeaturesList');
-    // Allow multiple instances of MOST FREQUENT, LEAST FREQUENT, and EYE TEST features
-    if (featureType === 'mostFrequent' || featureType === 'leastFrequent' || featureType === 'eyeTest') {
-        // Check if the feature was just added (within the last 500ms)
-        const lastAdded = selectedFeatures.getAttribute('lastAdded');
-        const lastAddedTime = selectedFeatures.getAttribute('lastAddedTime');
-        const now = Date.now();
-        
-        if (lastAdded === featureType && lastAddedTime && (now - parseInt(lastAddedTime)) < 500) {
-            return true;
-        }
-        
-        selectedFeatures.setAttribute('lastAdded', featureType);
-        selectedFeatures.setAttribute('lastAddedTime', now.toString());
-        return false;
-    }
-    // For all other features, maintain the single instance rule
-    return selectedFeatures.querySelector(`[data-feature="${featureType}"]`) !== null;
-}
-
-function addFeatureToSelected(featureType) {
-    const selectedFeatures = document.getElementById('selectedFeaturesList');
-    const featureButton = document.querySelector(`.feature-button[data-feature="${featureType}"]`);
-    
-    if (!featureButton) return;
-    
-    const selectedFeature = document.createElement('div');
-    selectedFeature.className = 'selected-feature-item';
-    // Add T9 class if it's a T9 feature
-    if (featureType.startsWith('t9')) {
-        selectedFeature.classList.add('t9-selected-feature');
-    }
-    // Add Alpha-Numeric class if it's an Alpha-Numeric feature
-    if (featureType === 'alphaNumeric' || featureType === 'lettersAbove') {
-        selectedFeature.classList.add('alphanumeric-selected-feature');
-    }
-    selectedFeature.dataset.feature = featureType;
-    
-    const featureName = document.createElement('span');
-    featureName.textContent = featureButton.textContent;
-    selectedFeature.appendChild(featureName);
-    
-    // Add click event to remove feature
-    selectedFeature.addEventListener('click', () => {
-        selectedFeature.remove();
-        adjustSelectedFeaturesHeight();
-    });
-    
-    // Add touch event for mobile
-    selectedFeature.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        selectedFeature.remove();
-        adjustSelectedFeaturesHeight();
-    }, { passive: false });
-    
-    selectedFeatures.appendChild(selectedFeature);
-    adjustSelectedFeaturesHeight();
-}
-
-// Remove the duplicate addFeatureToList function since we're using addFeatureToSelected
-// ... existing code ...
 
 // Track T9 mode state
 let isT9Mode = false;
@@ -15767,19 +16516,23 @@ function initializeModeButtons() {
                     <button class="feature-button" data-feature="pianoForte" draggable="true">PIANO FORTE</button>
                     <button class="info-button" data-feature="pianoForte"><i class="fas fa-info-circle"></i></button>
                 </div>
-                <div class="feature-group">
+                <div class="feature-group" data-builder-hidden="true">
                     <button class="feature-button" data-feature="alpha" draggable="true">ALPHA (SHORT)</button>
                     <button class="info-button" data-feature="alpha"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="alphaFull" draggable="true">ALPHA</button>
+                    <button class="info-button" data-feature="alphaFull"><i class="fas fa-info-circle"></i></button>
                 </div>
                 <div class="feature-group">
                     <button class="feature-button" data-feature="repeatQuestion" draggable="true">REPEAT?</button>
                     <button class="info-button" data-feature="repeatQuestion"><i class="fas fa-info-circle"></i></button>
                 </div>
-                <div class="feature-group">
+                <div class="feature-group" data-builder-hidden="true">
                     <button class="feature-button" data-feature="alphaWord" draggable="true">ALPHA-WORD</button>
                     <button class="info-button" data-feature="alphaWord"><i class="fas fa-info-circle"></i></button>
                 </div>
-                <div class="feature-group">
+                <div class="feature-group" data-builder-hidden="true">
                     <button class="feature-button" data-feature="alphaRepeat" draggable="true">ALPHA-REPEAT</button>
                     <button class="info-button" data-feature="alphaRepeat"><i class="fas fa-info-circle"></i></button>
                 </div>
@@ -16313,6 +17066,21 @@ function initSettingsUI() {
         });
     }
 
+    const t9SingingRepeatedLettersToggle = document.getElementById('t9SingingRepeatedLettersToggle');
+    if (t9SingingRepeatedLettersToggle) {
+        t9SingingRepeatedLettersToggle.checked = !!appSettings.t9SingingRepeatedLetters;
+        t9SingingRepeatedLettersToggle.addEventListener('change', () => {
+            const prev = !!appSettings.t9SingingRepeatedLetters;
+            appSettings.t9SingingRepeatedLetters = t9SingingRepeatedLettersToggle.checked;
+            saveAppSettings();
+            const featTog = document.getElementById('t9SingingRepeatedDigitsFeatureToggle');
+            if (featTog) featTog.checked = !!appSettings.t9SingingRepeatedLetters;
+            if (t9SingingRepeatedRescanFn) {
+                t9SingingRepeatedRescanFn(prev);
+            }
+        });
+    }
+
     if (e21Toggle) {
         e21Toggle.checked = !!appSettings.e21CheckAnywhere;
         e21Toggle.addEventListener('change', () => {
@@ -16517,12 +17285,12 @@ function initSettingsUI() {
     const newAnswerCountModeSelect = document.getElementById('newAnswerCountModeSelect');
     if (newAnswerCountModeSelect) {
         const validModes = new Set(['more', 'exact']);
-        const savedMode = (appSettings && appSettings.newAnswerCountMode) || 'more';
-        const resolved = validModes.has(savedMode) ? savedMode : 'more';
+        const savedMode = (appSettings && appSettings.newAnswerCountMode) || 'exact';
+        const resolved = validModes.has(savedMode) ? savedMode : 'exact';
         newAnswerCountModeSelect.value = resolved;
         appSettings.newAnswerCountMode = resolved;
         newAnswerCountModeSelect.addEventListener('change', () => {
-            const next = validModes.has(newAnswerCountModeSelect.value) ? newAnswerCountModeSelect.value : 'more';
+            const next = validModes.has(newAnswerCountModeSelect.value) ? newAnswerCountModeSelect.value : 'exact';
             appSettings.newAnswerCountMode = next;
             saveAppSettings();
         });
@@ -17734,57 +18502,6 @@ function initializeFeatureSelection() {
             }, { passive: false });
         });
     }
-}
-
-function isFeatureAlreadySelected(featureType) {
-    const selectedFeatures = document.getElementById('selectedFeaturesList');
-    // Allow multiple instances of MOST FREQUENT, LEAST FREQUENT, and POSITION-CONS
-    if (featureType === 'mostFrequent' || 
-        featureType === 'leastFrequent' || 
-        featureType === 'positionCons') {
-        return false;
-    }
-    // For all other features, maintain the single instance rule
-    return selectedFeatures.querySelector(`[data-feature="${featureType}"]`) !== null;
-}
-
-function addFeatureToSelected(featureType) {
-    const selectedFeatures = document.getElementById('selectedFeaturesList');
-    const featureButton = document.querySelector(`.feature-button[data-feature="${featureType}"]`);
-    
-    if (!featureButton) return;
-    
-    const selectedFeature = document.createElement('div');
-    selectedFeature.className = 'selected-feature-item';
-    // Add T9 class if it's a T9 feature
-    if (featureType.startsWith('t9')) {
-        selectedFeature.classList.add('t9-selected-feature');
-    }
-    // Add Alpha-Numeric class if it's an Alpha-Numeric feature
-    if (featureType === 'alphaNumeric' || featureType === 'lettersAbove') {
-        selectedFeature.classList.add('alphanumeric-selected-feature');
-    }
-    selectedFeature.dataset.feature = featureType;
-    
-    const featureName = document.createElement('span');
-    featureName.textContent = featureButton.textContent;
-    selectedFeature.appendChild(featureName);
-    
-    // Add click event to remove feature
-    selectedFeature.addEventListener('click', () => {
-        selectedFeature.remove();
-        adjustSelectedFeaturesHeight();
-    });
-    
-    // Add touch event for mobile
-    selectedFeature.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        selectedFeature.remove();
-        adjustSelectedFeaturesHeight();
-    }, { passive: false });
-    
-    selectedFeatures.appendChild(selectedFeature);
-    adjustSelectedFeaturesHeight();
 }
 
 // Add NOT IN feature to the featureElements object

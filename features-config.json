@@ -421,6 +421,13 @@
       "analyzeFunction": "return [{ param: 'Directional filter (L/R/Repeat). First letter: Dictionary band if that step ran, else any A–Z.', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
+      "id": "alphaFull",
+      "name": "ALPHA",
+      "displayName": "ALPHA",
+      "requiresParam": true,
+      "analyzeFunction": "return [{ param: 'Full ALPHA: optional B/M/E, optional doubles Y/N, optional last letters, then L/R/Repeat.', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
       "id": "alphaWord",
       "name": "ALPHA-WORD",
       "displayName": "ALPHA-WORD",

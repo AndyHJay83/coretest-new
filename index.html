@@ -1061,6 +1061,15 @@
                         </label>
                     </div>
                     <div class="settings-section">
+                        <h3 class="settings-section-title">SINGING</h3>
+                        <p class="settings-section-subtitle">Repeated T9 digits: merge consecutive identical digits in the T9 string (same control as on the SINGING screen). Persists for the app; you can also toggle during SINGING.</p>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="t9SingingRepeatedLettersToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Repeated T9 digits</span>
+                    </div>
+                    <div class="settings-section">
                         <h3 class="settings-section-title">E21</h3>
                         <p class="settings-section-subtitle">E in the word?</p>
                         <label class="toggle-switch">
@@ -1127,32 +1136,6 @@
                             <input type="text" id="pianoForteStartLetterInput" placeholder="A" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
                             <label for="pianoForteEndLetterInput">End letter:</label>
                             <input type="text" id="pianoForteEndLetterInput" placeholder="G" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
-                        </div>
-                    </div>
-                    <div class="settings-section">
-                        <h3 class="settings-section-title">Dictionary (Alpha)</h3>
-                        <p class="settings-section-subtitle">First letter ranges for Beginning, Middle, End. Default: Beginning A–M, Middle I–T, End N–Z.</p>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="dictionaryAlphaUseCustomRangeToggle">
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <span class="settings-toggle-label">Use custom ranges</span>
-                        <div id="dictionaryAlphaCustomRangeFields" class="dictionary-alpha-range-fields" style="display: none;">
-                            <p class="settings-field-group-label">Beginning</p>
-                            <label for="dictionaryAlphaBeginStartInput">Start:</label>
-                            <input type="text" id="dictionaryAlphaBeginStartInput" placeholder="A" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
-                            <label for="dictionaryAlphaBeginEndInput">End:</label>
-                            <input type="text" id="dictionaryAlphaBeginEndInput" placeholder="M" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
-                            <p class="settings-field-group-label">Middle</p>
-                            <label for="dictionaryAlphaMidStartInput">Start:</label>
-                            <input type="text" id="dictionaryAlphaMidStartInput" placeholder="I" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
-                            <label for="dictionaryAlphaMidEndInput">End:</label>
-                            <input type="text" id="dictionaryAlphaMidEndInput" placeholder="T" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
-                            <p class="settings-field-group-label">End</p>
-                            <label for="dictionaryAlphaEndStartInput">Start:</label>
-                            <input type="text" id="dictionaryAlphaEndStartInput" placeholder="N" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
-                            <label for="dictionaryAlphaEndEndInput">End:</label>
-                            <input type="text" id="dictionaryAlphaEndEndInput" placeholder="Z" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
                         </div>
                     </div>
                     <div class="settings-section">
@@ -1238,8 +1221,8 @@
                         </select>
                         <label for="newAnswerCountModeSelect">Answer count mode:</label>
                         <select id="newAnswerCountModeSelect" style="max-width: 100%; margin-bottom: 6px;">
-                            <option value="more">How many MORE letters</option>
                             <option value="exact">Exact count (includes assumed first/second)</option>
+                            <option value="more">How many MORE letters</option>
                         </select>
                         <label for="newAutoStopSecondsInput">Auto-stop seconds:</label>
                         <input type="number" id="newAutoStopSecondsInput" min="1" max="60" value="10" style="width: 5em; margin-bottom: 6px;">
@@ -1247,10 +1230,11 @@
                             <label for="newCustomModeToggle">CUSTOM MODE (choose position 1-6 or ANY each stop)</label>
                             <input type="checkbox" id="newCustomModeToggle">
                         </div>
-                        <div class="settings-toggle-row" style="margin-top: 6px;">
-                            <label for="newAnswerDigitBufferToggle">+1 buffer on answer digits (each stop’s count can match ±1)</label>
+                        <p class="settings-section-subtitle" style="margin-top: 12px;">1 Buffer (answer digit matches N or N+1)</p>
+                        <label class="toggle-switch">
                             <input type="checkbox" id="newAnswerDigitBufferToggle">
-                        </div>
+                            <span class="toggle-slider"></span>
+                        </label>
                     </div>
                     <div class="settings-section">
                         <h3 class="settings-section-title">OMEGA</h3>
@@ -1276,13 +1260,35 @@
                     </div>
                     <div class="settings-section">
                         <h3 class="settings-section-title">ALPHA</h3>
-                        <p class="settings-section-subtitle">Directional filter: Left = toward A, Right = toward Z (or swap in Swap POV). If Dictionary (Alpha) ran earlier in the workflow, the first letter is limited to that band; otherwise any A–Z.</p>
                         <label for="alphaDirectionsCountInput">Number of directions (0 = until SUBMIT):</label>
                         <input type="number" id="alphaDirectionsCountInput" min="0" max="99" value="0" style="width: 4em;">
                         <p id="alphaEfficiencySubtitle" class="alpha-efficiency-subtitle" aria-live="polite"></p>
                         <div class="settings-toggle-row" style="margin-top: 10px;">
                             <label for="alphaSwapPovToggle">Swap POV (Left = toward Z, Right = toward A):</label>
                             <input type="checkbox" id="alphaSwapPovToggle">
+                        </div>
+                        <p class="settings-field-group-label" style="margin-top: 16px;">First-letter bands (Dictionary B/M/E)</p>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="dictionaryAlphaUseCustomRangeToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="settings-toggle-label">Use custom ranges</span>
+                        <div id="dictionaryAlphaCustomRangeFields" class="dictionary-alpha-range-fields" style="display: none;">
+                            <p class="settings-field-group-label">Beginning</p>
+                            <label for="dictionaryAlphaBeginStartInput">Start:</label>
+                            <input type="text" id="dictionaryAlphaBeginStartInput" placeholder="A" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
+                            <label for="dictionaryAlphaBeginEndInput">End:</label>
+                            <input type="text" id="dictionaryAlphaBeginEndInput" placeholder="M" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
+                            <p class="settings-field-group-label">Middle</p>
+                            <label for="dictionaryAlphaMidStartInput">Start:</label>
+                            <input type="text" id="dictionaryAlphaMidStartInput" placeholder="I" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
+                            <label for="dictionaryAlphaMidEndInput">End:</label>
+                            <input type="text" id="dictionaryAlphaMidEndInput" placeholder="T" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
+                            <p class="settings-field-group-label">End</p>
+                            <label for="dictionaryAlphaEndStartInput">Start:</label>
+                            <input type="text" id="dictionaryAlphaEndStartInput" placeholder="N" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
+                            <label for="dictionaryAlphaEndEndInput">End:</label>
+                            <input type="text" id="dictionaryAlphaEndEndInput" placeholder="Z" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
                         </div>
                     </div>
                     <div class="settings-section">
@@ -1684,7 +1690,7 @@
         <div id="newInfo" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>NEW</h3>
-                <p><strong>NEW</strong><br>Shows four letters per batch: the next most and least frequent consonants and vowels (A,E,I,O,U only — Y is not a vowel here). NEW advances to the next batch. After 10 seconds on a batch, or when you press ANSWER, that batch is committed as a stop: first stop = first letter; second = second letter; further stops = letters anywhere in the word. Enter digits (e.g. 112) for how many extra letters from each batch (see in-app help). MOVE ON finishes the step. Optional +1 buffer in Settings relaxes each answered digit by ±1.</p>
+                <p><strong>NEW</strong><br>Shows four letters per batch: the next most and least frequent consonants and vowels (A,E,I,O,U only — Y is not a vowel here). NEW advances to the next batch. After 10 seconds on a batch, or when you press ANSWER, that batch is committed as a stop: first stop = first letter; second = second letter; further stops = letters anywhere in the word. Enter digits (e.g. 112) for how many extra letters from each batch (see in-app help). MOVE ON finishes the step. Optional +1 buffer in Settings allows each answered count to match the digit you entered or one higher (not one lower).</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
@@ -1824,14 +1830,21 @@
         <div id="dictionaryAlphaInfo" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>Dictionary (Alpha)</h3>
-                <p><strong>First Letter Location</strong><br>Filters words based on the first letter's position in the alphabet. Beginning: A-M, Middle: I-T, End: N-Z. Select a section and click SUBMIT.</p>
+                <p><strong>First Letter Location</strong><br>Filters words based on the first letter's position in the alphabet. Default bands: Beginning A–M, Middle I–T, End N–Z. Custom Beginning/Middle/End letter ranges are set under <strong>Settings → ALPHA</strong> (First-letter bands). Select a section and click SUBMIT.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
         <div id="alphaInfo" class="feature-info-modal">
             <div class="feature-info-content">
+                <h3>ALPHA (SHORT)</h3>
+                <p><strong>Directional alphabet filter (short)</strong><br>The spectator imagines the alphabet in front of them and mentally spells the word by pointing to each letter. You enter Left (toward A), Right (toward Z), or Repeat (same letter as previous). If Dictionary (Alpha) ran earlier, the first letter is limited to that Beginning/Middle/End band (letter ranges for those bands are under <strong>Settings → ALPHA</strong>); if not, the first letter may be any A–Z. No on-screen B/M/E or doubles options—use the full <strong>ALPHA</strong> step for that. Set “Number of directions” in Settings to auto-submit after N entries, or 0 to submit manually.</p>
+                <button class="close-info-button">&times;</button>
+            </div>
+        </div>
+        <div id="alphaFullInfo" class="feature-info-modal">
+            <div class="feature-info-content">
                 <h3>ALPHA</h3>
-                <p><strong>Directional alphabet filter</strong><br>The spectator imagines the alphabet in front of them and mentally spells the word by pointing to each letter. You enter directional movements: Left (toward A), Right (toward Z), or Repeat (same letter as previous). If Dictionary (Alpha) ran earlier, the first letter is limited to that Beginning/Middle/End band; if not, the first letter may be any A–Z. Set “Number of directions” in Settings to auto-submit after N entries, or 0 to submit manually.</p>
+                <p><strong>Full directional filter</strong><br>Optional: choose Beginning/Middle/End for the first letter (leave unset for any A–Z), optional YES/NO for consecutive identical letters in the spelling (leave unset to ignore), optional possible last letters, then enter your Left / Right / Repeat sequence and SUBMIT once. What each band contains is set under <strong>Settings → ALPHA → First-letter bands</strong>. Uses the same direction-count and Swap POV as ALPHA (SHORT).</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

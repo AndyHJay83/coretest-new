@@ -921,6 +921,60 @@ body {
     background-color: #051a38 !important;
 }
 
+/* Unified ALPHA / ALPHA-WORD / ALPHA-REPEAT: YES/NO for doubles (same treatment as legacy ALPHA-REPEAT row) */
+.feature-section .alpha-unified-repeat-yn .yes-btn,
+.feature-section .alpha-unified-repeat-yn .no-btn {
+    min-width: 88px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: 2px solid #b0bec5 !important;
+    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.feature-section .alpha-unified-repeat-yn .yes-btn:not(.active),
+.feature-section .alpha-unified-repeat-yn .no-btn:not(.active) {
+    background-color: #eceff1 !important;
+    color: #455a64 !important;
+    box-shadow: none !important;
+}
+.feature-section .alpha-unified-repeat-yn .yes-btn:not(.active):hover,
+.feature-section .alpha-unified-repeat-yn .no-btn:not(.active):hover {
+    background-color: #cfd8dc !important;
+    color: #263238 !important;
+    opacity: 1 !important;
+    transform: translateY(-1px);
+}
+.feature-section .alpha-unified-repeat-yn .yes-btn:not(.active):active,
+.feature-section .alpha-unified-repeat-yn .no-btn:not(.active):active {
+    background-color: #b0bec5 !important;
+    transform: translateY(0);
+}
+.feature-section .alpha-unified-repeat-yn .yes-btn.active {
+    background-color: #1976d2 !important;
+    color: #fff !important;
+    border-color: #0d47a1 !important;
+    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.35) !important;
+}
+.feature-section .alpha-unified-repeat-yn .yes-btn.active:hover {
+    background-color: #1565c0 !important;
+    opacity: 1 !important;
+}
+.feature-section .alpha-unified-repeat-yn .yes-btn.active:active {
+    background-color: #0d47a1 !important;
+}
+.feature-section .alpha-unified-repeat-yn .no-btn.active {
+    background-color: #0d47a1 !important;
+    color: #fff !important;
+    border-color: #082c5c !important;
+    box-shadow: 0 0 0 3px rgba(13, 71, 161, 0.4) !important;
+}
+.feature-section .alpha-unified-repeat-yn .no-btn.active:hover {
+    background-color: #082c5c !important;
+    opacity: 1 !important;
+}
+.feature-section .alpha-unified-repeat-yn .no-btn.active:active {
+    background-color: #051a38 !important;
+}
+
 /* REPEAT? (letters) — YES/NO selection clearly visible */
 #repeatQuestionFeature .repeat-question-yn .yes-btn,
 #repeatQuestionFeature .repeat-question-yn .no-btn {
@@ -3928,6 +3982,7 @@ input:checked + .slider:before {
     flex-shrink: 0; /* Prevent feature groups from shrinking */
 }
 
+/* Steps stay in app / saved workflows; hidden from builder palette only */
 #availableFeatures .feature-group[data-builder-hidden="true"] {
     display: none;
 }
