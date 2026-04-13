@@ -5751,7 +5751,7 @@ function createUnifiedAlphaFeature(workflowKind) {
         <div class="alpha-unified-line-header" style="margin:0 auto 7px;display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;max-width:440px;">
             <p id="alphaUnifiedLineSummary" class="alpha-unified-line-summary" style="margin:0;text-align:center;font-size:14px;line-height:1.35;color:#333;word-break:break-word;">Letter order: <strong>A–Z</strong> (standard alphabet)</p>
             <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">
-                <button type="button" id="alphaUnifiedLineMicBtn" class="alpha-line-mic-btn" title="Tap: dictate line. Hold 1.5s: type or paste." aria-label="Tap to dictate custom letter line, or hold 1.5 seconds to type">\u{1F3A4}</button>
+                <button type="button" id="alphaUnifiedLineMicBtn" class="alpha-line-mic-btn" title="Tap: dictate. Tap again while live to cancel. Hold 1.5s: type or paste." aria-label="Tap to dictate custom letter line; tap again while listening to stop without applying; hold 1.5 seconds to type">\u{1F3A4}</button>
                 <button type="button" id="alphaUnifiedLinePangramBtn" class="secondary-btn small-button" title="Use pangram line (quick brown fox…; all A–Z)">Quick brown fox</button>
                 <button type="button" id="alphaUnifiedLineResetBtn" class="secondary-btn small-button" style="display:none;" title="Use standard A–Z order">A–Z</button>
             </div>
@@ -13777,8 +13777,9 @@ function setupFeatureListeners(feature, callback, options) {
                     alert('Speech recognition is not available in this browser. Use hold 1.5s on the mic to type your line.');
                     return;
                 }
-                if (alphaUnifiedSpeechListening && alphaUnifiedSpeechRec) {
-                    alphaUnifiedSpeechApplyOnEnd = true;
+                /* Second tap while starting or listening: stop without applying (accidental tap kill). */
+                if (alphaUnifiedSpeechRec) {
+                    alphaUnifiedSpeechApplyOnEnd = false;
                     try {
                         alphaUnifiedSpeechRec.stop();
                     } catch (e) {
