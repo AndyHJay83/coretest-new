@@ -157,9 +157,6 @@ const WORKFLOW_REPORT_MAX = 10;
 /** Set before dispatching `completed` on a feature so REPORT can store step-specific data */
 let pendingWorkflowStepPayload = null;
 
-/** While SINGING is active: `(prevRepeated) => void` to re-filter after Repeated T9 digits changes; cleared on step complete */
-let t9SingingRepeatedRescanFn = null;
-
 /**
  * Dispatch feature `completed` and attach debug payload for workflow REPORT.
  * If `debug` is an object, it becomes (or merges into) pendingWorkflowStepPayload.
@@ -627,7 +624,7 @@ function renderStepPayloadSection(payload, runForDebug) {
         const enc = rep ? 'Merge consecutive duplicate T9 digits' : 'Standard (full T9, no digit merge)';
         appendReportDefinitionList(wrap, [
             { term: 'Skipped', def: payload.skipped ? 'Yes' : 'No' },
-            { term: 'Repeated T9 digits (Settings)', def: rep ? 'On' : 'Off' },
+            { term: 'Repeated T9 digits (step)', def: rep ? 'On' : 'Off' },
             { term: 'T9 encoding', def: enc },
             { term: 'Directions (as entered)', def: payload.skipped ? '—' : (payload.directionsHuman || '—') },
             { term: 'Direction tokens', def: payload.skipped ? '—' : (Array.isArray(payload.directionsTokens) ? payload.directionsTokens.join(', ') : '—') },
@@ -1035,8 +1032,6 @@ const DEFAULT_SETTINGS = {
     connectiveYIsVowel: false,
     // CONNECTIVE pre-filter default minimum word length
     connectiveMinLength: 7,
-    /** SINGING: when ON, merge consecutive identical digits in the T9 string (after full spelling T9) */
-    t9SingingRepeatedLetters: false,
 };
 
 const DEFAULT_LETTER_LYING_STRING = 'NTRLCSAIEUO';
@@ -6672,10 +6667,10 @@ function t9SingingTransitionsMatch(t9String, directions) {
 }
 
 // SINGING: prefix match — T9 length >= directions.length + 1 and first k transitions match.
-function filterWordsByT9SingingPrefix(words, directions) {
+function filterWordsByT9SingingPrefix(words, directions, repeatedOn) {
     if (!directions || directions.length === 0) return words;
 
-    const repeatedOn = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+    repeatedOn = !!repeatedOn;
     if (!repeatedOn) {
         calculateT9Strings(words);
     }
@@ -6690,10 +6685,10 @@ function filterWordsByT9SingingPrefix(words, directions) {
 }
 
 // SINGING: same prefix as above but drop words whose T9 length is already exactly (steps + 1) or shorter.
-function filterWordsByT9SingingPrefixUnfinished(words, directions) {
+function filterWordsByT9SingingPrefixUnfinished(words, directions, repeatedOn) {
     if (!directions || directions.length === 0) return words;
 
-    const repeatedOn = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+    repeatedOn = !!repeatedOn;
     if (!repeatedOn) {
         calculateT9Strings(words);
     }
@@ -6709,10 +6704,10 @@ function filterWordsByT9SingingPrefixUnfinished(words, directions) {
 
 // Filtering logic for T9 SINGING feature (directional UP/DOWN over consecutive T9 digits).
 // Exact length: word (T9) length must equal directions.length + 1.
-function filterWordsByT9Singing(words, directions) {
+function filterWordsByT9Singing(words, directions, repeatedOn) {
     if (!directions || directions.length === 0) return words;
 
-    const repeatedOn = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+    repeatedOn = !!repeatedOn;
 
     if (!repeatedOn) {
         calculateT9Strings(words);
@@ -12385,19 +12380,16 @@ function setupFeatureListeners(feature, callback, options) {
             const singingWordsAtStepStart = singingBaseWords.length;
             let singingUnfinishedPresses = 0;
             let singingDirections = [];
+            /** Per-step only: merge consecutive identical T9 digits when filtering (not saved in Settings). */
+            let singingMergeRepeatedDigits = false;
 
             function refreshSingingRepeatedHint() {
-                const on = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+                const on = !!singingMergeRepeatedDigits;
                 if (singingHintEl) {
                     singingHintEl.textContent = on
                         ? 'Repeated T9 digits ON: consecutive identical T9 digits merge.'
                         : 'Repeated T9 digits OFF: full T9.';
                 }
-            }
-
-            function syncSingingSettingsPageRepeatedToggle() {
-                const st = document.getElementById('t9SingingRepeatedLettersToggle');
-                if (st) st.checked = !!(appSettings && appSettings.t9SingingRepeatedLetters);
             }
 
             function performT9SingingRepeatedRescan(prevRepeatedForRevert) {
@@ -12406,12 +12398,10 @@ function setupFeatureListeners(feature, callback, options) {
                     callback(singingBaseWords);
                     return;
                 }
-                const filtered = filterWordsByT9SingingPrefix(singingBaseWords, singingDirections);
+                const filtered = filterWordsByT9SingingPrefix(singingBaseWords, singingDirections, singingMergeRepeatedDigits);
                 if (filtered.length === 0) {
-                    appSettings.t9SingingRepeatedLetters = prevRepeatedForRevert;
-                    saveAppSettings();
-                    if (featureRepeatedToggle) featureRepeatedToggle.checked = !!appSettings.t9SingingRepeatedLetters;
-                    syncSingingSettingsPageRepeatedToggle();
+                    singingMergeRepeatedDigits = prevRepeatedForRevert;
+                    if (featureRepeatedToggle) featureRepeatedToggle.checked = !!singingMergeRepeatedDigits;
                     refreshSingingRepeatedHint();
                     alert('No words match this sequence with that Repeated T9 digits setting. Reverted.');
                     return;
@@ -12419,28 +12409,14 @@ function setupFeatureListeners(feature, callback, options) {
                 callback(filtered);
             }
 
-            const singingRescanBound = (prev) => performT9SingingRepeatedRescan(prev);
-            t9SingingRepeatedRescanFn = singingRescanBound;
-
             refreshSingingRepeatedHint();
             if (featureRepeatedToggle) {
-                featureRepeatedToggle.checked = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+                featureRepeatedToggle.checked = !!singingMergeRepeatedDigits;
                 featureRepeatedToggle.addEventListener('change', () => {
-                    const prev = !!(appSettings && appSettings.t9SingingRepeatedLetters);
-                    appSettings.t9SingingRepeatedLetters = featureRepeatedToggle.checked;
-                    saveAppSettings();
-                    syncSingingSettingsPageRepeatedToggle();
+                    const prev = !!singingMergeRepeatedDigits;
+                    singingMergeRepeatedDigits = !!featureRepeatedToggle.checked;
                     performT9SingingRepeatedRescan(prev);
                 });
-            }
-
-            const singingFeatureEl = document.getElementById('t9SingingFeature');
-            if (singingFeatureEl) {
-                singingFeatureEl.addEventListener('completed', () => {
-                    if (t9SingingRepeatedRescanFn === singingRescanBound) {
-                        t9SingingRepeatedRescanFn = null;
-                    }
-                }, { once: true });
             }
 
             function singingUpdateDisplay() {
@@ -12455,7 +12431,7 @@ function setupFeatureListeners(feature, callback, options) {
             }
 
             function singingApplyIncremental() {
-                const filtered = filterWordsByT9SingingPrefix(singingBaseWords, singingDirections);
+                const filtered = filterWordsByT9SingingPrefix(singingBaseWords, singingDirections, singingMergeRepeatedDigits);
                 if (filtered.length === 0) {
                     singingDirections.pop();
                     singingUpdateDisplay();
@@ -12472,14 +12448,14 @@ function setupFeatureListeners(feature, callback, options) {
                 }
                 const tokens = singingDirections.slice();
                 const directionsHuman = tokens.map(d => d === 'U' ? 'UP' : 'DOWN').join(', ');
-                const exactFiltered = filterWordsByT9Singing(singingBaseWords, singingDirections);
+                const exactFiltered = filterWordsByT9Singing(singingBaseWords, singingDirections, singingMergeRepeatedDigits);
                 if (!exactFiltered.length) {
                     alert('No words match this tune with exact T9 length (steps + 1). Try more UP/DOWN, use UNFINISHED to drop “complete” words, or adjust the sequence.');
                     return;
                 }
                 callback(exactFiltered);
                 const wordsAfter = exactFiltered.length;
-                const t9SingingRepeatedLetters = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+                const t9SingingRepeatedLetters = !!singingMergeRepeatedDigits;
                 const exactLen = tokens.length + 1;
                 pendingWorkflowStepPayload = {
                     feature: 't9Singing',
@@ -12536,7 +12512,7 @@ function setupFeatureListeners(feature, callback, options) {
                         alert('Enter at least one UP or DOWN before UNFINISHED.');
                         return;
                     }
-                    const filtered = filterWordsByT9SingingPrefixUnfinished(singingBaseWords, singingDirections);
+                    const filtered = filterWordsByT9SingingPrefixUnfinished(singingBaseWords, singingDirections, singingMergeRepeatedDigits);
                     if (filtered.length === 0) {
                         alert('No words remain that still have more T9 steps after this prefix.');
                         return;
@@ -12545,7 +12521,7 @@ function setupFeatureListeners(feature, callback, options) {
                     const tokens = singingDirections.slice();
                     const directionsHuman = tokens.map(d => d === 'U' ? 'UP' : 'DOWN').join(', ');
                     const wordsAfter = filtered.length;
-                    const t9SingingRepeatedLetters = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+                    const t9SingingRepeatedLetters = !!singingMergeRepeatedDigits;
                     const prefixLen = tokens.length + 1;
                     pendingWorkflowStepPayload = {
                         feature: 't9Singing',
@@ -12590,7 +12566,7 @@ function setupFeatureListeners(feature, callback, options) {
 
             if (skipBtn) {
                 skipBtn.onclick = () => {
-                    const t9SingingRepeatedLetters = !!(appSettings && appSettings.t9SingingRepeatedLetters);
+                    const t9SingingRepeatedLetters = !!singingMergeRepeatedDigits;
                     pendingWorkflowStepPayload = {
                         feature: 't9Singing',
                         skipped: true,
@@ -17063,21 +17039,6 @@ function initSettingsUI() {
         t9LengthToggle.addEventListener('change', () => {
             appSettings.t9LengthBuffer1 = t9LengthToggle.checked;
             saveAppSettings();
-        });
-    }
-
-    const t9SingingRepeatedLettersToggle = document.getElementById('t9SingingRepeatedLettersToggle');
-    if (t9SingingRepeatedLettersToggle) {
-        t9SingingRepeatedLettersToggle.checked = !!appSettings.t9SingingRepeatedLetters;
-        t9SingingRepeatedLettersToggle.addEventListener('change', () => {
-            const prev = !!appSettings.t9SingingRepeatedLetters;
-            appSettings.t9SingingRepeatedLetters = t9SingingRepeatedLettersToggle.checked;
-            saveAppSettings();
-            const featTog = document.getElementById('t9SingingRepeatedDigitsFeatureToggle');
-            if (featTog) featTog.checked = !!appSettings.t9SingingRepeatedLetters;
-            if (t9SingingRepeatedRescanFn) {
-                t9SingingRepeatedRescanFn(prev);
-            }
         });
     }
 
