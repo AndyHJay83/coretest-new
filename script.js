@@ -439,6 +439,10 @@ function formatWorkflowStepQuickCaption(step) {
             return `CALCULUS “${p.submittedSequence}” (${modeLabel})`;
         }
     }
+    if (p.feature === 't9Singing') {
+        if (p.skipped) return 'Skipped — list unchanged';
+        if (p.directionsHuman) return `SINGING: ${p.directionsHuman}`;
+    }
     return null;
 }
 
@@ -559,6 +563,19 @@ function renderStepPayloadSection(payload) {
             { term: 'Words before filter', def: payload.wordsBefore != null ? String(payload.wordsBefore) : '—' },
             { term: 'Words after filter', def: payload.skipped ? '— (unchanged)' : (payload.wordsAfter != null ? String(payload.wordsAfter) : '—') },
             { term: 'Allowed letters per step', def: payload.skipped ? '—' : lettersSummary }
+        ]);
+        return wrap;
+    }
+
+    if (payload.feature === 't9Singing') {
+        appendReportDefinitionList(wrap, [
+            { term: 'Skipped', def: payload.skipped ? 'Yes' : 'No' },
+            { term: 'Directions (as entered)', def: payload.skipped ? '—' : (payload.directionsHuman || '—') },
+            { term: 'Direction tokens', def: payload.skipped ? '—' : (Array.isArray(payload.directionsTokens) ? payload.directionsTokens.join(', ') : '—') },
+            { term: 'Number of steps', def: payload.skipped ? '—' : (payload.directionCount != null ? String(payload.directionCount) : '—') },
+            { term: 'Required T9 length (steps + 1)', def: payload.skipped ? '—' : (payload.impliedT9Length != null ? String(payload.impliedT9Length) : '—') },
+            { term: 'Words before filter', def: payload.wordsBefore != null ? String(payload.wordsBefore) : '—' },
+            { term: 'Words after filter', def: payload.skipped ? '— (unchanged)' : (payload.wordsAfter != null ? String(payload.wordsAfter) : '—') }
         ]);
         return wrap;
     }
@@ -11819,7 +11836,21 @@ function setupFeatureListeners(feature, callback, options) {
                     alert('Add at least one direction (UP or DOWN), then SUBMIT.');
                     return;
                 }
+                const tokens = singingDirections.slice();
+                const directionsHuman = tokens.map(d => d === 'U' ? 'UP' : 'DOWN').join(', ');
+                const wordsBefore = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null;
                 const filtered = filterWordsByT9Singing(currentFilteredWords, singingDirections);
+                const wordsAfter = Array.isArray(filtered) ? filtered.length : null;
+                pendingWorkflowStepPayload = {
+                    feature: 't9Singing',
+                    skipped: false,
+                    directionsTokens: tokens,
+                    directionsHuman,
+                    directionCount: tokens.length,
+                    impliedT9Length: tokens.length + 1,
+                    wordsBefore,
+                    wordsAfter
+                };
                 callback(filtered);
                 const featureEl = document.getElementById('t9SingingFeature');
                 if (featureEl) {
@@ -11862,6 +11893,12 @@ function setupFeatureListeners(feature, callback, options) {
 
             if (skipBtn) {
                 skipBtn.onclick = () => {
+                    pendingWorkflowStepPayload = {
+                        feature: 't9Singing',
+                        skipped: true,
+                        wordsBefore: Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null,
+                        wordsAfter: Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null
+                    };
                     callback(currentFilteredWords);
                     const featureEl = document.getElementById('t9SingingFeature');
                     if (featureEl) {
