@@ -432,6 +432,13 @@ function formatWorkflowStepQuickCaption(step) {
         if (stops > 0 && digits) return `NEW: ${stops} stop(s), digits ${digits}`;
         if (stops > 0) return `NEW: ${stops} stop(s)`;
     }
+    if (p.feature === 'calculus') {
+        if (p.skipped) return 'Skipped — list unchanged';
+        if (p.submittedSequence) {
+            const modeLabel = p.mode === 'curvesStraight' ? 'C/S' : 'digits';
+            return `CALCULUS “${p.submittedSequence}” (${modeLabel})`;
+        }
+    }
     return null;
 }
 
@@ -531,6 +538,27 @@ function renderStepPayloadSection(payload) {
     if (payload.feature === 'sologram') {
         appendReportDefinitionList(wrap, [
             { term: 'Y/N string', def: payload.skipped ? '— (skipped)' : (payload.ynString || '—') }
+        ]);
+        return wrap;
+    }
+
+    if (payload.feature === 'calculus') {
+        const modeHuman = payload.mode === 'curvesStraight' ? 'Curves / Straight (C/S)' : 'Abstract (digits 0–9)';
+        const lettersByStep = Array.isArray(payload.lettersByStep) ? payload.lettersByStep : [];
+        const lettersSummary = lettersByStep.length
+            ? lettersByStep.map((row) => {
+                const allowed = row && row.allowedLetters != null ? String(row.allowedLetters) : '—';
+                return `pos ${row.step} “${row.token}”: ${allowed}`;
+            }).join('; ')
+            : '—';
+        appendReportDefinitionList(wrap, [
+            { term: 'Skipped', def: payload.skipped ? 'Yes' : 'No' },
+            { term: 'Mode', def: payload.skipped ? '—' : modeHuman },
+            { term: 'Submitted sequence', def: payload.skipped ? '—' : (payload.submittedSequence || '—') },
+            { term: 'Sequence length', def: payload.skipped ? '—' : (payload.sequenceLength != null ? String(payload.sequenceLength) : '—') },
+            { term: 'Words before filter', def: payload.wordsBefore != null ? String(payload.wordsBefore) : '—' },
+            { term: 'Words after filter', def: payload.skipped ? '— (unchanged)' : (payload.wordsAfter != null ? String(payload.wordsAfter) : '—') },
+            { term: 'Allowed letters per step', def: payload.skipped ? '—' : lettersSummary }
         ]);
         return wrap;
     }
@@ -940,10 +968,10 @@ let omegaActiveMapping = {};
 // CALCULUS: positional digit filter (like OMEGA Short but digits 0-9 → fixed letter sets). Same forbidden pairs as OMEGA.
 const calculusMapping = {
     '1': 'ADEFHIJKLMNPRTUVWXYZ',
-    '2': 'BCDJLMNOPQRSUVWXYZ',
+    '2': 'BCDHJLMNOPQRSUVWXYZ',
     '3': 'BCDEGJKMNOPQRSUVWZ',
     '4': 'ACDEFGHIJKLMNPQRTVWXYZ',
-    '5': 'BCDEFGHJMOPSUVZ',
+    '5': 'BCDEFGHJMNOPSUVZ',
     '6': 'BCDEFGJMOPQRSUY',
     '7': 'ADFHIJKLMNPRTVWXYZ',
     '8': 'BCDEFGHJMOPQRSUWXYZ',
@@ -4578,7 +4606,26 @@ function startCalculus(callback) {
             return;
         }
         const digitString = calculusSelections.join('');
+        const mapping = isCurvesStraight ? calculusCurvesStraightMapping : calculusMapping;
+        const lettersByStep = calculusSelections.map((token, i) => ({
+            step: i + 1,
+            token,
+            allowedLetters: mapping[token] != null ? mapping[token] : ''
+        }));
+        const wordsBefore = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null;
         const filtered = applyCalculusFilter(currentFilteredWords, digitString);
+        const wordsAfter = Array.isArray(filtered) ? filtered.length : null;
+        pendingWorkflowStepPayload = {
+            feature: 'calculus',
+            skipped: false,
+            mode: calculusMode,
+            submittedSequence: digitString,
+            submittedTokens: calculusSelections.slice(),
+            lettersByStep,
+            sequenceLength: digitString.length,
+            wordsBefore,
+            wordsAfter
+        };
         callback(filtered);
         calculusFeature.classList.add('completed');
         calculusFeature.dispatchEvent(new Event('completed'));
@@ -4589,6 +4636,13 @@ function startCalculus(callback) {
     skipBtn.textContent = 'SKIP';
     skipBtn.type = 'button';
     skipBtn.onclick = () => {
+        pendingWorkflowStepPayload = {
+            feature: 'calculus',
+            skipped: true,
+            mode: calculusMode,
+            wordsBefore: Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null,
+            wordsAfter: Array.isArray(currentFilteredWords) ? currentFilteredWords.length : null
+        };
         callback(currentFilteredWords);
         calculusFeature.classList.add('completed');
         calculusFeature.dispatchEvent(new Event('completed'));
