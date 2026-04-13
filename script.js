@@ -967,16 +967,16 @@ let omegaActiveMapping = {};
 
 // CALCULUS: positional digit filter (like OMEGA Short but digits 0-9 → fixed letter sets). Same forbidden pairs as OMEGA.
 const calculusMapping = {
-    '1': 'ADEFHIJKLMNPRTUVWXYZ',
-    '2': 'BCDHJLMNOPQRSUVWXYZ',
+    '1': 'ABDEFHIJKLMNPRTUVWXYZ',
+    '2': 'BCDJLMNOPQRSUVWXYZ',
     '3': 'BCDEGJKMNOPQRSUVWZ',
-    '4': 'ACDEFGHIJKLMNPQRTVWXYZ',
-    '5': 'BCDEFGHJMNOPSUVZ',
+    '4': 'ABCDEFGHIJKLMNOPQRTVWXYZ',
+    '5': 'BCDEFGHJKMNOPRSUVWYZ',
     '6': 'BCDEFGJMOPQRSUY',
-    '7': 'ADFHIJKLMNPRTVWXYZ',
-    '8': 'BCDEFGHJMOPQRSUWXYZ',
+    '7': 'ADHIJKLMNPRTVWXYZ',
+    '8': 'BCDEGHJMOPQRSUWXYZ',
     '9': 'BCDEGJMOPQRSYZ',
-    '0': 'BCDGOPQRS'
+    '0': 'BCDGJMNOPQRSUW'
 };
 // CALCULUS Curves/Straight mode: C = curved letters, S = straight letters
 const calculusCurvesStraightMapping = {
