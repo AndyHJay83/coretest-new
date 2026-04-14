@@ -7623,9 +7623,7 @@ function filterWordsByAlphaRepeatYes(words, directions, firstLetterSection, swap
  * @param {string} [customLineRaw] - optional; 10+ letters A–Z uses index-based line instead of alphabet (non-letters stripped)
  */
 function filterWordsByAlphaUnified(words, directions, firstLetterSection, swapPov, repeatMode, lastLetterSet, customLineRaw) {
-    if (!directions || directions.length === 0) return words;
-    const dirs = directions;
-    const needLen = 1 + dirs.length;
+    const dirs = directions || [];
     const useLast = lastLetterSet instanceof Set && lastLetterSet.size > 0;
     const mode = repeatMode === 'yes' || repeatMode === 'no' ? repeatMode : null;
     const customLine = parseUnifiedCustomAlphaLine(customLineRaw);
@@ -7636,26 +7634,43 @@ function filterWordsByAlphaUnified(words, directions, firstLetterSection, swapPo
         if (mode === 'yes') {
             if (!hasConsecutiveDuplicateLetters(w)) return false;
             const collapsed = collapseConsecutiveDuplicateLetters(w);
-            if (collapsed.length !== needLen) return false;
             if (useLast && !lastLetterSet.has(w[w.length - 1])) return false;
+            if (!dirs.length) {
+                return useCustom
+                    ? alphaDirectionsMatchCustomLinePrefix(collapsed, dirs, firstLetterSection, swapPov, customLine)
+                    : alphaDirectionsMatchSpellingPrefix(collapsed, dirs, firstLetterSection, swapPov);
+            }
             return useCustom
-                ? alphaDirectionsMatchCustomLine(customLine, collapsed, dirs, firstLetterSection, swapPov)
-                : alphaDirectionsMatchSpelling(collapsed, dirs, firstLetterSection, swapPov);
+                ? alphaDirectionsMatchCustomLinePrefix(collapsed, dirs, firstLetterSection, swapPov, customLine)
+                : alphaDirectionsMatchSpellingPrefix(collapsed, dirs, firstLetterSection, swapPov);
         }
         if (mode === 'no') {
             if (hasConsecutiveDuplicateLetters(w)) return false;
-            if (w.length !== needLen) return false;
             if (useLast && !lastLetterSet.has(w[w.length - 1])) return false;
+            if (!dirs.length) {
+                return useCustom
+                    ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
+                    : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
+            }
             return useCustom
-                ? alphaDirectionsMatchCustomLine(customLine, w, dirs, firstLetterSection, swapPov)
-                : alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
+                ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
+                : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
         }
         if (useLast) {
-            if (w.length !== needLen) return false;
             if (!lastLetterSet.has(w[w.length - 1])) return false;
+            if (!dirs.length) {
+                return useCustom
+                    ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
+                    : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
+            }
             return useCustom
-                ? alphaDirectionsMatchCustomLine(customLine, w, dirs, firstLetterSection, swapPov)
-                : alphaDirectionsMatchSpelling(w, dirs, firstLetterSection, swapPov);
+                ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
+                : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
+        }
+        if (!dirs.length) {
+            return useCustom
+                ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
+                : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
         }
         return useCustom
             ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
@@ -13291,7 +13306,10 @@ function setupFeatureListeners(feature, callback, options) {
             const repeatBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-repeat-btn')) : [];
             const alphaDirectionsCount = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
             const alphaSwapPov = !!(appSettings && appSettings.alphaSwapPov);
+            const alphaBaseWords = Array.isArray(currentFilteredWords) ? currentFilteredWords.slice() : [];
+            const alphaWordsAtStepStart = alphaBaseWords.length;
             let alphaDirections = [];
+            let alphaDirectionSteps = [];
             let selectedFirstSection = null;
             let selectedRepeatMode = null;
 
@@ -13553,6 +13571,7 @@ function setupFeatureListeners(feature, callback, options) {
                     if (selectedFirstSection === val) selectedFirstSection = null;
                     else selectedFirstSection = val;
                     syncSectionHighlight();
+                    applyAlphaIncrementalFromCurrentDirections();
                 };
                 let touchHandled = false;
                 btn.addEventListener(
@@ -13579,6 +13598,7 @@ function setupFeatureListeners(feature, callback, options) {
                     if (selectedRepeatMode === val) selectedRepeatMode = null;
                     else selectedRepeatMode = val;
                     syncRepeatHighlight();
+                    applyAlphaIncrementalFromCurrentDirections();
                 };
                 let touchHandled = false;
                 btn.addEventListener(
@@ -13638,7 +13658,10 @@ function setupFeatureListeners(feature, callback, options) {
                     if (!showNa) {
                         const before = alphaDirections.length;
                         alphaDirections = alphaDirections.filter((d) => d !== 'NA');
-                        if (before !== alphaDirections.length) alphaUpdateDisplay();
+                        if (before !== alphaDirections.length) {
+                            alphaUpdateDisplay();
+                            applyAlphaIncrementalFromCurrentDirections();
+                        }
                     }
                 }
             }
@@ -13925,31 +13948,78 @@ function setupFeatureListeners(feature, callback, options) {
                 return null;
             }
 
-            function unifiedAlphaSubmit() {
-                if (alphaDirections.length === 0) {
-                    alert('Add at least one direction (Left, Right, Repeat, or N/A), then SUBMIT.');
-                    return;
-                }
-                const customLineParsed =
-                    unifiedAlphaCustomLineParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN
-                        ? unifiedAlphaCustomLineParsed
-                        : '';
-                if (alphaDirections.includes('NA') && !alphaUnifiedNaDirectionAllowed(customLineParsed)) {
-                    alert('N/A is only available when using a custom line that does not include every letter A–Z.');
-                    return;
-                }
+            function getActiveAlphaCustomLineForFilter() {
+                return unifiedAlphaCustomLineParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN
+                    ? unifiedAlphaCustomLineParsed
+                    : '';
+            }
+
+            function filterAlphaFromBase(directionsOverride) {
+                const dirs = Array.isArray(directionsOverride) ? directionsOverride : alphaDirections;
+                const customLineParsed = getActiveAlphaCustomLineForFilter();
                 const firstLetterSection = firstLetterSectionForFilter();
                 const repeatMode = repeatModeForFilter();
-                const lastLetterSet = parseAlphaWordLastLettersInput(alphaUnifiedLastLettersInput && alphaUnifiedLastLettersInput.value);
+                const lastLetterSet = parseAlphaWordLastLettersInput(
+                    alphaUnifiedLastLettersInput && alphaUnifiedLastLettersInput.value
+                );
                 const filtered = filterWordsByAlphaUnified(
-                    currentFilteredWords,
-                    alphaDirections,
+                    alphaBaseWords,
+                    dirs,
                     firstLetterSection,
                     alphaSwapPov,
                     repeatMode,
                     lastLetterSet,
                     customLineParsed
                 );
+                return { filtered, customLineParsed, firstLetterSection, repeatMode, lastLetterSet };
+            }
+
+            function rebuildAlphaDirectionSteps() {
+                const steps = [];
+                for (let i = 0; i < alphaDirections.length; i++) {
+                    const dirs = alphaDirections.slice(0, i + 1);
+                    const result = filterAlphaFromBase(dirs);
+                    steps.push({
+                        step: i + 1,
+                        direction: dirs[i],
+                        directionHuman:
+                            dirs[i] === 'L' ? 'Left' : dirs[i] === 'R' ? 'Right' : dirs[i] === 'NA' ? 'N/A' : 'Repeat',
+                        wordsAfter: result.filtered.length
+                    });
+                }
+                alphaDirectionSteps = steps;
+            }
+
+            function applyAlphaIncrementalFromCurrentDirections() {
+                const result = filterAlphaFromBase(alphaDirections);
+                if (alphaDirections.length && result.filtered.length === 0) {
+                    return false;
+                }
+                if (!alphaDirections.length) {
+                    alphaDirectionSteps = [];
+                } else {
+                    rebuildAlphaDirectionSteps();
+                }
+                callback(result.filtered);
+                return true;
+            }
+
+            function unifiedAlphaSubmit() {
+                if (alphaDirections.length === 0) {
+                    alert('Add at least one direction (Left, Right, Repeat, or N/A), then SUBMIT.');
+                    return;
+                }
+                const result = filterAlphaFromBase(alphaDirections);
+                const customLineParsed = result.customLineParsed;
+                if (alphaDirections.includes('NA') && !alphaUnifiedNaDirectionAllowed(customLineParsed)) {
+                    alert('N/A is only available when using a custom line that does not include every letter A–Z.');
+                    return;
+                }
+                rebuildAlphaDirectionSteps();
+                const filtered = result.filtered;
+                const firstLetterSection = result.firstLetterSection;
+                const repeatMode = result.repeatMode;
+                const lastLetterSet = result.lastLetterSet;
                 const directionsHuman = alphaDirections
                     .map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : d === 'NA' ? 'N/A' : 'Repeat'))
                     .join(', ');
@@ -13972,9 +14042,10 @@ function setupFeatureListeners(feature, callback, options) {
                         customAlphaLine:
                             customLineParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN ? customLineParsed : null,
                         directions: alphaDirections.slice(),
-                        directionsHuman
+                        directionsHuman,
+                        directionSteps: alphaDirectionSteps.slice()
                     },
-                    wordsBefore: currentFilteredWords.length,
+                    wordsBefore: alphaWordsAtStepStart,
                     wordsAfter: filtered.length
                 };
                 stopAlphaUnifiedSpeechFromWorkflow();
@@ -13996,6 +14067,13 @@ function setupFeatureListeners(feature, callback, options) {
                 }
                 alphaDirections.push(dir);
                 alphaUpdateDisplay();
+                const ok = applyAlphaIncrementalFromCurrentDirections();
+                if (!ok) {
+                    alphaDirections.pop();
+                    alphaUpdateDisplay();
+                    alert('No words match that sequence. The last direction was removed.');
+                    return;
+                }
                 if (alphaDirectionsCount > 0 && alphaDirections.length >= alphaDirectionsCount) unifiedAlphaSubmit();
             }
 
@@ -14049,6 +14127,11 @@ function setupFeatureListeners(feature, callback, options) {
                     e.preventDefault();
                     alphaSkipBtn.click();
                 }, { passive: false });
+            }
+            if (alphaUnifiedLastLettersInput) {
+                alphaUnifiedLastLettersInput.addEventListener('input', () => {
+                    applyAlphaIncrementalFromCurrentDirections();
+                });
             }
             attachUnifiedAlphaTapBtn(alphaUnifiedLinePangramBtn, () => {
                 unifiedAlphaCustomLineParsed = ALPHA_PRESET_QUICK_BROWN_FOX_LINE;
