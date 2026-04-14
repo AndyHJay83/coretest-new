@@ -154,6 +154,8 @@ let workflows = JSON.parse(localStorage.getItem('workflows')) || [];
 
 const WORKFLOW_REPORT_STORAGE_KEY = 'workflowRunReports';
 const WORKFLOW_REPORT_MAX = 10;
+/** When word count is at or below this, store a full word-list snapshot on the run / step for post-hoc target tracing. */
+const WORKFLOW_DEBUG_SNAPSHOT_MAX_WORDS = 1500;
 /** Set before dispatching `completed` on a feature so REPORT can store step-specific data */
 let pendingWorkflowStepPayload = null;
 
@@ -241,6 +243,369 @@ function sanitizeWorkflowTargetWord(raw) {
     return s.length ? s.slice(0, 60) : null;
 }
 
+function targetWordMatchesListEntry(word, targetSanitized) {
+    if (!targetSanitized) return false;
+    const w = String(word ?? '')
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '');
+    return w === targetSanitized;
+}
+
+function targetWordInFilteredList(words, targetSanitized) {
+    if (!targetSanitized || !Array.isArray(words)) return false;
+    for (let i = 0; i < words.length; i++) {
+        if (targetWordMatchesListEntry(words[i], targetSanitized)) return true;
+    }
+    return false;
+}
+
+function maybeSnapshotWordListForReport(words) {
+    if (!Array.isArray(words)) return null;
+    if (words.length > WORKFLOW_DEBUG_SNAPSHOT_MAX_WORDS) return null;
+    return words.slice();
+}
+
+function isUnifiedAlphaWorkflowStep(stepRecord) {
+    const f = stepRecord && stepRecord.feature;
+    return f === 'alphaFull' || f === 'alphaWord' || f === 'alphaRepeat';
+}
+
+function formatAlphaDirectionTokenHuman(token) {
+    if (token === 'L') return 'Left';
+    if (token === 'R') return 'Right';
+    if (token === 'NA') return 'N/A';
+    if (token === 'Repeat') return 'Repeat';
+    return String(token || '—');
+}
+
+/**
+ * Full word list at the start of workflow step `stepIndex`, when REPORT snapshots kept it (≤ limit).
+ */
+function getWorkflowReplayBaseWordList(run, stepIndex) {
+    if (!run || !Array.isArray(run.steps) || stepIndex < 0) return null;
+    if (stepIndex === 0) {
+        const s0 = run.wordListSnapshotAtStart;
+        return Array.isArray(s0) && s0.length ? s0 : null;
+    }
+    const prev = run.steps[stepIndex - 1];
+    const snap = prev && prev.wordListSnapshotEnd;
+    return Array.isArray(snap) && snap.length ? snap : null;
+}
+
+/**
+ * Re-run unified ALPHA filters on a stored list to find which direction removed the target
+ * (used when trace was not recorded, e.g. target set only in REPORT).
+ */
+function computeUnifiedAlphaTargetLostMetaFromReplay(run, stepRecord, stepIndex, targetSanitized) {
+    if (!isUnifiedAlphaWorkflowStep(stepRecord) || !targetSanitized) return null;
+    const ui = stepRecord.payload && stepRecord.payload.userInput;
+    if (!ui || !Array.isArray(ui.directions) || ui.directions.length === 0) return null;
+    const baseWords = getWorkflowReplayBaseWordList(run, stepIndex);
+    if (!Array.isArray(baseWords) || baseWords.length === 0) return null;
+
+    const swapPov = !!(typeof appSettings !== 'undefined' && appSettings && appSettings.alphaSwapPov);
+    const lastSet = parseAlphaWordLastLettersInput(ui.lastLetters || '');
+    const lastLetterArg = lastSet.size > 0 ? lastSet : null;
+    const customRaw =
+        typeof ui.customAlphaLine === 'string'
+            ? ui.customAlphaLine
+            : Array.isArray(ui.customAlphaLine)
+              ? ui.customAlphaLine.join('')
+              : '';
+
+    let presentBefore = targetWordInFilteredList(baseWords, targetSanitized);
+    if (!presentBefore) return null;
+
+    const dirs = ui.directions;
+    for (let d = 0; d < dirs.length; d++) {
+        const prefix = dirs.slice(0, d + 1);
+        const filtered = filterWordsByAlphaUnified(
+            baseWords,
+            prefix,
+            ui.firstLetterSection,
+            swapPov,
+            ui.repeatMode,
+            lastLetterArg,
+            customRaw,
+            ui.firstStraightPos,
+            ui.areDifferentMode,
+            ui.nextShapeGroup
+        );
+        const presentAfter = targetWordInFilteredList(filtered, targetSanitized);
+        if (presentBefore && !presentAfter) {
+            const tok = dirs[d];
+            return {
+                lostAt0Based: d,
+                lostAt1Based: d + 1,
+                totalDirections: dirs.length,
+                directionHuman: formatAlphaDirectionTokenHuman(tok)
+            };
+        }
+        presentBefore = presentAfter;
+    }
+    return null;
+}
+
+function formatUnifiedAlphaElimSummary(opts) {
+    const {
+        workflowStep1Based,
+        totalWorkflowSteps,
+        lost1Based,
+        totalDirs,
+        dirHuman
+    } = opts;
+    const dirPart = `Target not in list after ALPHA direction step ${lost1Based} of ${totalDirs} (${dirHuman})`;
+    if (totalWorkflowSteps > 1) {
+        return `${dirPart} — workflow step ${workflowStep1Based}`;
+    }
+    return dirPart;
+}
+
+/**
+ * Where the debug target word left the list (if determinable).
+ * Uses live-recorded flags when the run's target word matches `targetWordUsedForTrace`;
+ * otherwise uses stored word-list snapshots when available.
+ */
+function computeWorkflowTargetElimination(run) {
+    if (!run || typeof run !== 'object') return null;
+    const tw = run.targetWord ? sanitizeWorkflowTargetWord(run.targetWord) : null;
+    if (!tw) return null;
+
+    const steps = Array.isArray(run.steps) ? run.steps : [];
+    const used = run.targetWordUsedForTrace ? sanitizeWorkflowTargetWord(run.targetWordUsedForTrace) : null;
+    const useLive = used && used === tw;
+
+    if (useLive) {
+        if (run.targetWordPresentAtStart === false) {
+            return {
+                method: 'live',
+                summary: 'Target was not in the wordlist at the start of this run.',
+                eliminatedStepIndex: null,
+                withinStepUpdateIndex: null
+            };
+        }
+        if (run.targetWordPresentAtStart === true) {
+            for (let i = 0; i < steps.length; i++) {
+                const st = steps[i];
+                const tr = Array.isArray(st.targetWordTrace) ? st.targetWordTrace : [];
+                if (tr.length) {
+                    for (let j = 0; j < tr.length; j++) {
+                        if (tr[j] === false) {
+                            let summary;
+                            if (isUnifiedAlphaWorkflowStep(st)) {
+                                const dirs = st.payload && st.payload.userInput && Array.isArray(st.payload.userInput.directions)
+                                    ? st.payload.userInput.directions
+                                    : [];
+                                if (dirs.length) {
+                                    const idx = Math.min(Math.max(0, j), dirs.length - 1);
+                                    summary = formatUnifiedAlphaElimSummary({
+                                        workflowStep1Based: i + 1,
+                                        totalWorkflowSteps: steps.length,
+                                        lost1Based: idx + 1,
+                                        totalDirs: dirs.length,
+                                        dirHuman: formatAlphaDirectionTokenHuman(dirs[idx])
+                                    });
+                                } else {
+                                    summary = `Eliminated during step ${i + 1} (${getWorkflowFeatureLabel(st.feature)}), after in-step update ${j + 1}.`;
+                                }
+                            } else {
+                                summary = `Eliminated during step ${i + 1} (${getWorkflowFeatureLabel(st.feature)}), after in-step update ${j + 1}.`;
+                            }
+                            return {
+                                method: 'live',
+                                summary,
+                                eliminatedStepIndex: i,
+                                withinStepUpdateIndex: j
+                            };
+                        }
+                    }
+                }
+                if (st.targetWordPresentEnd === false) {
+                    let summary;
+                    let withinStepOut = null;
+                    if (isUnifiedAlphaWorkflowStep(st)) {
+                        const replayMeta = computeUnifiedAlphaTargetLostMetaFromReplay(run, st, i, tw);
+                        if (replayMeta) {
+                            withinStepOut = replayMeta.lostAt0Based;
+                            summary = formatUnifiedAlphaElimSummary({
+                                workflowStep1Based: i + 1,
+                                totalWorkflowSteps: steps.length,
+                                lost1Based: replayMeta.lostAt1Based,
+                                totalDirs: replayMeta.totalDirections,
+                                dirHuman: replayMeta.directionHuman
+                            });
+                        } else {
+                            summary = `Target not in list by end of workflow step ${i + 1} (ALPHA) — could not resolve which direction (no word list snapshot to replay from).`;
+                        }
+                    } else {
+                        summary = `Eliminated by end of step ${i + 1} (${getWorkflowFeatureLabel(st.feature)}).`;
+                    }
+                    return {
+                        method: 'live',
+                        summary,
+                        eliminatedStepIndex: i,
+                        withinStepUpdateIndex: withinStepOut
+                    };
+                }
+            }
+            return {
+                method: 'live',
+                summary: 'Target still appears to be in the list at the end of the run (or not removed by filters).',
+                eliminatedStepIndex: null,
+                withinStepUpdateIndex: null
+            };
+        }
+        /* useLive but start state missing — fall through to snapshot inference */
+    }
+
+    const snap0 = run.wordListSnapshotAtStart;
+    let knownPresentBefore = null;
+    if (snap0) {
+        knownPresentBefore = targetWordInFilteredList(snap0, tw);
+        if (!knownPresentBefore) {
+            return {
+                method: 'snapshot',
+                summary: 'Target was not in the wordlist at the start (from saved snapshot).',
+                eliminatedStepIndex: null,
+                withinStepUpdateIndex: null
+            };
+        }
+    } else if (Number(run.initialWordCount) > WORKFLOW_DEBUG_SNAPSHOT_MAX_WORDS) {
+        knownPresentBefore = null;
+    }
+
+    let foundIdx = -1;
+    for (let i = 0; i < steps.length; i++) {
+        const snap = steps[i].wordListSnapshotEnd;
+        if (!snap) continue;
+        const stillThere = targetWordInFilteredList(snap, tw);
+        if (!stillThere) {
+            foundIdx = i;
+            break;
+        }
+    }
+
+    if (foundIdx >= 0) {
+        const st = steps[foundIdx];
+        const tr = Array.isArray(st.targetWordTrace) ? st.targetWordTrace : [];
+        const fi = tr.indexOf(false);
+        const replayMeta = computeUnifiedAlphaTargetLostMetaFromReplay(run, st, foundIdx, tw);
+        let withinStep = fi >= 0 ? fi : null;
+        if (replayMeta) {
+            withinStep = replayMeta.lostAt0Based;
+        }
+        let summary;
+        if (replayMeta) {
+            summary = formatUnifiedAlphaElimSummary({
+                workflowStep1Based: foundIdx + 1,
+                totalWorkflowSteps: steps.length,
+                lost1Based: replayMeta.lostAt1Based,
+                totalDirs: replayMeta.totalDirections,
+                dirHuman: replayMeta.directionHuman
+            });
+        } else if (isUnifiedAlphaWorkflowStep(st)) {
+            const dirs = st.payload && st.payload.userInput && Array.isArray(st.payload.userInput.directions)
+                ? st.payload.userInput.directions
+                : [];
+            if (dirs.length && fi >= 0) {
+                const idx = Math.min(Math.max(0, fi), dirs.length - 1);
+                summary = formatUnifiedAlphaElimSummary({
+                    workflowStep1Based: foundIdx + 1,
+                    totalWorkflowSteps: steps.length,
+                    lost1Based: idx + 1,
+                    totalDirs: dirs.length,
+                    dirHuman: formatAlphaDirectionTokenHuman(dirs[idx])
+                });
+            } else {
+                summary = `Target not in list by end of workflow step ${foundIdx + 1} (ALPHA) — set the debug target before performing or shrink the list so a snapshot can replay which Left/Right step removed it.`;
+            }
+        } else {
+            const x = fi >= 0 ? fi + 1 : foundIdx + 1;
+            summary = `Target not in list by end of step ${x}`;
+        }
+        return {
+            method: 'snapshot',
+            summary,
+            eliminatedStepIndex: foundIdx,
+            withinStepUpdateIndex: withinStep
+        };
+    }
+
+    const lastSnapStep = [...steps].map((s, i) => (s.wordListSnapshotEnd ? i : -1)).filter((i) => i >= 0).pop();
+    if (lastSnapStep != null && lastSnapStep >= 0) {
+        const snap = steps[lastSnapStep].wordListSnapshotEnd;
+        if (snap && targetWordInFilteredList(snap, tw) && Number(run.finalWordCount) > 0) {
+            return {
+                method: 'snapshot',
+                summary: 'Target word still in final filtered wordlist',
+                eliminatedStepIndex: null,
+                withinStepUpdateIndex: null
+            };
+        }
+    }
+
+    return {
+        method: 'snapshot-incomplete',
+        summary: `Could not determine elimination: no snapshot covers a step where the target is absent (snapshots are only stored when the list has at most ${WORKFLOW_DEBUG_SNAPSHOT_MAX_WORDS} words). Set the debug target in Settings → REPORT before performing, or shrink the list with earlier filters.`,
+        eliminatedStepIndex: null,
+        withinStepUpdateIndex: null
+    };
+}
+
+/** Shown only in REPORT export / JSON panels — not stored on the persisted run. */
+const WORKFLOW_DEBUG_TARGET_LOST_KEY = 'workflowDebugTargetWordLost';
+const WORKFLOW_DEBUG_TARGET_LOST_LABEL = '<target word lost here>';
+
+/**
+ * Best-effort index into payload.userInput.directionSteps for where the target dropped out.
+ */
+function getWorkflowTargetLostDirectionIndex(elim, stepRecord) {
+    if (!stepRecord || !stepRecord.payload || typeof stepRecord.payload !== 'object') return null;
+    const dirs =
+        stepRecord.payload.userInput && Array.isArray(stepRecord.payload.userInput.directionSteps)
+            ? stepRecord.payload.userInput.directionSteps
+            : null;
+    if (!dirs || !dirs.length) return null;
+    const tr = Array.isArray(stepRecord.targetWordTrace) ? stepRecord.targetWordTrace : [];
+    let j = elim && elim.withinStepUpdateIndex != null ? elim.withinStepUpdateIndex : null;
+    if (j != null && j >= 0) {
+        if (j < dirs.length) return j;
+        if (j < tr.length && tr[j] === false) return dirs.length - 1;
+    }
+    const fi = tr.indexOf(false);
+    if (fi >= 0) return Math.min(fi, dirs.length - 1);
+    return dirs.length - 1;
+}
+
+/**
+ * Mutates one step payload (use on a JSON clone). Adds WORKFLOW_DEBUG_TARGET_LOST_KEY where the
+ * target word was eliminated when `elim` refers to this step.
+ */
+function applyWorkflowTargetLostMarkerToStepPayload(payload, elim, stepRecord) {
+    if (!payload || typeof payload !== 'object' || !elim || !stepRecord) return;
+    const dirs =
+        payload.userInput && Array.isArray(payload.userInput.directionSteps)
+            ? payload.userInput.directionSteps
+            : null;
+    const dirIdx = getWorkflowTargetLostDirectionIndex(elim, stepRecord);
+    if (dirs && dirs.length && dirIdx != null && dirIdx >= 0 && dirIdx < dirs.length) {
+        dirs[dirIdx] = { ...dirs[dirIdx], [WORKFLOW_DEBUG_TARGET_LOST_KEY]: WORKFLOW_DEBUG_TARGET_LOST_LABEL };
+    } else {
+        payload[WORKFLOW_DEBUG_TARGET_LOST_KEY] = WORKFLOW_DEBUG_TARGET_LOST_LABEL;
+    }
+}
+
+/** Mutates a full run object (must be a JSON clone). */
+function injectWorkflowTargetLostInRunClone(run) {
+    if (!run || typeof run !== 'object') return run;
+    const elim = computeWorkflowTargetElimination(run);
+    if (!elim || elim.eliminatedStepIndex == null) return run;
+    const st = Array.isArray(run.steps) ? run.steps[elim.eliminatedStepIndex] : null;
+    if (!st || !st.payload || typeof st.payload !== 'object') return run;
+    applyWorkflowTargetLostMarkerToStepPayload(st.payload, elim, st);
+    return run;
+}
+
 function updateWorkflowRunTargetWord(runId, wordOrNull) {
     const list = loadWorkflowReports();
     const idx = list.findIndex((r) => Number(r.id) === Number(runId));
@@ -272,21 +637,31 @@ function onWorkflowReportHumanClick(e) {
         return;
     }
 
-    const btn = e.target.closest('.workflow-report-target-edit');
-    if (!btn) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const runId = btn.getAttribute('data-run-id');
-    if (!runId) return;
-    const current = (btn.getAttribute('data-current') || '').trim();
-    const raw = window.prompt(
-        current
-            ? `Thought-of target word (letters A–Z only). Leave empty and tap OK to clear.\nCurrent: ${current}`
-            : 'Thought-of target word (letters A–Z only, optional — saved with this run for developers):',
-        current
-    );
-    if (raw === null) return;
-    updateWorkflowRunTargetWord(Number(runId), sanitizeWorkflowTargetWord(raw));
+    const saveTargetBtn = e.target.closest('.workflow-report-target-save');
+    if (saveTargetBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const runId = saveTargetBtn.getAttribute('data-run-id');
+        if (!runId) return;
+        const block = saveTargetBtn.closest('.workflow-report-target-block');
+        const input = block && block.querySelector('.workflow-report-target-input');
+        const raw = input ? String(input.value || '') : '';
+        updateWorkflowRunTargetWord(Number(runId), sanitizeWorkflowTargetWord(raw));
+        return;
+    }
+
+    const clearTargetBtn = e.target.closest('.workflow-report-target-clear');
+    if (clearTargetBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const runId = clearTargetBtn.getAttribute('data-run-id');
+        if (!runId) return;
+        const block = clearTargetBtn.closest('.workflow-report-target-block');
+        const input = block && block.querySelector('.workflow-report-target-input');
+        if (input) input.value = '';
+        updateWorkflowRunTargetWord(Number(runId), null);
+        return;
+    }
 }
 
 function snapshotNewSettingsForReport(appSettingsRef) {
@@ -513,7 +888,7 @@ function appendReportDefinitionList(parent, rows) {
     if (dl.children.length) parent.appendChild(dl);
 }
 
-function renderStepPayloadSection(payload, runForDebug) {
+function renderStepPayloadSection(payload, runForDebug, stepIndex) {
     const wrap = document.createElement('div');
     wrap.className = 'workflow-report-step-payload-section';
     const h = document.createElement('div');
@@ -666,9 +1041,31 @@ function renderStepPayloadSection(payload, runForDebug) {
     }
     if (genericDebugRows.length) appendReportDefinitionList(wrap, genericDebugRows);
 
+    let jsonPayload = payload;
+    if (
+        runForDebug
+        && runForDebug.targetWord
+        && stepIndex != null
+        && !Number.isNaN(Number(stepIndex))
+    ) {
+        try {
+            const elim = computeWorkflowTargetElimination(runForDebug);
+            if (elim && elim.eliminatedStepIndex === stepIndex) {
+                const steps = Array.isArray(runForDebug.steps) ? runForDebug.steps : [];
+                const st = steps[stepIndex];
+                if (st) {
+                    jsonPayload = JSON.parse(JSON.stringify(payload));
+                    applyWorkflowTargetLostMarkerToStepPayload(jsonPayload, elim, st);
+                }
+            }
+        } catch (e) {
+            console.warn('Could not decorate step payload JSON', e);
+        }
+    }
+
     const pre = document.createElement('pre');
     pre.className = 'workflow-report-json-local';
-    pre.textContent = JSON.stringify(payload, null, 2);
+    pre.textContent = JSON.stringify(jsonPayload, null, 2);
     wrap.appendChild(pre);
     return wrap;
 }
@@ -687,6 +1084,22 @@ function buildWorkflowStepDeepPanel(step, stepIndex, totalSteps, run) {
     h.textContent = `Details · step ${stepIndex + 1} of ${totalSteps}`;
     panel.appendChild(h);
 
+    const stepTargetRows = [];
+    if (run && run.targetWord) {
+        if (step.targetWordPresentStart != null) {
+            stepTargetRows.push({ term: 'Target in list (step start)', def: step.targetWordPresentStart ? 'Yes' : 'No' });
+        }
+        if (step.targetWordPresentEnd != null) {
+            stepTargetRows.push({ term: 'Target in list (step end)', def: step.targetWordPresentEnd ? 'Yes' : 'No' });
+        }
+        const twTr = Array.isArray(step.targetWordTrace) ? step.targetWordTrace : [];
+        if (twTr.length) {
+            stepTargetRows.push({
+                term: 'Target trace (per in-step update)',
+                def: twTr.map((v) => (v ? 'Y' : 'N')).join(' → ')
+            });
+        }
+    }
     appendReportDefinitionList(panel, [
         { term: 'Feature id', def: step.feature },
         { term: 'Name', def: getWorkflowFeatureLabel(step.feature) },
@@ -694,7 +1107,8 @@ function buildWorkflowStepDeepPanel(step, stepIndex, totalSteps, run) {
         { term: 'Words leaving step', def: String(wo) },
         { term: 'Words removed', def: String(removed) },
         { term: 'Retention', def: retention },
-        { term: 'Time on step', def: formatDurationMs(step.durationMs) }
+        { term: 'Time on step', def: formatDurationMs(step.durationMs) },
+        ...stepTargetRows
     ]);
 
     const tr = Array.isArray(step.wordCountTrace) ? step.wordCountTrace : [];
@@ -713,7 +1127,7 @@ function buildWorkflowStepDeepPanel(step, stepIndex, totalSteps, run) {
         panel.appendChild(p2);
     }
 
-    panel.appendChild(renderStepPayloadSection(step.payload, run));
+    panel.appendChild(renderStepPayloadSection(step.payload, run, stepIndex));
     return panel;
 }
 
@@ -729,6 +1143,10 @@ function appendWorkflowReportPlainSummaryLines(lines, run, runIdx) {
     lines.push(`Words: start ${ini} → end ${fin}`);
     if (run.targetWord) {
         lines.push(`Target word (debug): ${run.targetWord}`);
+        const elim = computeWorkflowTargetElimination(run);
+        if (elim && elim.summary) {
+            lines.push(`Target trace: ${elim.summary}`);
+        }
     } else {
         lines.push('Target word (debug): (not recorded)');
     }
@@ -778,12 +1196,37 @@ function buildWorkflowReportPlainSummaryForSingleRun(run, runIdx) {
 
 const WORKFLOW_REPORT_EXPORT_DIVIDER = '\n\n--------\n\n';
 
-function buildWorkflowReportExportTextForSingleRun(run, runIdx) {
-    const readable = buildWorkflowReportPlainSummaryForSingleRun(run, runIdx);
-    return readable + WORKFLOW_REPORT_EXPORT_DIVIDER + JSON.stringify(run, null, 2);
+function stripWorkflowSnapshotWordArraysForExport(runClone) {
+    if (!runClone || typeof runClone !== 'object') return;
+    if (Array.isArray(runClone.wordListSnapshotAtStart)) {
+        runClone.wordListSnapshotAtStartCount = runClone.wordListSnapshotAtStart.length;
+        delete runClone.wordListSnapshotAtStart;
+    }
+    const steps = Array.isArray(runClone.steps) ? runClone.steps : [];
+    steps.forEach((st) => {
+        if (!st || typeof st !== 'object') return;
+        if (Array.isArray(st.wordListSnapshotEnd)) {
+            st.wordListSnapshotEndCount = st.wordListSnapshotEnd.length;
+            delete st.wordListSnapshotEnd;
+        }
+    });
 }
 
-function renderWorkflowReportHumanView(container, runs) {
+function buildWorkflowReportExportTextForSingleRun(run, runIdx) {
+    const readable = buildWorkflowReportPlainSummaryForSingleRun(run, runIdx);
+    let jsonRun = run;
+    try {
+        const clone = JSON.parse(JSON.stringify(run));
+        injectWorkflowTargetLostInRunClone(clone);
+        stripWorkflowSnapshotWordArraysForExport(clone);
+        jsonRun = clone;
+    } catch (e) {
+        console.warn('Could not decorate run JSON for export', e);
+    }
+    return readable + WORKFLOW_REPORT_EXPORT_DIVIDER + JSON.stringify(jsonRun, null, 2);
+}
+
+function renderWorkflowReportHumanView(container, runs, expandedRunIds = null, expandedStepsByRun = null) {
     if (!container) return;
     container.textContent = '';
     if (!Array.isArray(runs) || runs.length === 0) {
@@ -808,7 +1251,8 @@ function renderWorkflowReportHumanView(container, runs) {
 
         const runDetails = document.createElement('details');
         runDetails.className = 'workflow-report-run-details';
-        runDetails.open = false;
+        runDetails.setAttribute('data-run-id', String(run.id));
+        runDetails.open = !!(expandedRunIds && expandedRunIds.has(String(run.id)));
 
         const runSum = document.createElement('summary');
         runSum.className = 'workflow-report-run-summary';
@@ -837,23 +1281,51 @@ function renderWorkflowReportHumanView(container, runs) {
 
         const targetBlock = document.createElement('div');
         targetBlock.className = 'workflow-report-target-block';
+        const tw = run.targetWord;
         const targetRow = document.createElement('div');
         targetRow.className = 'workflow-report-target-row';
-        const twLabel = document.createElement('span');
+        const twLabel = document.createElement('label');
         twLabel.className = 'workflow-report-target-label';
-        twLabel.textContent = 'Target word: ';
-        const twVal = document.createElement('strong');
-        twVal.className = 'workflow-report-target-value';
-        const tw = run.targetWord;
-        twVal.textContent = tw || '— not set —';
-        const twBtn = document.createElement('button');
-        twBtn.type = 'button';
-        twBtn.className = 'secondary-btn workflow-report-target-edit';
-        twBtn.textContent = tw ? 'Change' : 'Set word';
-        twBtn.setAttribute('data-run-id', String(run.id));
-        twBtn.setAttribute('data-current', tw || '');
-        targetRow.append(twLabel, twVal, document.createTextNode(' '), twBtn);
+        twLabel.setAttribute('for', `workflow-report-target-input-${run.id}`);
+        twLabel.textContent = 'Target word (debug)';
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'secondary-btn workflow-report-target-save';
+        saveBtn.textContent = 'Save';
+        saveBtn.setAttribute('data-run-id', String(run.id));
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'secondary-btn workflow-report-target-clear';
+        clearBtn.textContent = 'Clear';
+        clearBtn.setAttribute('data-run-id', String(run.id));
+        const twInput = document.createElement('input');
+        twInput.type = 'text';
+        twInput.id = `workflow-report-target-input-${run.id}`;
+        twInput.className = 'workflow-report-target-input';
+        twInput.setAttribute('autocomplete', 'off');
+        twInput.setAttribute('autocapitalize', 'characters');
+        twInput.setAttribute('spellcheck', 'false');
+        twInput.maxLength = 60;
+        twInput.placeholder = 'A–Z only, then Save';
+        twInput.value = tw || '';
+        twInput.addEventListener('input', () => {
+            twInput.value = twInput.value.toUpperCase().replace(/[^A-Z]/g, '');
+        });
+        twInput.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                saveBtn.click();
+            }
+        });
+        targetRow.append(twLabel, twInput, saveBtn, clearBtn);
         targetBlock.appendChild(targetRow);
+        const elim = computeWorkflowTargetElimination(run);
+        if (elim && elim.summary) {
+            const elimRow = document.createElement('div');
+            elimRow.className = 'workflow-report-target-trace';
+            elimRow.textContent = elim.summary;
+            targetBlock.appendChild(elimRow);
+        }
         runBody.appendChild(targetBlock);
 
         if (run.newSettingsAtPerformance) {
@@ -886,9 +1358,14 @@ function renderWorkflowReportHumanView(container, runs) {
 
             const stepDetails = document.createElement('details');
             stepDetails.className = 'workflow-report-step-details';
+            stepDetails.setAttribute('data-step-index', String(i));
             if (imp.level === 'zero') stepDetails.classList.add('workflow-report-step-details--zero');
             else if (imp.level === 'heavy') stepDetails.classList.add('workflow-report-step-details--heavy');
             if (i === firstZeroIdx) stepDetails.classList.add('workflow-report-step-details--first-zero');
+            const stepOpenSet = expandedStepsByRun && expandedStepsByRun.get(String(run.id));
+            if (stepOpenSet && stepOpenSet.has(String(i))) {
+                stepDetails.open = true;
+            }
 
             const stepSum = document.createElement('summary');
             stepSum.className = 'workflow-report-step-summary';
@@ -945,7 +1422,20 @@ function refreshWorkflowReportModalContent() {
     const human = document.getElementById('workflowReportHuman');
     const data = loadWorkflowReports();
     if (human) {
-        renderWorkflowReportHumanView(human, data);
+        const expandedRunIds = new Set();
+        const expandedStepsByRun = new Map();
+        human.querySelectorAll('.workflow-report-run-details[open]').forEach((el) => {
+            const rid = el.getAttribute('data-run-id');
+            if (rid == null) return;
+            expandedRunIds.add(rid);
+            const openSteps = new Set();
+            el.querySelectorAll('.workflow-report-step-details[open]').forEach((sel) => {
+                const si = sel.getAttribute('data-step-index');
+                if (si != null && si !== '') openSteps.add(si);
+            });
+            expandedStepsByRun.set(rid, openSteps);
+        });
+        renderWorkflowReportHumanView(human, data, expandedRunIds, expandedStepsByRun);
     }
 }
 let currentWorkflow = null;
@@ -1022,6 +1512,8 @@ const DEFAULT_SETTINGS = {
     newCustomMode: false,
     /** NEW: when on, each answered count may match the digit or digit+1 (not digit−1) */
     newAnswerDigitBuffer: false,
+    /** Optional: thought-of word (A–Z) recorded on each workflow run for REPORT target tracing when set before PERFORM */
+    workflowDebugTargetWord: '',
     calculusMode: 'abstract',  // 'abstract' (digits 0–9) or 'curvesStraight' (C/S)
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
     // MUTE / MUTE DUO: letter mode: 'az' = A–Z fixed sequence, 'mostFrequent' = dynamic most-frequent letter,
@@ -3530,6 +4022,7 @@ async function executeWorkflow(steps) {
         const reportSelect = document.getElementById('workflowSelect');
         const reportWorkflowName = (reportSelect && reportSelect.value) ? reportSelect.value : '(unnamed)';
         const planAtRunStart = workflowSteps.map((s) => s.feature);
+        const debugTargetSanitized = sanitizeWorkflowTargetWord(appSettings && appSettings.workflowDebugTargetWord);
         const workflowRunRecord = {
             id: Date.now(),
             startedAt: new Date().toISOString(),
@@ -3538,6 +4031,12 @@ async function executeWorkflow(steps) {
             planAtEnd: [],
             wordlistId: selectedWordlist,
             initialWordCount: Array.isArray(currentFilteredWords) ? currentFilteredWords.length : 0,
+            targetWord: debugTargetSanitized,
+            targetWordUsedForTrace: debugTargetSanitized,
+            wordListSnapshotAtStart: maybeSnapshotWordListForReport(currentFilteredWords),
+            targetWordPresentAtStart: debugTargetSanitized
+                ? targetWordInFilteredList(currentFilteredWords, debugTargetSanitized)
+                : null,
             steps: []
         };
         
@@ -3552,6 +4051,10 @@ async function executeWorkflow(steps) {
             const stepWordsIn = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : 0;
             const stepStartedAt = Date.now();
             const stepWordCountTrace = [];
+            const stepTargetWordTrace = [];
+            const stepTargetPresentStart = workflowRunRecord.targetWord
+                ? targetWordInFilteredList(currentFilteredWords, workflowRunRecord.targetWord)
+                : null;
             console.log('Executing step:', step);
             
             let featureId = step.feature + 'Feature';
@@ -3839,6 +4342,11 @@ async function executeWorkflow(steps) {
                     displayResults(currentFilteredWords);
                     const n = Array.isArray(filteredWords) ? filteredWords.length : 0;
                     stepWordCountTrace.push(n);
+                    if (workflowRunRecord.targetWord) {
+                        stepTargetWordTrace.push(
+                            targetWordInFilteredList(filteredWords, workflowRunRecord.targetWord)
+                        );
+                    }
                 }, { previousStepFeature, steps: workflowSteps, stepIndex });
             }, 0);
             
@@ -3883,7 +4391,13 @@ async function executeWorkflow(steps) {
                         wordsRemoved: Math.max(0, stepWordsIn - stepWordsOut),
                         durationMs: Date.now() - stepStartedAt,
                         payload: pendingWorkflowStepPayload,
-                        wordCountTrace: stepWordCountTrace.slice()
+                        wordCountTrace: stepWordCountTrace.slice(),
+                        targetWordPresentStart: stepTargetPresentStart,
+                        targetWordPresentEnd: workflowRunRecord.targetWord
+                            ? targetWordInFilteredList(currentFilteredWords, workflowRunRecord.targetWord)
+                            : null,
+                        targetWordTrace: workflowRunRecord.targetWord ? stepTargetWordTrace.slice() : null,
+                        wordListSnapshotEnd: maybeSnapshotWordListForReport(currentFilteredWords)
                     });
                     pendingWorkflowStepPayload = null;
                     
@@ -3897,7 +4411,6 @@ async function executeWorkflow(steps) {
         workflowRunRecord.finishedAt = new Date().toISOString();
         workflowRunRecord.planAtEnd = workflowSteps.map((s) => s.feature);
         workflowRunRecord.finalWordCount = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : 0;
-        workflowRunRecord.targetWord = null;
         if (workflowRunRecord.planAtEnd.some((f) => f === 'new')) {
             workflowRunRecord.newSettingsAtPerformance = snapshotNewSettingsForReport(appSettings);
         }
@@ -5328,6 +5841,32 @@ function createMuteDuoFeature() {
                 <button id="muteDuoButtonLeft" class="no-btn mute-duo-btn mute-duo-btn-left">1 &amp; 3</button>
             </div>
         </div>
+        <div class="new-controls-row" style="justify-content:center; margin-top:8px;">
+            <button type="button" id="muteDuoLexToggleBtn" class="secondary-btn">LEX</button>
+        </div>
+        <div id="muteDuoLexPanel" style="display:none; margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:10px; background:#fafafa;">
+            <div class="settings-toggle-row" style="margin:0 0 8px 0; justify-content:center; gap:8px;">
+                <label for="muteDuoLexSeparateToggle" style="margin:0;">Separate positions (SPEC 1 / SPEC 2)</label>
+                <input type="checkbox" id="muteDuoLexSeparateToggle">
+            </div>
+            <p style="margin:0 0 6px 0; font-size:13px; color:#444;">
+                Combined lexicon position:
+                <span class="mute-duo-lex-spec1">SPEC 1:</span> <strong id="muteDuoLexPositionDisplay1">—</strong>
+                ·
+                <span class="mute-duo-lex-spec2">SPEC 2:</span> <strong id="muteDuoLexPositionDisplay2">—</strong>
+            </p>
+            <p style="margin:0 0 2px 0; font-size:12px; word-break:break-word;">
+                <span class="mute-duo-lex-spec1">SPEC 1:</span> <span id="muteDuoLexLettersDisplay1">—</span>
+            </p>
+            <p style="margin:0 0 8px 0; font-size:12px; word-break:break-word;">
+                <span class="mute-duo-lex-spec2">SPEC 2:</span> <span id="muteDuoLexLettersDisplay2">—</span>
+            </p>
+            <div style="display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap;">
+                <input type="text" id="muteDuoLexInput1" class="mute-duo-lex-input-spec1" placeholder="SPEC 1 letter(s)" maxlength="40" autocomplete="off" style="padding:8px; min-width:160px; text-transform:uppercase;">
+                <input type="text" id="muteDuoLexInput2" class="mute-duo-lex-input-spec2" placeholder="SPEC 2 letter(s)" maxlength="40" autocomplete="off" style="padding:8px; min-width:160px; text-transform:uppercase;">
+                <button type="button" id="muteDuoLexApplyBtn" class="secondary-btn">Apply LEX</button>
+            </div>
+        </div>
     `;
     return div;
 }
@@ -5747,7 +6286,13 @@ function createUnifiedAlphaFeature(workflowKind) {
     const title =
         workflowKind === 'alphaWord' ? 'ALPHA-WORD' : workflowKind === 'alphaRepeat' ? 'ALPHA-REPEAT' : 'ALPHA';
     div.innerHTML = `
-        <h2 class="feature-title alpha-unified-feature-title">${title}</h2>
+        <div class="alpha-unified-title-row" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;width:100%;flex-wrap:wrap;margin-bottom:4px;">
+            <h2 class="feature-title alpha-unified-feature-title" style="margin:0;flex:1;min-width:120px;">${title}</h2>
+            <div class="alpha-lex-peek-corner" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+                <span id="alphaLexPeekCompactLabel" class="alpha-lex-peek-compact-label" style="font-size:12px;color:#444;text-align:right;max-width:200px;line-height:1.3;" title="Best Lex position on current ALPHA-filtered list (positions 4–6)">Lex: —</span>
+                <button type="button" id="alphaLexPeekToggleBtn" class="secondary-btn small-button" title="Open Lex filter (same idea as NEW)">LEX</button>
+            </div>
+        </div>
         <div class="alpha-unified-line-header" style="margin:0 auto 7px;display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;max-width:440px;">
             <p id="alphaUnifiedLineSummary" class="alpha-unified-line-summary" style="margin:0;text-align:center;font-size:14px;line-height:1.35;color:#333;word-break:break-word;">Letter order: <strong>A–Z</strong> (standard alphabet)</p>
             <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">
@@ -5757,6 +6302,26 @@ function createUnifiedAlphaFeature(workflowKind) {
             </div>
             <div id="alphaUnifiedSavedLinesRow" class="alpha-unified-saved-lines-row"></div>
             <p id="alphaUnifiedMicStatus" class="alpha-unified-mic-status" style="margin:0;font-size:12px;color:#444;text-align:center;min-height:1.25em;" aria-live="polite"></p>
+        </div>
+        <p style="text-align:center;margin:0 0 6px;font-weight:600;">Position of first straight letter</p>
+        <div class="section-buttons alpha-unified-first-straight-row" style="margin-bottom:14px;">
+            <button type="button" class="section-btn alpha-unified-first-straight-btn" data-alpha-first-straight-pos="1">1</button>
+            <button type="button" class="section-btn alpha-unified-first-straight-btn" data-alpha-first-straight-pos="2">2</button>
+            <button type="button" class="section-btn alpha-unified-first-straight-btn" data-alpha-first-straight-pos="3">3</button>
+            <button type="button" class="section-btn alpha-unified-first-straight-btn" data-alpha-first-straight-pos="4">4</button>
+            <button type="button" class="section-btn alpha-unified-first-straight-btn" data-alpha-first-straight-pos="5">5</button>
+            <button type="button" class="section-btn alpha-unified-first-straight-btn" data-alpha-first-straight-pos="6">6</button>
+        </div>
+        <p style="text-align:center;margin:0 0 6px;font-weight:600;">Are they different?</p>
+        <div class="alpha-unified-straight-diff-yn" style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+            <button type="button" class="yes-btn alpha-unified-straight-diff-btn" data-alpha-straight-diff="yes">YES</button>
+            <button type="button" class="no-btn alpha-unified-straight-diff-btn" data-alpha-straight-diff="no">NO</button>
+        </div>
+        <p style="text-align:center;margin:0 0 6px;font-weight:600;">Shape of next letter</p>
+        <div class="section-buttons alpha-unified-next-shape-row" style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+            <button type="button" class="section-btn alpha-unified-next-shape-btn" data-alpha-next-shape="straight">STRAIGHT</button>
+            <button type="button" class="section-btn alpha-unified-next-shape-btn" data-alpha-next-shape="mixed">MIXED</button>
+            <button type="button" class="section-btn alpha-unified-next-shape-btn" data-alpha-next-shape="curved">CURVED</button>
         </div>
         <p style="text-align:center;margin:0 0 3px;font-weight:600;">First letter</p>
         <div class="section-buttons" style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
@@ -5783,6 +6348,19 @@ function createUnifiedAlphaFeature(workflowKind) {
         <div class="alpha-actions">
             <button type="button" id="alphaSubmitBtn" class="alpha-submit-btn">SUBMIT</button>
             <button type="button" id="alphaSkipBtn" class="skip-button">SKIP</button>
+        </div>
+        <div id="alphaLexPeekPanel" style="display:none; margin-top:12px; padding:10px; border:1px solid #ddd; border-radius:10px; background:#fafafa;">
+            <p style="margin:0 0 8px;font-size:13px;color:#333;">Lex filter applies to the <strong>current ALPHA-filtered</strong> list (from when you opened this panel). It replaces the working wordlist for this step so SUBMIT stays consistent.</p>
+            <div style="font-size:13px;margin-bottom:8px;">
+                Lexicon position (excluding 1–3): <strong id="alphaLexPeekPositionDisplay">—</strong>
+            </div>
+            <div style="font-size:13px;margin-bottom:8px;">
+                Possible letters: <span id="alphaLexPeekLettersDisplay">—</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+                <input type="text" id="alphaLexPeekInput" placeholder="Letter(s) or short word" maxlength="40" autocomplete="off" style="padding:8px; min-width:180px; text-transform:uppercase;">
+                <button type="button" id="alphaLexPeekApplyBtn" class="secondary-btn">Apply LEX</button>
+            </div>
         </div>
     `;
     return div;
@@ -6487,6 +7065,21 @@ function createNewFeature() {
                 <input type="text" id="newAnswerInput" class="pin-code-input" placeholder="e.g. 112" maxlength="12" inputmode="numeric" autocomplete="off" aria-describedby="newAnswerCountHint">
             </div>
             <button type="button" id="newSubmitBtn" class="primary-btn pin-submit-btn">MOVE ON</button>
+        </div>
+        <div class="new-controls-row" style="justify-content:center; margin-top:8px;">
+            <button type="button" id="newLexPeekToggleBtn" class="secondary-btn">LEX</button>
+        </div>
+        <div id="newLexPeekPanel" style="display:none; margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:10px; background:#fafafa;">
+            <p style="margin:0 0 6px 0; font-size:13px; color:#444;">
+                Lexicon position (excluding 1-3): <strong id="newLexPeekPositionDisplay">—</strong>
+            </p>
+            <p style="margin:0 0 8px 0; font-size:12px; color:#666; word-break:break-word;">
+                Possible letters: <span id="newLexPeekLettersDisplay">—</span>
+            </p>
+            <div style="display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap;">
+                <input type="text" id="newLexPeekInput" placeholder="Letter(s) or short word" maxlength="40" autocomplete="off" style="padding:8px; min-width:180px; text-transform:uppercase;">
+                <button type="button" id="newLexPeekApplyBtn" class="secondary-btn">Apply LEX</button>
+            </div>
         </div>
         </div>
         <div id="newMessage" class="position-cons-message"></div>
@@ -7616,65 +8209,93 @@ function filterWordsByAlphaRepeatYes(words, directions, firstLetterSection, swap
     });
 }
 
+function alphaLetterInShapeGroup(letterUpper, group) {
+    if (!letterUpper || letterUpper < 'A' || letterUpper > 'Z') return false;
+    const sets = letterShapesPrefilterSets || {};
+    const straight = sets.straight instanceof Set ? sets.straight : new Set();
+    const mixed = sets.mixed instanceof Set ? sets.mixed : new Set();
+    const curved = sets.curved instanceof Set ? sets.curved : new Set();
+    if (group === 'straight') return straight.has(letterUpper);
+    if (group === 'mixed') return mixed.has(letterUpper);
+    if (group === 'curved') return curved.has(letterUpper);
+    return false;
+}
+
+function wordPassesAlphaStraightShapeFilters(wordUpper, firstStraightPos, areDifferentMode, nextShapeGroup) {
+    const w = (wordUpper || '').toUpperCase();
+    const pos = parseInt(firstStraightPos, 10);
+    const hasPos = Number.isInteger(pos) && pos >= 1 && pos <= 6;
+    const diffMode = areDifferentMode === 'yes' || areDifferentMode === 'no' ? areDifferentMode : null;
+    const shapeMode = nextShapeGroup === 'straight' || nextShapeGroup === 'mixed' || nextShapeGroup === 'curved'
+        ? nextShapeGroup
+        : null;
+    if (!hasPos) return true;
+    if (w.length < pos) return false;
+
+    // First straight letter position means earlier letters are non-straight and this position is straight.
+    for (let i = 0; i < pos - 1; i++) {
+        if (alphaLetterInShapeGroup(w[i], 'straight')) return false;
+    }
+    if (!alphaLetterInShapeGroup(w[pos - 1], 'straight')) return false;
+
+    const needsNext = !!diffMode || !!shapeMode;
+    if (!needsNext) return true;
+    if (w.length < pos + 1) return false;
+    const nextLetter = w[pos];
+
+    if (diffMode === 'yes' && alphaLetterInShapeGroup(nextLetter, 'straight')) return false;
+    if (diffMode === 'no' && !alphaLetterInShapeGroup(nextLetter, 'straight')) return false;
+    if (shapeMode && !alphaLetterInShapeGroup(nextLetter, shapeMode)) return false;
+    return true;
+}
+
 /**
  * Unified ALPHA: optional first-letter band, optional repeat YES/NO, optional last-letter set, L/R/Repeat/NA directions.
  * @param {null|'yes'|'no'} repeatMode - null = do not filter on consecutive doubles; yes/no = ALPHA-REPEAT rules
  * @param {Set|null} lastLetterSet - null or empty Set = no last-letter constraint
  * @param {string} [customLineRaw] - optional; 10+ letters A–Z uses index-based line instead of alphabet (non-letters stripped)
+ * @param {boolean} [submitFinal] - when true, require exact spelling length 1 + directions.length (SUBMIT); otherwise prefix match while entering directions
  */
-function filterWordsByAlphaUnified(words, directions, firstLetterSection, swapPov, repeatMode, lastLetterSet, customLineRaw) {
+function filterWordsByAlphaUnified(words, directions, firstLetterSection, swapPov, repeatMode, lastLetterSet, customLineRaw, firstStraightPos, areDifferentMode, nextShapeGroup, submitFinal) {
     const dirs = directions || [];
     const useLast = lastLetterSet instanceof Set && lastLetterSet.size > 0;
     const mode = repeatMode === 'yes' || repeatMode === 'no' ? repeatMode : null;
     const customLine = parseUnifiedCustomAlphaLine(customLineRaw);
     const useCustom = customLine.length >= ALPHA_CUSTOM_LINE_MIN_LEN;
+    const useExact = !!submitFinal;
+
+    function matchesAlphaSpelling(str) {
+        if (useCustom) {
+            if (useExact) {
+                return alphaDirectionsMatchCustomLine(customLine, str, dirs, firstLetterSection, swapPov);
+            }
+            return alphaDirectionsMatchCustomLinePrefix(str, dirs, firstLetterSection, swapPov, customLine);
+        }
+        if (useExact) {
+            return alphaDirectionsMatchSpelling(str, dirs, firstLetterSection, swapPov);
+        }
+        return alphaDirectionsMatchSpellingPrefix(str, dirs, firstLetterSection, swapPov);
+    }
 
     return words.filter((word) => {
         const w = (word || '').toUpperCase();
+        if (!wordPassesAlphaStraightShapeFilters(w, firstStraightPos, areDifferentMode, nextShapeGroup)) return false;
         if (mode === 'yes') {
             if (!hasConsecutiveDuplicateLetters(w)) return false;
             const collapsed = collapseConsecutiveDuplicateLetters(w);
             if (useLast && !lastLetterSet.has(w[w.length - 1])) return false;
-            if (!dirs.length) {
-                return useCustom
-                    ? alphaDirectionsMatchCustomLinePrefix(collapsed, dirs, firstLetterSection, swapPov, customLine)
-                    : alphaDirectionsMatchSpellingPrefix(collapsed, dirs, firstLetterSection, swapPov);
-            }
-            return useCustom
-                ? alphaDirectionsMatchCustomLinePrefix(collapsed, dirs, firstLetterSection, swapPov, customLine)
-                : alphaDirectionsMatchSpellingPrefix(collapsed, dirs, firstLetterSection, swapPov);
+            return matchesAlphaSpelling(collapsed);
         }
         if (mode === 'no') {
             if (hasConsecutiveDuplicateLetters(w)) return false;
             if (useLast && !lastLetterSet.has(w[w.length - 1])) return false;
-            if (!dirs.length) {
-                return useCustom
-                    ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
-                    : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
-            }
-            return useCustom
-                ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
-                : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
+            return matchesAlphaSpelling(w);
         }
         if (useLast) {
             if (!lastLetterSet.has(w[w.length - 1])) return false;
-            if (!dirs.length) {
-                return useCustom
-                    ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
-                    : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
-            }
-            return useCustom
-                ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
-                : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
+            return matchesAlphaSpelling(w);
         }
-        if (!dirs.length) {
-            return useCustom
-                ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
-                : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
-        }
-        return useCustom
-            ? alphaDirectionsMatchCustomLinePrefix(w, dirs, firstLetterSection, swapPov, customLine)
-            : alphaDirectionsMatchSpellingPrefix(w, dirs, firstLetterSection, swapPov);
+        return matchesAlphaSpelling(w);
     });
 }
 
@@ -10744,10 +11365,33 @@ function setupFeatureListeners(feature, callback, options) {
             const btnRight = document.getElementById('muteDuoButtonRight');
             const btnDown = document.getElementById('muteDuoButtonDown');
             const btnLeft = document.getElementById('muteDuoButtonLeft');
+            const lexToggleBtn = document.getElementById('muteDuoLexToggleBtn');
+            const lexPanel = document.getElementById('muteDuoLexPanel');
+            const lexPos1El = document.getElementById('muteDuoLexPositionDisplay1');
+            const lexPos2El = document.getElementById('muteDuoLexPositionDisplay2');
+            const lexLetters1El = document.getElementById('muteDuoLexLettersDisplay1');
+            const lexLetters2El = document.getElementById('muteDuoLexLettersDisplay2');
+            const lexSeparateToggle = document.getElementById('muteDuoLexSeparateToggle');
+            const lexInput1 = document.getElementById('muteDuoLexInput1');
+            const lexInput2 = document.getElementById('muteDuoLexInput2');
+            const lexApplyBtn = document.getElementById('muteDuoLexApplyBtn');
 
             // Two independent candidate sets (Word 1, Word 2), both starting from currentFilteredWords
-            let candidates1 = currentFilteredWords.slice();
-            let candidates2 = currentFilteredWords.slice();
+            let baseCandidates1 = currentFilteredWords.slice();
+            let baseCandidates2 = currentFilteredWords.slice();
+            let lexVisible = false;
+            let lexPosition = -1;
+            let lexPosition1 = -1;
+            let lexPosition2 = -1;
+            let lexSeparatePositionsOn = false;
+            let lexLockedPosition = -1;
+            let lexLockedPosition1 = -1;
+            let lexLockedPosition2 = -1;
+            let lexDebounceTimer = null;
+            let lastRawWord1Left = currentFilteredWords.slice();
+            let lastRawWord1Right = currentFilteredWords.slice();
+            let lastRawWord2Left = currentFilteredWords.slice();
+            let lastRawWord2Right = currentFilteredWords.slice();
 
             // Reset DUO state
             muteDuoSequence1 = [];
@@ -10774,16 +11418,150 @@ function setupFeatureListeners(feature, callback, options) {
                 return { effectiveMode: 'mostFrequent', seq: '', dyn: muteDuoDynamicSequence };
             };
 
+            const getLexRaw1 = () => parseUnifiedCustomAlphaLine((lexInput1 && lexInput1.value) || '');
+            const getLexRaw2 = () => parseUnifiedCustomAlphaLine((lexInput2 && lexInput2.value) || '');
+            const hasAnyLexInput = () => !!(getLexRaw1() || getLexRaw2());
+
+            const refreshMuteDuoLexMeta = () => {
+                if (lexSeparatePositionsOn) {
+                    const usingLocked = hasAnyLexInput() && (lexLockedPosition1 >= 0 || lexLockedPosition2 >= 0);
+                    if (usingLocked) {
+                        lexPosition1 = lexLockedPosition1;
+                        lexPosition2 = lexLockedPosition2;
+                    } else {
+                        const m1 = findPositionWithMostVarianceFrom(baseCandidates1, 0, 6);
+                        const m2 = findPositionWithMostVarianceFrom(baseCandidates2, 0, 6);
+                        lexPosition1 = m1.position;
+                        lexPosition2 = m2.position;
+                    }
+                    const l1Meta =
+                        lexPosition1 >= 0
+                            ? findPositionWithMostVarianceFrom(baseCandidates1, lexPosition1, 6)
+                            : { letters: [] };
+                    const l2Meta =
+                        lexPosition2 >= 0
+                            ? findPositionWithMostVarianceFrom(baseCandidates2, lexPosition2, 6)
+                            : { letters: [] };
+                    const p1 = lexPosition1 >= 0 ? String(lexPosition1 + 1) : '—';
+                    const p2 = lexPosition2 >= 0 ? String(lexPosition2 + 1) : '—';
+                    if (lexPos1El) lexPos1El.textContent = p1;
+                    if (lexPos2El) lexPos2El.textContent = p2;
+                    const l1 = l1Meta.letters && l1Meta.letters.length ? l1Meta.letters.join(', ') : '—';
+                    const l2 = l2Meta.letters && l2Meta.letters.length ? l2Meta.letters.join(', ') : '—';
+                    if (lexLetters1El) lexLetters1El.textContent = l1;
+                    if (lexLetters2El) lexLetters2El.textContent = l2;
+                    return;
+                }
+                const meta =
+                    hasAnyLexInput() && lexLockedPosition >= 0
+                        ? { position: lexLockedPosition, letters: [] }
+                        : findBestLexPositionAcrossWordSets(baseCandidates1, baseCandidates2, 0, 6);
+                lexPosition = meta.position;
+                const p = lexPosition >= 0 ? String(lexPosition + 1) : '—';
+                if (lexPos1El) lexPos1El.textContent = p;
+                if (lexPos2El) lexPos2El.textContent = p;
+                const l = meta.letters.length ? meta.letters.join(', ') : '—';
+                if (lexLetters1El) lexLetters1El.textContent = l;
+                if (lexLetters2El) lexLetters2El.textContent = l;
+            };
+            const setMuteDuoLexVisible = (visible) => {
+                lexVisible = !!visible;
+                if (lexPanel) lexPanel.style.display = lexVisible ? '' : 'none';
+                if (lexToggleBtn) lexToggleBtn.classList.toggle('active', lexVisible);
+                if (lexSeparateToggle) lexSeparateToggle.checked = !!lexSeparatePositionsOn;
+                if (lexVisible) {
+                    if (lexInput1) lexInput1.value = '';
+                    if (lexInput2) lexInput2.value = '';
+                    lexLockedPosition = -1;
+                    lexLockedPosition1 = -1;
+                    lexLockedPosition2 = -1;
+                    refreshMuteDuoLexMeta();
+                    renderWithLexOverlay();
+                } else {
+                    lexLockedPosition = -1;
+                    lexLockedPosition1 = -1;
+                    lexLockedPosition2 = -1;
+                }
+            };
+            const attachMuteDuoTap = (btn, run) => {
+                if (!btn) return;
+                let touchHandled = false;
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    touchHandled = true;
+                    run();
+                }, { passive: false });
+                btn.addEventListener('click', () => {
+                    if (touchHandled) {
+                        touchHandled = false;
+                        return;
+                    }
+                    run();
+                });
+            };
+
+            const filterBranchByLex = (arr, letters, pos) => {
+                if (!letters || !letters.size || pos < 0) return arr.slice();
+                return arr.filter((w) => {
+                    const up = String(w || '').toUpperCase();
+                    if (up.length <= pos) return false;
+                    return letters.has(up[pos]);
+                });
+            };
+
+            const renderWithLexOverlay = () => {
+                const letters1Raw = getLexRaw1();
+                const letters2Raw = getLexRaw2();
+                if (!letters1Raw && !letters2Raw) {
+                    lexLockedPosition = -1;
+                    lexLockedPosition1 = -1;
+                    lexLockedPosition2 = -1;
+                } else if (lexSeparatePositionsOn) {
+                    if (lexLockedPosition1 < 0 || lexLockedPosition2 < 0) {
+                        refreshMuteDuoLexMeta();
+                        lexLockedPosition1 = lexPosition1;
+                        lexLockedPosition2 = lexPosition2;
+                    }
+                } else if (lexLockedPosition < 0) {
+                    refreshMuteDuoLexMeta();
+                    lexLockedPosition = lexPosition;
+                }
+                const sharedPos = lexLockedPosition >= 0 ? lexLockedPosition : lexPosition;
+                const pos1 = lexSeparatePositionsOn
+                    ? (lexLockedPosition1 >= 0 ? lexLockedPosition1 : lexPosition1)
+                    : sharedPos;
+                const pos2 = lexSeparatePositionsOn
+                    ? (lexLockedPosition2 >= 0 ? lexLockedPosition2 : lexPosition2)
+                    : sharedPos;
+                const letters1Set = letters1Raw ? new Set(letters1Raw.split('')) : null;
+                const letters2Set = letters2Raw ? new Set(letters2Raw.split('')) : null;
+
+                const word1Left = filterBranchByLex(lastRawWord1Left, letters1Set, pos1);
+                const word1Right = filterBranchByLex(lastRawWord1Right, letters1Set, pos1);
+                const word2Left = filterBranchByLex(lastRawWord2Left, letters2Set, pos2);
+                const word2Right = filterBranchByLex(lastRawWord2Right, letters2Set, pos2);
+
+                displayMuteDuoResults(word1Left, word1Right, word2Left, word2Right);
+                const union = Array.from(new Set([...word1Left, ...word1Right, ...word2Left, ...word2Right]));
+                currentFilteredWords = union;
+                updateWordCount(currentFilteredWords.length);
+                if (lexVisible) refreshMuteDuoLexMeta();
+            };
+
             const updateAll = () => {
                 if (!engine.filterWords) {
-                    displayMuteDuoResults(candidates1, [], candidates2, []);
+                    lastRawWord1Left = baseCandidates1.slice();
+                    lastRawWord1Right = [];
+                    lastRawWord2Left = baseCandidates2.slice();
+                    lastRawWord2Right = [];
+                    renderWithLexOverlay();
                     if (letterEl) letterEl.textContent = '-';
                     return;
                 }
 
                 const params = getDuoLetterParams();
                 if (params.effectiveMode === 'mostFrequent') {
-                    const unionWords = Array.from(new Set([...candidates1, ...candidates2]));
+                    const unionWords = Array.from(new Set([...baseCandidates1, ...baseCandidates2]));
                     const nextLetter = engine.selectNextDynamicLetter
                         ? engine.selectNextDynamicLetter(unionWords, muteDuoUsedLetters)
                         : null;
@@ -10796,14 +11574,14 @@ function setupFeatureListeners(feature, callback, options) {
                 }
 
                 const res1 = engine.filterWords(
-                    candidates1,
+                    baseCandidates1,
                     muteDuoSequence1,
                     muteDuoLetterIndex,
                     params.seq,
                     params.dyn
                 );
                 const res2 = engine.filterWords(
-                    candidates2,
+                    baseCandidates2,
                     muteDuoSequence2,
                     muteDuoLetterIndex,
                     params.seq,
@@ -10816,11 +11594,14 @@ function setupFeatureListeners(feature, callback, options) {
                 const word2Left = res2.leftWords;
                 const word2Right = res2.rightWords;
 
-                // Update candidate sets as union of interpretations for each word
-                candidates1 = Array.from(new Set([...word1Left, ...word1Right]));
-                candidates2 = Array.from(new Set([...word2Left, ...word2Right]));
-
-                displayMuteDuoResults(word1Left, word1Right, word2Left, word2Right);
+                // Update base candidate sets as union of interpretations for each word
+                baseCandidates1 = Array.from(new Set([...word1Left, ...word1Right]));
+                baseCandidates2 = Array.from(new Set([...word2Left, ...word2Right]));
+                lastRawWord1Left = word1Left.slice();
+                lastRawWord1Right = word1Right.slice();
+                lastRawWord2Left = word2Left.slice();
+                lastRawWord2Right = word2Right.slice();
+                renderWithLexOverlay();
 
                 if (letterEl) {
                     // Use the same shared letter for display; prefer non-empty letter from either result
@@ -10834,10 +11615,6 @@ function setupFeatureListeners(feature, callback, options) {
                     }
                 }
 
-                // For downstream features, keep union of both candidate sets (across both interpretations and both words)
-                const union = Array.from(new Set([...word1Left, ...word1Right, ...word2Left, ...word2Right]));
-                currentFilteredWords = union;
-                updateWordCount(currentFilteredWords.length);
             };
 
             // Map a single button press to (choice for word1, choice for word2)
@@ -10872,6 +11649,58 @@ function setupFeatureListeners(feature, callback, options) {
             }
             if (btnLeft) {
                 btnLeft.onclick = () => applyCombo('L', 'L');
+            }
+
+            attachMuteDuoTap(lexToggleBtn, () => {
+                setMuteDuoLexVisible(!lexVisible);
+            });
+
+            function applyMuteDuoLexFilter() {
+                if (!hasAnyLexInput()) {
+                    lexLockedPosition = -1;
+                    lexLockedPosition1 = -1;
+                    lexLockedPosition2 = -1;
+                    renderWithLexOverlay();
+                    return;
+                }
+                if (lexSeparatePositionsOn) {
+                    if (lexLockedPosition1 < 0 || lexLockedPosition2 < 0) {
+                        refreshMuteDuoLexMeta();
+                        lexLockedPosition1 = lexPosition1;
+                        lexLockedPosition2 = lexPosition2;
+                    }
+                } else if (lexLockedPosition < 0) {
+                    refreshMuteDuoLexMeta();
+                    lexLockedPosition = lexPosition;
+                }
+                renderWithLexOverlay();
+            }
+
+            attachMuteDuoTap(lexApplyBtn, () => applyMuteDuoLexFilter());
+            [lexInput1, lexInput2].forEach((inputEl) => {
+                if (!inputEl) return;
+                inputEl.addEventListener('input', () => {
+                    inputEl.value = parseUnifiedCustomAlphaLine(inputEl.value);
+                    if (!lexVisible) return;
+                    if (lexDebounceTimer) {
+                        clearTimeout(lexDebounceTimer);
+                        lexDebounceTimer = null;
+                    }
+                    lexDebounceTimer = setTimeout(() => {
+                        lexDebounceTimer = null;
+                        applyMuteDuoLexFilter();
+                    }, 140);
+                });
+            });
+            if (lexSeparateToggle) {
+                lexSeparateToggle.addEventListener('change', () => {
+                    lexSeparatePositionsOn = !!lexSeparateToggle.checked;
+                    lexLockedPosition = -1;
+                    lexLockedPosition1 = -1;
+                    lexLockedPosition2 = -1;
+                    refreshMuteDuoLexMeta();
+                    renderWithLexOverlay();
+                });
             }
 
             // As with MUTE, do not call callback; workflow continues with narrowed currentFilteredWords
@@ -13304,6 +14133,9 @@ function setupFeatureListeners(feature, callback, options) {
             let unifiedAlphaCustomLineParsed = '';
             const sectionBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-section-btn')) : [];
             const repeatBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-repeat-btn')) : [];
+            const firstStraightPosBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-first-straight-btn')) : [];
+            const straightDiffBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-straight-diff-btn')) : [];
+            const nextShapeBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-next-shape-btn')) : [];
             const alphaDirectionsCount = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
             const alphaSwapPov = !!(appSettings && appSettings.alphaSwapPov);
             const alphaBaseWords = Array.isArray(currentFilteredWords) ? currentFilteredWords.slice() : [];
@@ -13312,6 +14144,28 @@ function setupFeatureListeners(feature, callback, options) {
             let alphaDirectionSteps = [];
             let selectedFirstSection = null;
             let selectedRepeatMode = null;
+            let selectedFirstStraightPos = null;
+            let selectedStraightDiffMode = null;
+            let selectedNextShape = null;
+
+            const alphaLexPeekCompactLabel = document.getElementById('alphaLexPeekCompactLabel');
+            const alphaLexPeekToggleBtn = document.getElementById('alphaLexPeekToggleBtn');
+            const alphaLexPeekPanel = document.getElementById('alphaLexPeekPanel');
+            const alphaLexPeekPositionDisplay = document.getElementById('alphaLexPeekPositionDisplay');
+            const alphaLexPeekLettersDisplay = document.getElementById('alphaLexPeekLettersDisplay');
+            const alphaLexPeekInput = document.getElementById('alphaLexPeekInput');
+            const alphaLexPeekApplyBtn = document.getElementById('alphaLexPeekApplyBtn');
+            let alphaLexPeekVisible = false;
+            let alphaLexPeekPosition = -1;
+            let alphaLexPeekLetters = [];
+            let alphaLexPeekUsed = false;
+            let alphaLexPeekLastInput = '';
+            let alphaLexPeekDebounceTimer = null;
+            let alphaLexPeekSourceWords = [];
+            /** Snapshot of `alphaBaseWords` when LEX panel was opened (restore on clear). */
+            let alphaLexPeekBaseWordsAtPanelOpen = null;
+            let alphaLexPeekLockedPosition = -1;
+            let alphaLexPeekLockedLetters = [];
 
             function attachUnifiedAlphaTapBtn(btn, run) {
                 if (!btn) return;
@@ -13560,9 +14414,44 @@ function setupFeatureListeners(feature, callback, options) {
                     btn.classList.toggle('active', v === selectedRepeatMode);
                 });
             }
+            function syncFirstStraightPosHighlight() {
+                firstStraightPosBtns.forEach((btn) => {
+                    const n = parseInt(btn.getAttribute('data-alpha-first-straight-pos') || '', 10);
+                    btn.classList.toggle('active', Number.isInteger(n) && n === selectedFirstStraightPos);
+                });
+            }
+            function syncStraightDiffHighlight() {
+                straightDiffBtns.forEach((btn) => {
+                    const v = btn.getAttribute('data-alpha-straight-diff');
+                    btn.classList.toggle('active', v === selectedStraightDiffMode);
+                });
+            }
+            function syncNextShapeHighlight() {
+                nextShapeBtns.forEach((btn) => {
+                    const v = btn.getAttribute('data-alpha-next-shape');
+                    btn.classList.toggle('active', v === selectedNextShape);
+                });
+            }
+            function syncStraightDependentControlsEnabled() {
+                const enabled = Number.isInteger(selectedFirstStraightPos) && selectedFirstStraightPos >= 1 && selectedFirstStraightPos <= 6;
+                straightDiffBtns.forEach((btn) => {
+                    btn.disabled = !enabled;
+                    btn.style.opacity = enabled ? '' : '0.5';
+                    btn.style.pointerEvents = enabled ? '' : 'none';
+                });
+                nextShapeBtns.forEach((btn) => {
+                    btn.disabled = !enabled;
+                    btn.style.opacity = enabled ? '' : '0.5';
+                    btn.style.pointerEvents = enabled ? '' : 'none';
+                });
+            }
 
             syncSectionHighlight();
             syncRepeatHighlight();
+            syncFirstStraightPosHighlight();
+            syncStraightDiffHighlight();
+            syncNextShapeHighlight();
+            syncStraightDependentControlsEnabled();
 
             sectionBtns.forEach((btn) => {
                 const run = () => {
@@ -13617,6 +14506,68 @@ function setupFeatureListeners(feature, callback, options) {
                     }
                     run();
                 });
+            });
+            firstStraightPosBtns.forEach((btn) => {
+                const run = () => {
+                    const val = parseInt(btn.getAttribute('data-alpha-first-straight-pos') || '', 10);
+                    if (!Number.isInteger(val) || val < 1 || val > 6) return;
+                    if (selectedFirstStraightPos === val) selectedFirstStraightPos = null;
+                    else selectedFirstStraightPos = val;
+                    if (!selectedFirstStraightPos) {
+                        selectedStraightDiffMode = null;
+                        selectedNextShape = null;
+                    }
+                    syncFirstStraightPosHighlight();
+                    syncStraightDiffHighlight();
+                    syncNextShapeHighlight();
+                    syncStraightDependentControlsEnabled();
+                    applyAlphaIncrementalFromCurrentDirections();
+                };
+                attachUnifiedAlphaTapBtn(btn, run);
+            });
+            straightDiffBtns.forEach((btn) => {
+                const run = () => {
+                    if (!selectedFirstStraightPos) return;
+                    const val = btn.getAttribute('data-alpha-straight-diff');
+                    if (val !== 'yes' && val !== 'no') return;
+                    if (selectedStraightDiffMode === val) {
+                        selectedStraightDiffMode = null;
+                    } else {
+                        selectedStraightDiffMode = val;
+                        if (selectedStraightDiffMode === 'yes' && selectedNextShape === 'straight') {
+                            selectedStraightDiffMode = null;
+                        }
+                        if (selectedStraightDiffMode === 'no' && selectedNextShape === 'straight') {
+                            selectedNextShape = null;
+                            syncNextShapeHighlight();
+                        }
+                    }
+                    syncStraightDiffHighlight();
+                    applyAlphaIncrementalFromCurrentDirections();
+                };
+                attachUnifiedAlphaTapBtn(btn, run);
+            });
+            nextShapeBtns.forEach((btn) => {
+                const run = () => {
+                    if (!selectedFirstStraightPos) return;
+                    const val = btn.getAttribute('data-alpha-next-shape');
+                    if (val !== 'straight' && val !== 'mixed' && val !== 'curved') return;
+                    if (selectedNextShape === val) {
+                        selectedNextShape = null;
+                    } else {
+                        selectedNextShape = val;
+                        if (selectedNextShape === 'straight' && selectedStraightDiffMode === 'yes') {
+                            selectedStraightDiffMode = null;
+                            syncStraightDiffHighlight();
+                        }
+                        if (selectedNextShape === 'straight' && selectedStraightDiffMode === 'no') {
+                            selectedNextShape = null;
+                        }
+                    }
+                    syncNextShapeHighlight();
+                    applyAlphaIncrementalFromCurrentDirections();
+                };
+                attachUnifiedAlphaTapBtn(btn, run);
             });
 
             function alphaUpdateDisplay() {
@@ -13954,7 +14905,7 @@ function setupFeatureListeners(feature, callback, options) {
                     : '';
             }
 
-            function filterAlphaFromBase(directionsOverride) {
+            function filterAlphaFromBase(directionsOverride, submitFinal) {
                 const dirs = Array.isArray(directionsOverride) ? directionsOverride : alphaDirections;
                 const customLineParsed = getActiveAlphaCustomLineForFilter();
                 const firstLetterSection = firstLetterSectionForFilter();
@@ -13962,6 +14913,13 @@ function setupFeatureListeners(feature, callback, options) {
                 const lastLetterSet = parseAlphaWordLastLettersInput(
                     alphaUnifiedLastLettersInput && alphaUnifiedLastLettersInput.value
                 );
+                const firstStraightPos = Number.isInteger(selectedFirstStraightPos) ? selectedFirstStraightPos : null;
+                const areDifferentMode =
+                    selectedStraightDiffMode === 'yes' || selectedStraightDiffMode === 'no' ? selectedStraightDiffMode : null;
+                const nextShapeGroup =
+                    selectedNextShape === 'straight' || selectedNextShape === 'mixed' || selectedNextShape === 'curved'
+                        ? selectedNextShape
+                        : null;
                 const filtered = filterWordsByAlphaUnified(
                     alphaBaseWords,
                     dirs,
@@ -13969,9 +14927,22 @@ function setupFeatureListeners(feature, callback, options) {
                     alphaSwapPov,
                     repeatMode,
                     lastLetterSet,
-                    customLineParsed
+                    customLineParsed,
+                    firstStraightPos,
+                    areDifferentMode,
+                    nextShapeGroup,
+                    !!submitFinal
                 );
-                return { filtered, customLineParsed, firstLetterSection, repeatMode, lastLetterSet };
+                return {
+                    filtered,
+                    customLineParsed,
+                    firstLetterSection,
+                    repeatMode,
+                    lastLetterSet,
+                    firstStraightPos,
+                    areDifferentMode,
+                    nextShapeGroup
+                };
             }
 
             function rebuildAlphaDirectionSteps() {
@@ -14001,7 +14972,100 @@ function setupFeatureListeners(feature, callback, options) {
                     rebuildAlphaDirectionSteps();
                 }
                 callback(result.filtered);
+                refreshAlphaLexPeekCompactLabel();
                 return true;
+            }
+
+            function refreshAlphaLexPeekCompactLabel() {
+                if (!alphaLexPeekCompactLabel) return;
+                const list = filterAlphaFromBase(alphaDirections).filtered;
+                if (!list.length) {
+                    alphaLexPeekCompactLabel.textContent = 'Lex: —';
+                    return;
+                }
+                const { position } = findPositionWithMostVarianceFrom(list, 3, 6);
+                alphaLexPeekCompactLabel.textContent =
+                    position >= 0 ? `Lex ~pos ${position + 1}` : 'Lex: —';
+            }
+
+            function refreshAlphaLexPeekPanelMeta() {
+                const lexInput = parseUnifiedCustomAlphaLine((alphaLexPeekInput && alphaLexPeekInput.value) || '');
+                const hasLocked = !!lexInput && alphaLexPeekLockedPosition >= 0;
+                const base = hasLocked
+                    ? { position: alphaLexPeekLockedPosition, letters: alphaLexPeekLockedLetters || [] }
+                    : findPositionWithMostVarianceFrom(alphaLexPeekSourceWords, 3, 6);
+                const { position, letters } = base;
+                alphaLexPeekPosition = position;
+                alphaLexPeekLetters = letters || [];
+                if (alphaLexPeekPositionDisplay) {
+                    alphaLexPeekPositionDisplay.textContent = position >= 0 ? String(position + 1) : '—';
+                }
+                if (alphaLexPeekLettersDisplay) {
+                    alphaLexPeekLettersDisplay.textContent = alphaLexPeekLetters.length ? alphaLexPeekLetters.join(', ') : '—';
+                }
+            }
+
+            function setAlphaLexPeekVisible(visible) {
+                alphaLexPeekVisible = !!visible;
+                if (alphaLexPeekPanel) alphaLexPeekPanel.style.display = alphaLexPeekVisible ? '' : 'none';
+                if (alphaLexPeekToggleBtn) alphaLexPeekToggleBtn.classList.toggle('active', alphaLexPeekVisible);
+                if (alphaLexPeekVisible) {
+                    alphaLexPeekBaseWordsAtPanelOpen = alphaBaseWords.slice();
+                    alphaLexPeekSourceWords = filterAlphaFromBase(alphaDirections).filtered.slice();
+                    alphaLexPeekLockedPosition = -1;
+                    alphaLexPeekLockedLetters = [];
+                    refreshAlphaLexPeekPanelMeta();
+                } else {
+                    alphaLexPeekLockedPosition = -1;
+                    alphaLexPeekLockedLetters = [];
+                }
+            }
+
+            function applyAlphaLexPeekFilter(options) {
+                const opts = options || {};
+                const silent = !!opts.silent;
+                const raw = (alphaLexPeekInput && alphaLexPeekInput.value) || '';
+                const letters = parseUnifiedCustomAlphaLine(raw);
+                if (!letters) {
+                    alphaLexPeekLastInput = '';
+                    alphaLexPeekLockedPosition = -1;
+                    alphaLexPeekLockedLetters = [];
+                    if (alphaLexPeekBaseWordsAtPanelOpen != null) {
+                        alphaBaseWords.length = 0;
+                        alphaBaseWords.push(...alphaLexPeekBaseWordsAtPanelOpen);
+                        alphaLexPeekUsed = false;
+                        applyAlphaIncrementalFromCurrentDirections();
+                        refreshAlphaLexPeekPanelMeta();
+                    }
+                    return;
+                }
+                if (alphaLexPeekLockedPosition < 0) {
+                    const { position, letters: lexLetters } = findPositionWithMostVarianceFrom(
+                        alphaLexPeekSourceWords,
+                        3,
+                        6
+                    );
+                    alphaLexPeekLockedPosition = position;
+                    alphaLexPeekLockedLetters = lexLetters || [];
+                }
+                alphaLexPeekPosition = alphaLexPeekLockedPosition;
+                if (alphaLexPeekPosition < 0) {
+                    if (!silent) alert('No valid LEX position (4+) found for current words.');
+                    return;
+                }
+                const allowed = new Set(letters.split(''));
+                const baseWords = Array.isArray(alphaLexPeekSourceWords) ? alphaLexPeekSourceWords : [];
+                const filtered = (baseWords || []).filter((w) => {
+                    const up = String(w || '').toUpperCase();
+                    if (up.length <= alphaLexPeekPosition) return false;
+                    return allowed.has(up[alphaLexPeekPosition]);
+                });
+                alphaLexPeekUsed = true;
+                alphaLexPeekLastInput = letters;
+                alphaBaseWords.length = 0;
+                alphaBaseWords.push(...filtered);
+                applyAlphaIncrementalFromCurrentDirections();
+                refreshAlphaLexPeekPanelMeta();
             }
 
             function unifiedAlphaSubmit() {
@@ -14009,24 +15073,49 @@ function setupFeatureListeners(feature, callback, options) {
                     alert('Add at least one direction (Left, Right, Repeat, or N/A), then SUBMIT.');
                     return;
                 }
-                const result = filterAlphaFromBase(alphaDirections);
-                const customLineParsed = result.customLineParsed;
+                const resultMeta = filterAlphaFromBase(alphaDirections);
+                const customLineParsed = resultMeta.customLineParsed;
                 if (alphaDirections.includes('NA') && !alphaUnifiedNaDirectionAllowed(customLineParsed)) {
                     alert('N/A is only available when using a custom line that does not include every letter A–Z.');
                     return;
                 }
                 rebuildAlphaDirectionSteps();
-                const filtered = result.filtered;
-                const firstLetterSection = result.firstLetterSection;
-                const repeatMode = result.repeatMode;
-                const lastLetterSet = result.lastLetterSet;
+                const finalResult = filterAlphaFromBase(alphaDirections, true);
+                const filtered = finalResult.filtered;
+                if (filtered.length === 0) {
+                    alert(
+                        'No words match this direction sequence at exact spelling length (first letter plus one letter per direction). Longer words were only valid as prefixes while entering directions.'
+                    );
+                    return;
+                }
+                const firstLetterSection = resultMeta.firstLetterSection;
+                const repeatMode = resultMeta.repeatMode;
+                const lastLetterSet = resultMeta.lastLetterSet;
+                const firstStraightPos = resultMeta.firstStraightPos;
+                const areDifferentMode = resultMeta.areDifferentMode;
+                const nextShapeGroup = resultMeta.nextShapeGroup;
                 const directionsHuman = alphaDirections
                     .map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : d === 'NA' ? 'N/A' : 'Repeat'))
                     .join(', ');
                 const sectionLabel = selectedFirstSection == null ? 'first letter unset' : selectedFirstSection;
                 const repeatLabel = selectedRepeatMode == null ? 'doubles unset' : selectedRepeatMode.toUpperCase();
+                const firstStraightLabel = firstStraightPos == null ? 'first straight unset' : `first straight at ${firstStraightPos}`;
+                const diffLabel = areDifferentMode == null ? 'next-vs-straight unset' : `next-vs-straight ${areDifferentMode.toUpperCase()}`;
+                const nextShapeLabel = nextShapeGroup == null ? 'next-shape unset' : `next-shape ${nextShapeGroup.toUpperCase()}`;
                 const lastLettersSorted = lastLetterSet.size ? [...lastLetterSet].sort().join('') : '';
                 const lastSummary = lastLetterSet.size ? `last ∈ {${lastLettersSorted}}` : 'no last-letter filter';
+                const alphaDebugContext = {
+                    wordlistIdAtSubmit: selectedWordlist || null,
+                    alphaSwapPov: !!alphaSwapPov,
+                    alphaDirectionsCountSetting: Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10)),
+                    dictionaryAlphaUseCustomRange: !!(appSettings && appSettings.dictionaryAlphaUseCustomRange),
+                    dictionaryAlphaRangesUsed: getDictionaryAlphaRanges(),
+                    matcherModeIncremental: 'prefix',
+                    matcherModeOnSubmit: 'submit-exact',
+                    repeatEvaluationMode: repeatMode === 'yes' ? 'collapsed-spelling' : 'raw-spelling',
+                    submitWordCountBeforeExactTrim: Array.isArray(resultMeta.filtered) ? resultMeta.filtered.length : null,
+                    submitWordCountAfterExactTrim: filtered.length
+                };
                 const customSummary =
                     customLineParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN
                         ? `custom line (${customLineParsed.length} letters)`
@@ -14034,10 +15123,13 @@ function setupFeatureListeners(feature, callback, options) {
                 pendingWorkflowStepPayload = {
                     feature: workflowFeatureKey,
                     skipped: false,
-                    userInputSummary: `${workflowFeatureKey}: ${customSummary} · ${sectionLabel} · doubles ${repeatLabel} · ${lastSummary} · ${directionsHuman}`,
+                    userInputSummary: `${workflowFeatureKey}: ${customSummary} · ${sectionLabel} · doubles ${repeatLabel} · ${firstStraightLabel} · ${diffLabel} · ${nextShapeLabel} · ${lastSummary} · ${directionsHuman}`,
                     userInput: {
                         firstLetterSection,
                         repeatMode,
+                        firstStraightPos,
+                        areDifferentMode,
+                        nextShapeGroup,
                         lastLetters: lastLettersSorted,
                         customAlphaLine:
                             customLineParsed.length >= ALPHA_CUSTOM_LINE_MIN_LEN ? customLineParsed : null,
@@ -14045,6 +15137,10 @@ function setupFeatureListeners(feature, callback, options) {
                         directionsHuman,
                         directionSteps: alphaDirectionSteps.slice()
                     },
+                    debugContext: alphaDebugContext,
+                    alphaLexPeekUsed,
+                    alphaLexPeekPosition: alphaLexPeekUsed ? (alphaLexPeekPosition >= 0 ? alphaLexPeekPosition + 1 : null) : null,
+                    alphaLexPeekInput: alphaLexPeekUsed ? alphaLexPeekLastInput : '',
                     wordsBefore: alphaWordsAtStepStart,
                     wordsAfter: filtered.length
                 };
@@ -14144,6 +15240,33 @@ function setupFeatureListeners(feature, callback, options) {
             attachAlphaMicControls(alphaUnifiedLineMicBtn);
             refreshLineSummaryAndNa();
             renderSavedAlphaLineButtons();
+
+            attachUnifiedAlphaTapBtn(alphaLexPeekToggleBtn, () => {
+                setAlphaLexPeekVisible(!alphaLexPeekVisible);
+            });
+            attachUnifiedAlphaTapBtn(alphaLexPeekApplyBtn, () => applyAlphaLexPeekFilter());
+            if (alphaLexPeekInput) {
+                alphaLexPeekInput.addEventListener('input', () => {
+                    if (alphaLexPeekInput) {
+                        alphaLexPeekInput.value = parseUnifiedCustomAlphaLine(alphaLexPeekInput.value);
+                    }
+                    if (!alphaLexPeekVisible) return;
+                    if (alphaLexPeekDebounceTimer) {
+                        clearTimeout(alphaLexPeekDebounceTimer);
+                        alphaLexPeekDebounceTimer = null;
+                    }
+                    alphaLexPeekDebounceTimer = setTimeout(() => {
+                        alphaLexPeekDebounceTimer = null;
+                        applyAlphaLexPeekFilter({ silent: true });
+                    }, 140);
+                });
+            }
+            if (alphaLexPeekDebounceTimer) {
+                clearTimeout(alphaLexPeekDebounceTimer);
+                alphaLexPeekDebounceTimer = null;
+            }
+            setAlphaLexPeekVisible(false);
+            refreshAlphaLexPeekCompactLabel();
             break;
         }
 
@@ -14802,6 +15925,12 @@ function setupFeatureListeners(feature, callback, options) {
             const answerBtn = document.getElementById('newAnswerBtn');
             const answerInput = document.getElementById('newAnswerInput');
             const submitBtn = document.getElementById('newSubmitBtn');
+            const newLexPeekToggleBtn = document.getElementById('newLexPeekToggleBtn');
+            const newLexPeekPanel = document.getElementById('newLexPeekPanel');
+            const newLexPeekPositionDisplay = document.getElementById('newLexPeekPositionDisplay');
+            const newLexPeekLettersDisplay = document.getElementById('newLexPeekLettersDisplay');
+            const newLexPeekInput = document.getElementById('newLexPeekInput');
+            const newLexPeekApplyBtn = document.getElementById('newLexPeekApplyBtn');
             const messageEl = document.getElementById('newMessage');
 
             let scrollBatchIndex = 0;
@@ -14813,6 +15942,15 @@ function setupFeatureListeners(feature, callback, options) {
             let currentBatchStr = '';
             let batchCycleSize = 1;
             let currentBatchType = 'mixed';
+            let newLexPeekVisible = false;
+            let newLexPeekPosition = -1;
+            let newLexPeekLetters = [];
+            let newLexPeekUsed = false;
+            let newLexPeekLastInput = '';
+            let newLexPeekDebounceTimer = null;
+            let newLexPeekSourceWords = Array.isArray(currentFilteredWords) ? currentFilteredWords.slice() : [];
+            let newLexPeekLockedPosition = -1;
+            let newLexPeekLockedLetters = [];
             let pendingCustomTarget = null; // { kind: 'position'|'anywhere', position?: number }
             let lockedTargetForActiveBatch = null;
             const savedNewMode = appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode);
@@ -14869,6 +16007,59 @@ function setupFeatureListeners(feature, callback, options) {
                 if (messageEl) {
                     messageEl.textContent = text;
                     messageEl.style.color = isError ? '#f44336' : '#4CAF50';
+                }
+            };
+
+            const attachNewTapButton = (btn, run) => {
+                if (!btn) return;
+                let touchHandled = false;
+                btn.addEventListener(
+                    'touchstart',
+                    (e) => {
+                        e.preventDefault();
+                        touchHandled = true;
+                        run();
+                    },
+                    { passive: false }
+                );
+                btn.addEventListener('click', () => {
+                    if (touchHandled) {
+                        touchHandled = false;
+                        return;
+                    }
+                    run();
+                });
+            };
+
+            const refreshNewLexPeekMeta = () => {
+                const lexInput = parseUnifiedCustomAlphaLine((newLexPeekInput && newLexPeekInput.value) || '');
+                const hasLocked = !!lexInput && newLexPeekLockedPosition >= 0;
+                const base = hasLocked
+                    ? { position: newLexPeekLockedPosition, letters: newLexPeekLockedLetters || [] }
+                    : findPositionWithMostVarianceFrom(newLexPeekSourceWords, 3, 6);
+                const { position, letters } = base;
+                newLexPeekPosition = position;
+                newLexPeekLetters = letters || [];
+                if (newLexPeekPositionDisplay) {
+                    newLexPeekPositionDisplay.textContent = position >= 0 ? String(position + 1) : '—';
+                }
+                if (newLexPeekLettersDisplay) {
+                    newLexPeekLettersDisplay.textContent = newLexPeekLetters.length ? newLexPeekLetters.join(', ') : '—';
+                }
+            };
+
+            const setNewLexPeekVisible = (visible) => {
+                newLexPeekVisible = !!visible;
+                if (newLexPeekPanel) newLexPeekPanel.style.display = newLexPeekVisible ? '' : 'none';
+                if (newLexPeekToggleBtn) newLexPeekToggleBtn.classList.toggle('active', newLexPeekVisible);
+                if (newLexPeekVisible) {
+                    newLexPeekSourceWords = Array.isArray(currentFilteredWords) ? currentFilteredWords.slice() : [];
+                    newLexPeekLockedPosition = -1;
+                    newLexPeekLockedLetters = [];
+                    refreshNewLexPeekMeta();
+                } else {
+                    newLexPeekLockedPosition = -1;
+                    newLexPeekLockedLetters = [];
                 }
             };
 
@@ -14957,7 +16148,16 @@ function setupFeatureListeners(feature, callback, options) {
 
             const applyScrollFilter = () => {
                 const filtered = filterWordsByScrollStops(currentFilteredWords, scrollStops, newAnswerCountMode, newDigitBuffer);
-                callback(filtered);
+                newLexPeekSourceWords = Array.isArray(filtered) ? filtered.slice() : [];
+                newLexPeekLockedPosition = -1;
+                newLexPeekLockedLetters = [];
+                const lexInput = parseUnifiedCustomAlphaLine((newLexPeekInput && newLexPeekInput.value) || '');
+                if (newLexPeekVisible && lexInput) {
+                    applyNewLexPeekFilter({ silent: true });
+                } else {
+                    callback(filtered);
+                }
+                if (newLexPeekVisible) refreshNewLexPeekMeta();
                 setMessage(scrollStops.length
                     ? `${filtered.length} words (${scrollStops.length} stop(s)).`
                     : `${(currentFilteredWords || []).length} words (no stops yet).`);
@@ -15085,6 +16285,9 @@ function setupFeatureListeners(feature, callback, options) {
                         answerCountMode: newAnswerCountMode,
                         digitBuffer: !!newDigitBuffer,
                         stops: stopsSnapshot,
+                        newLexPeekUsed,
+                        newLexPeekPosition: newLexPeekUsed ? (newLexPeekPosition >= 0 ? newLexPeekPosition + 1 : null) : null,
+                        newLexPeekInput: newLexPeekUsed ? newLexPeekLastInput : '',
                         wordsAfter: filtered.length
                     };
                     const msg = `${filtered.length} words — step complete.`;
@@ -15104,9 +16307,76 @@ function setupFeatureListeners(feature, callback, options) {
                 }, { passive: false });
             }
 
+            function applyNewLexPeekFilter(options) {
+                const opts = options || {};
+                const silent = !!opts.silent;
+                const raw = (newLexPeekInput && newLexPeekInput.value) || '';
+                const letters = parseUnifiedCustomAlphaLine(raw);
+                if (!letters) {
+                    newLexPeekLastInput = '';
+                    newLexPeekLockedPosition = -1;
+                    newLexPeekLockedLetters = [];
+                    if (Array.isArray(newLexPeekSourceWords)) {
+                        callback(newLexPeekSourceWords.slice());
+                        refreshNewLexPeekMeta();
+                    }
+                    if (!silent) setMessage('LEX cleared.');
+                    return;
+                }
+                if (newLexPeekLockedPosition < 0) {
+                    const { position, letters: lexLetters } = findPositionWithMostVarianceFrom(newLexPeekSourceWords, 3, 6);
+                    newLexPeekLockedPosition = position;
+                    newLexPeekLockedLetters = lexLetters || [];
+                }
+                newLexPeekPosition = newLexPeekLockedPosition;
+                if (newLexPeekPosition < 0) {
+                    if (!silent) setMessage('No valid LEX position (4+) found for current words.', true);
+                    return;
+                }
+                const allowed = new Set(letters.split(''));
+                const baseWords = Array.isArray(newLexPeekSourceWords) ? newLexPeekSourceWords : (currentFilteredWords || []);
+                const before = Array.isArray(baseWords) ? baseWords.length : 0;
+                const filtered = (baseWords || []).filter((w) => {
+                    const up = String(w || '').toUpperCase();
+                    if (up.length <= newLexPeekPosition) return false;
+                    return allowed.has(up[newLexPeekPosition]);
+                });
+                newLexPeekUsed = true;
+                newLexPeekLastInput = letters;
+                callback(filtered);
+                refreshNewLexPeekMeta();
+                if (!silent) setMessage(`LEX applied at position ${newLexPeekPosition + 1}: ${before} → ${filtered.length}`);
+            }
+
+            attachNewTapButton(newLexPeekToggleBtn, () => {
+                setNewLexPeekVisible(!newLexPeekVisible);
+            });
+
+            attachNewTapButton(newLexPeekApplyBtn, () => applyNewLexPeekFilter());
+
+            if (newLexPeekInput) {
+                newLexPeekInput.addEventListener('input', () => {
+                    if (newLexPeekInput) newLexPeekInput.value = parseUnifiedCustomAlphaLine(newLexPeekInput.value);
+                    if (!newLexPeekVisible) return;
+                    if (newLexPeekDebounceTimer) {
+                        clearTimeout(newLexPeekDebounceTimer);
+                        newLexPeekDebounceTimer = null;
+                    }
+                    newLexPeekDebounceTimer = setTimeout(() => {
+                        newLexPeekDebounceTimer = null;
+                        applyNewLexPeekFilter({ silent: true });
+                    }, 140);
+                });
+            }
+
             scrollBatchIndex = 0;
             scrollStops = [];
             resetVowelCoverageCycle();
+            if (newLexPeekDebounceTimer) {
+                clearTimeout(newLexPeekDebounceTimer);
+                newLexPeekDebounceTimer = null;
+            }
+            setNewLexPeekVisible(false);
             if (targetModeRow) targetModeRow.style.display = customModeOn ? 'flex' : 'none';
             if (customModeOn) {
                 targetButtons.forEach((btn) => {
@@ -16251,6 +17521,70 @@ function findPositionWithMostVariance(words, ignorePosition1) {
         position: result,
         letters: resultLetters
     };
+}
+
+// Variant for NEW LEX peek: choose best position from a minimum index (inclusive).
+function findPositionWithMostVarianceFrom(words, minIndex, maxPositions) {
+    const limit = Math.max(1, parseInt(maxPositions, 10) || 5);
+    const start = Math.max(0, parseInt(minIndex, 10) || 0);
+    const positionLetters = Array(limit).fill().map(() => new Set());
+    (words || []).forEach((word) => {
+        const w = String(word || '').toUpperCase();
+        for (let i = 0; i < Math.min(limit, w.length); i++) {
+            positionLetters[i].add(w[i]);
+        }
+    });
+    let maxVariance = -1;
+    let result = -1;
+    let resultLetters = [];
+    positionLetters.forEach((letters, index) => {
+        if (index < start) return;
+        if (letters.size > maxVariance) {
+            maxVariance = letters.size;
+            result = index;
+            resultLetters = Array.from(letters).sort();
+        }
+    });
+    return { position: result, letters: resultLetters };
+}
+
+// Combined position score across two candidate sets (for MUTE DUO LEX peek).
+function findBestLexPositionAcrossWordSets(wordsA, wordsB, minIndex, maxPositions) {
+    const limit = Math.max(1, parseInt(maxPositions, 10) || 6);
+    const start = Math.max(0, parseInt(minIndex, 10) || 0);
+    const setsA = Array(limit).fill().map(() => new Set());
+    const setsB = Array(limit).fill().map(() => new Set());
+    const freq = Array(limit).fill().map(() => new Map());
+    (wordsA || []).forEach((word) => {
+        const w = String(word || '').toUpperCase();
+        for (let i = 0; i < Math.min(limit, w.length); i++) {
+            const ch = w[i];
+            setsA[i].add(ch);
+            freq[i].set(ch, (freq[i].get(ch) || 0) + 1);
+        }
+    });
+    (wordsB || []).forEach((word) => {
+        const w = String(word || '').toUpperCase();
+        for (let i = 0; i < Math.min(limit, w.length); i++) {
+            const ch = w[i];
+            setsB[i].add(ch);
+            freq[i].set(ch, (freq[i].get(ch) || 0) + 1);
+        }
+    });
+    let bestPos = -1;
+    let bestScore = -1;
+    for (let i = start; i < limit; i++) {
+        const score = setsA[i].size + setsB[i].size;
+        if (score > bestScore) {
+            bestScore = score;
+            bestPos = i;
+        }
+    }
+    if (bestPos < 0) return { position: -1, letters: [] };
+    const letters = Array.from(freq[bestPos].entries())
+        .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+        .map((x) => x[0]);
+    return { position: bestPos, letters };
 }
 
 // Function to filter words by original lex
@@ -18906,6 +20240,17 @@ function initSettingsUI() {
             appSettings.loveLettersRow4 = LOVE_LETTERS_DEFAULT.row4;
             appSettings.loveLettersRow5 = LOVE_LETTERS_DEFAULT.row5;
             syncLoveLettersUI();
+            saveAppSettings();
+        });
+    }
+
+    const workflowDebugTargetWordInput = document.getElementById('workflowDebugTargetWordInput');
+    if (workflowDebugTargetWordInput) {
+        workflowDebugTargetWordInput.value = (appSettings && appSettings.workflowDebugTargetWord) || '';
+        workflowDebugTargetWordInput.addEventListener('input', () => {
+            const v = workflowDebugTargetWordInput.value.toUpperCase().replace(/[^A-Z]/g, '');
+            workflowDebugTargetWordInput.value = v;
+            appSettings.workflowDebugTargetWord = v;
             saveAppSettings();
         });
     }

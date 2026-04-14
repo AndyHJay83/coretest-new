@@ -1437,6 +1437,9 @@
                     <div class="settings-section" id="settings-section-report">
                         <h3 class="settings-section-title">REPORT</h3>
                         <p class="settings-section-subtitle">The last 10 runs — word counts per step, NEW settings snapshot when NEW was in the workflow, optional target word per run, readable view plus JSON export. Stored in this browser only.</p>
+                        <label for="workflowDebugTargetWordInput">Debug target word (optional, letters A–Z):</label>
+                        <input type="text" id="workflowDebugTargetWordInput" maxlength="60" autocomplete="off" placeholder="e.g. thought-of word before PERFORM" style="width:100%;max-width:420px;padding:8px;margin:8px 0;text-transform:uppercase;">
+                        <p class="settings-field-help" style="margin:0 0 10px;font-size:12px;color:#666;">If set before you perform, REPORT can record whether this word was still in the list after each step and pinpoint elimination (including within-step updates). You can still set or change the target on each run in REPORT afterward; if the word differs from this setting, tracing uses saved word-list snapshots when the list is small enough.</p>
                         <button type="button" id="workflowReportOpenBtn" class="secondary-btn">Open REPORT</button>
                     </div>
                 </div>
@@ -1968,7 +1971,7 @@
         <div id="workflowReportInfo" class="feature-info-modal">
             <div class="feature-info-content workflow-report-modal-content">
                 <h3>Workflow REPORT</h3>
-                <p class="workflow-report-intro">Use COPY on each run’s header to copy a readable summary plus JSON (separated by a line of dashes). Expand a run for the target word and steps; expand a step for duration, traces, and payload. Steps that leave 0 words are highlighted in red.</p>
+                <p class="workflow-report-intro">Use COPY on each run’s header to copy a readable summary plus JSON (separated by a line of dashes). Expand a run to set the debug target word (type A–Z, then Save), view elimination trace, and browse steps; expand a step for duration, traces, and payload. Steps that leave 0 words are highlighted in red.</p>
                 <div id="workflowReportHuman" class="workflow-report-human" aria-live="polite"></div>
                 <div class="workflow-report-actions">
                     <button type="button" id="workflowReportClearBtn" class="secondary-btn">Clear history</button>
