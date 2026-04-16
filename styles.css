@@ -6624,6 +6624,10 @@ button.close-info-button.workflow-report-close {
     outline: 3px solid #d32f2f;
     outline-offset: 2px;
     box-shadow: 0 0 0 4px rgba(211, 47, 47, 0.15);
+    border-color: #d32f2f !important;
+    background: #fdecea !important;
+    color: #8b1e1e !important;
+    font-weight: 800;
 }
 
 .psych-generate-btn {
