@@ -834,6 +834,16 @@ body {
     font-size: 0.95em;
     color: #555;
     min-height: 1.4em;
+    font-weight: 800;
+}
+
+/* Lex column P (1-based) vs direction count d: P===d → one letter back; P===d+1 → current frontier */
+.alpha-sequence-display.alpha-seq--lex-prev {
+    color: #e65100;
+}
+
+.alpha-sequence-display.alpha-seq--lex-curr {
+    color: #16a34a;
 }
 .alpha-direction-buttons {
     display: flex;
@@ -968,6 +978,43 @@ body {
 #muteDuoLexLettersDisplay2 {
     color: #8b0000;
     font-weight: 700;
+}
+
+/* Lex letter stats: bold letter, normal-weight % (MUTE DUO % forced black) */
+.lex-letter {
+    font-weight: 800;
+}
+
+.lex-pct {
+    font-weight: 400;
+}
+
+.lex-stat-chip--single .lex-pct {
+    color: #16a34a;
+    font-weight: 600;
+}
+
+.lex-stat-chip--zero .lex-pct {
+    color: #b71c1c;
+    font-weight: 600;
+}
+
+#muteDuoLexLettersDisplay1 .lex-pct,
+#muteDuoLexLettersDisplay2 .lex-pct {
+    color: #000;
+    font-weight: 400;
+}
+
+#muteDuoLexLettersDisplay1 .lex-stat-chip--single .lex-pct,
+#muteDuoLexLettersDisplay2 .lex-stat-chip--single .lex-pct {
+    color: #16a34a;
+    font-weight: 600;
+}
+
+#muteDuoLexLettersDisplay1 .lex-stat-chip--zero .lex-pct,
+#muteDuoLexLettersDisplay2 .lex-stat-chip--zero .lex-pct {
+    color: #b71c1c;
+    font-weight: 600;
 }
 
 .mute-duo-lex-input-spec1 {

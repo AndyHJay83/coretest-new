@@ -5219,7 +5219,7 @@ function createOriginalLexFeature() {
     div.innerHTML = `
         <h2 class="feature-title">LEXICON</h2>
         <div class="position-info">
-            <div class="position-display">Position: <span class="position-number">1</span></div>
+            <div class="position-display">Lex column (L / L2 / 1–X): <span class="position-number">—</span></div>
             <div class="possible-letters">Possible letters: <span class="letters-list"></span></div>
         </div>
         <div class="lexicon-input">
@@ -5238,7 +5238,7 @@ function createAdvLexFeature() {
     div.innerHTML = `
         <h2 class="feature-title">ADV-LEX</h2>
         <div class="position-info">
-            <div class="position-display">Position <span class="position-number">-</span></div>
+            <div class="position-display">Lex column (L / L2 / 1–X): <span class="position-number">—</span></div>
         </div>
         <div id="advLexWordList" class="advlex-list"></div>
         <div class="button-row">
@@ -5643,12 +5643,14 @@ function startOmega(callback) {
         const posEl = document.getElementById('omegaLexPositionDisplay');
         const lettersEl = document.getElementById('omegaLexLettersDisplay');
         const compactEl = document.getElementById('omegaLexCompactLabel');
-        if (posEl) posEl.textContent = omegaLexPosition >= 0 ? String(omegaLexPosition + 1) : '—';
-        if (lettersEl) lettersEl.textContent = omegaLexLetters.length ? omegaLexLetters.join(', ') : '—';
+        if (posEl) posEl.textContent = formatLexPositionLabel(omegaLexPosition, source);
+        if (lettersEl) {
+            lettersEl.innerHTML = formatLexLetterStatsCompactHtml(source, omegaLexPosition, omegaLexLetters);
+        }
         if (compactEl) {
-            const p = omegaLexPosition >= 0 ? String(omegaLexPosition + 1) : '—';
-            const l = omegaLexLetters.length ? omegaLexLetters.join(', ') : '—';
-            compactEl.textContent = `Lex ${p}: ${l}`;
+            const pLabel = formatLexPositionLabel(omegaLexPosition, source);
+            const l = formatLexLetterStatsCompactHtml(source, omegaLexPosition, omegaLexLetters);
+            compactEl.innerHTML = `Lex ${pLabel}: ${l}`;
         }
     };
     categoryButtons.innerHTML = '';
@@ -5690,8 +5692,8 @@ function startOmega(callback) {
                 <button type="button" id="omegaLexToggleBtn" class="secondary-btn">LEX</button>
             </div>
             <div id="omegaLexPanel" style="display:none; width:100%; max-width:560px; padding:10px; border:1px solid #ddd; border-radius:10px; background:#fafafa;">
-                <div style="font-size:13px; margin-bottom:8px;">
-                    Lexicon position (excluding 1-3): <strong id="omegaLexPositionDisplay">—</strong>
+                <div style="font-size:26px; margin-bottom:8px;">
+                    Lexicon position: <strong id="omegaLexPositionDisplay">—</strong>
                 </div>
                 <div style="font-size:13px; margin-bottom:8px;">
                     Possible letters: <span id="omegaLexLettersDisplay">—</span>
@@ -6932,6 +6934,7 @@ function createAlphaShortFeature() {
             <button type="button" class="alpha-btn alpha-left" id="alphaLeftBtn" aria-label="Left (toward A)">← Left</button>
             <button type="button" class="alpha-btn alpha-repeat" id="alphaRepeatDirBtn" aria-label="Repeat (same letter)">Repeat</button>
             <button type="button" class="alpha-btn alpha-right" id="alphaRightBtn" aria-label="Right (toward Z)">Right →</button>
+            <button type="button" class="alpha-btn alpha-backspace" id="alphaBackspaceBtn" aria-label="Remove last direction">Backspace</button>
         </div>
         <div class="alpha-actions">
             <button type="button" id="alphaSubmitBtn" class="alpha-submit-btn">SUBMIT</button>
@@ -6963,7 +6966,7 @@ function createUnifiedAlphaFeature(workflowKind) {
         <div class="alpha-unified-title-row" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;width:100%;flex-wrap:wrap;margin-bottom:4px;">
             <h2 class="feature-title alpha-unified-feature-title" style="margin:0;flex:1;min-width:120px;">${title}</h2>
             <div class="alpha-lex-peek-corner" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
-                <span id="alphaLexPeekCompactLabel" class="alpha-lex-peek-compact-label" style="font-size:12px;color:#444;text-align:right;max-width:200px;line-height:1.3;" title="Best Lex position on current ALPHA-filtered list (positions 4–6)">Lex: —</span>
+                <span id="alphaLexPeekCompactLabel" class="alpha-lex-peek-compact-label" style="font-size:12px;color:#444;text-align:right;max-width:200px;line-height:1.3;" title="Lex column: L = last letter, L2 = 2nd from last, otherwise 1-based index; never first letter">Lex: —</span>
                 <button type="button" id="alphaLexPeekToggleBtn" class="secondary-btn small-button" title="Open Lex filter (same idea as NEW)">LEX</button>
             </div>
         </div>
@@ -7018,15 +7021,15 @@ function createUnifiedAlphaFeature(workflowKind) {
             <button type="button" class="alpha-btn alpha-repeat" id="alphaRepeatDirBtn" aria-label="Repeat (same letter)">Repeat</button>
             <button type="button" class="alpha-btn alpha-na" id="alphaNaBtn" aria-label="Not on line (next letter not in custom line)">N/A</button>
             <button type="button" class="alpha-btn alpha-right" id="alphaRightBtn" aria-label="Right (toward Z)">Right →</button>
+            <button type="button" class="alpha-btn alpha-backspace" id="alphaBackspaceBtn" aria-label="Remove last direction">Backspace</button>
         </div>
         <div class="alpha-actions">
             <button type="button" id="alphaSubmitBtn" class="alpha-submit-btn">SUBMIT</button>
             <button type="button" id="alphaSkipBtn" class="skip-button">SKIP</button>
         </div>
         <div id="alphaLexPeekPanel" style="display:none; margin-top:12px; padding:10px; border:1px solid #ddd; border-radius:10px; background:#fafafa;">
-            <p style="margin:0 0 8px;font-size:13px;color:#333;">Lex filter applies to the <strong>current ALPHA-filtered</strong> list (from when you opened this panel). It replaces the working wordlist for this step so SUBMIT stays consistent.</p>
-            <div style="font-size:13px;margin-bottom:8px;">
-                Lexicon position (excluding 1–3): <strong id="alphaLexPeekPositionDisplay">—</strong>
+            <div style="font-size:26px;margin-bottom:8px;">
+                Lexicon position: <strong id="alphaLexPeekPositionDisplay">—</strong>
             </div>
             <div style="font-size:13px;margin-bottom:8px;">
                 Possible letters: <span id="alphaLexPeekLettersDisplay">—</span>
@@ -7744,8 +7747,8 @@ function createNewFeature() {
             <button type="button" id="newLexPeekToggleBtn" class="secondary-btn">LEX</button>
         </div>
         <div id="newLexPeekPanel" style="display:none; margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:10px; background:#fafafa;">
-            <p style="margin:0 0 6px 0; font-size:13px; color:#444;">
-                Lexicon position (excluding 1-3): <strong id="newLexPeekPositionDisplay">—</strong>
+            <p style="margin:0 0 6px 0; font-size:26px; color:#444;">
+                Lexicon position: <strong id="newLexPeekPositionDisplay">—</strong>
             </p>
             <p style="margin:0 0 8px 0; font-size:12px; color:#666; word-break:break-word;">
                 Possible letters: <span id="newLexPeekLettersDisplay">—</span>
@@ -11089,13 +11092,13 @@ function setupFeatureListeners(feature, callback, options) {
             // Update position display
             const positionNumber = document.querySelector('#originalLexFeature .position-number');
             if (positionNumber) {
-                positionNumber.textContent = position + 1; // Convert to 1-based position
+                positionNumber.textContent = formatLexPositionLabel(position, currentFilteredWords);
             }
             
             // Update possible letters display
             const lettersList = document.querySelector('#originalLexFeature .letters-list');
             if (lettersList) {
-                lettersList.textContent = letters.join(', ');
+                lettersList.innerHTML = formatLexLetterStatsCompactHtml(currentFilteredWords, position, letters);
             }
             
             if (originalLexButton) {
@@ -11165,10 +11168,11 @@ function setupFeatureListeners(feature, callback, options) {
             const advLexPosition = position;
 
             if (positionNumberEl) {
-                positionNumberEl.textContent = advLexPosition >= 0 ? (advLexPosition + 1).toString() : '-';
+                positionNumberEl.textContent =
+                    advLexPosition >= 0 ? formatLexPositionLabel(advLexPosition, currentFilteredWords) : '-';
             }
             if (lettersListEl) {
-                lettersListEl.textContent = letters.join(', ');
+                lettersListEl.innerHTML = formatLexLetterStatsCompactHtml(currentFilteredWords, advLexPosition, letters);
             }
 
             // If we couldn't find a valid position or letters, just allow SKIP
@@ -12250,14 +12254,14 @@ function setupFeatureListeners(feature, callback, options) {
                         lexPosition2 >= 0
                             ? findPositionWithMostVarianceFrom(baseCandidates2, lexPosition2, 6)
                             : { letters: [] };
-                    const p1 = lexPosition1 >= 0 ? String(lexPosition1 + 1) : '—';
-                    const p2 = lexPosition2 >= 0 ? String(lexPosition2 + 1) : '—';
+                    const p1 = lexPosition1 >= 0 ? formatLexPositionLabel(lexPosition1, baseCandidates1) : '—';
+                    const p2 = lexPosition2 >= 0 ? formatLexPositionLabel(lexPosition2, baseCandidates2) : '—';
                     if (lexPos1El) lexPos1El.textContent = p1;
                     if (lexPos2El) lexPos2El.textContent = p2;
-                    const l1 = l1Meta.letters && l1Meta.letters.length ? l1Meta.letters.join(', ') : '—';
-                    const l2 = l2Meta.letters && l2Meta.letters.length ? l2Meta.letters.join(', ') : '—';
-                    if (lexLetters1El) lexLetters1El.textContent = l1;
-                    if (lexLetters2El) lexLetters2El.textContent = l2;
+                    const l1 = formatLexLetterStatsCompactHtml(baseCandidates1, lexPosition1, l1Meta.letters);
+                    const l2 = formatLexLetterStatsCompactHtml(baseCandidates2, lexPosition2, l2Meta.letters);
+                    if (lexLetters1El) lexLetters1El.innerHTML = l1;
+                    if (lexLetters2El) lexLetters2El.innerHTML = l2;
                     return;
                 }
                 const meta =
@@ -12265,12 +12269,13 @@ function setupFeatureListeners(feature, callback, options) {
                         ? { position: lexLockedPosition, letters: [] }
                         : findBestLexPositionAcrossWordSets(baseCandidates1, baseCandidates2, 0, 6);
                 lexPosition = meta.position;
-                const p = lexPosition >= 0 ? String(lexPosition + 1) : '—';
+                const combinedCandidates = Array.from(new Set([...(baseCandidates1 || []), ...(baseCandidates2 || [])]));
+                const p = lexPosition >= 0 ? formatLexPositionLabel(lexPosition, combinedCandidates) : '—';
                 if (lexPos1El) lexPos1El.textContent = p;
                 if (lexPos2El) lexPos2El.textContent = p;
-                const l = meta.letters.length ? meta.letters.join(', ') : '—';
-                if (lexLetters1El) lexLetters1El.textContent = l;
-                if (lexLetters2El) lexLetters2El.textContent = l;
+                const l = formatLexLetterStatsCompactHtml(combinedCandidates, lexPosition, meta.letters);
+                if (lexLetters1El) lexLetters1El.innerHTML = l;
+                if (lexLetters2El) lexLetters2El.innerHTML = l;
             };
             const setMuteDuoLexVisible = (visible) => {
                 lexVisible = !!visible;
@@ -14913,6 +14918,7 @@ function setupFeatureListeners(feature, callback, options) {
             const alphaLeftBtn = document.getElementById('alphaLeftBtn');
             const alphaRepeatDirBtn = document.getElementById('alphaRepeatDirBtn');
             const alphaRightBtn = document.getElementById('alphaRightBtn');
+            const alphaBackspaceBtn = document.getElementById('alphaBackspaceBtn');
             const alphaSubmitBtn = document.getElementById('alphaSubmitBtn');
             const alphaSkipBtn = document.getElementById('alphaSkipBtn');
             const alphaSequenceDisplay = document.getElementById('alphaSequenceDisplay');
@@ -14921,11 +14927,23 @@ function setupFeatureListeners(feature, callback, options) {
             let alphaDirections = [];
 
             function alphaUpdateDisplay() {
-                if (alphaSequenceDisplay) {
-                    alphaSequenceDisplay.textContent = alphaDirections.length
-                        ? alphaDirections.map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat')).join(', ')
-                        : '—';
+                if (!alphaSequenceDisplay) return;
+                alphaSequenceDisplay.classList.remove('alpha-seq--lex-prev', 'alpha-seq--lex-curr');
+                if (!alphaDirections.length) {
+                    alphaSequenceDisplay.textContent = '—';
+                    return;
                 }
+                alphaSequenceDisplay.textContent = alphaDirections
+                    .map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : 'Repeat'))
+                    .join(', ');
+                const section = lastDictionaryAlphaSection;
+                const list = filterWordsByAlpha(currentFilteredWords, alphaDirections, section, alphaSwapPov);
+                const r = findPositionWithMostVarianceFrom(list, 3, 6);
+                const pos = r.position >= 0 ? r.position : -1;
+                const P = pos >= 0 ? pos + 1 : -1;
+                const d = alphaDirections.length;
+                if (P === d) alphaSequenceDisplay.classList.add('alpha-seq--lex-prev');
+                else if (P === d + 1) alphaSequenceDisplay.classList.add('alpha-seq--lex-curr');
             }
 
             function alphaShortSubmit() {
@@ -14979,6 +14997,17 @@ function setupFeatureListeners(feature, callback, options) {
                     alphaRightBtn.click();
                 }, { passive: false });
             }
+            if (alphaBackspaceBtn) {
+                alphaBackspaceBtn.onclick = () => {
+                    if (!alphaDirections.length) return;
+                    alphaDirections.pop();
+                    alphaUpdateDisplay();
+                };
+                alphaBackspaceBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    alphaBackspaceBtn.click();
+                }, { passive: false });
+            }
             if (alphaSubmitBtn) {
                 alphaSubmitBtn.onclick = () => {
                     if (alphaDirections.length === 0) {
@@ -15020,6 +15049,7 @@ function setupFeatureListeners(feature, callback, options) {
             const alphaLeftBtn = document.getElementById('alphaLeftBtn');
             const alphaRepeatDirBtn = document.getElementById('alphaRepeatDirBtn');
             const alphaRightBtn = document.getElementById('alphaRightBtn');
+            const alphaBackspaceBtn = document.getElementById('alphaBackspaceBtn');
             const alphaSubmitBtn = document.getElementById('alphaSubmitBtn');
             const alphaSkipBtn = document.getElementById('alphaSkipBtn');
             const alphaSequenceDisplay = document.getElementById('alphaSequenceDisplay');
@@ -15470,15 +15500,30 @@ function setupFeatureListeners(feature, callback, options) {
             });
 
             function alphaUpdateDisplay() {
-                if (alphaSequenceDisplay) {
-                    alphaSequenceDisplay.textContent = alphaDirections.length
-                        ? alphaDirections
-                              .map((d) =>
-                                  d === 'L' ? 'Left' : d === 'R' ? 'Right' : d === 'NA' ? 'N/A' : 'Repeat'
-                              )
-                              .join(', ')
-                        : '—';
+                if (!alphaSequenceDisplay) return;
+                alphaSequenceDisplay.classList.remove('alpha-seq--lex-prev', 'alpha-seq--lex-curr');
+                if (!alphaDirections.length) {
+                    alphaSequenceDisplay.textContent = '—';
+                    return;
                 }
+                alphaSequenceDisplay.textContent = alphaDirections
+                    .map((d) =>
+                        d === 'L' ? 'Left' : d === 'R' ? 'Right' : d === 'NA' ? 'N/A' : 'Repeat'
+                    )
+                    .join(', ');
+                const list = filterAlphaFromBase(alphaDirections).filtered;
+                let pos = -1;
+                const lexIn = parseUnifiedCustomAlphaLine((alphaLexPeekInput && alphaLexPeekInput.value) || '');
+                if (alphaLexPeekVisible && lexIn && alphaLexPeekLockedPosition >= 0) {
+                    pos = alphaLexPeekLockedPosition;
+                } else {
+                    const r = findPositionWithMostVarianceFrom(list, 3, 6);
+                    pos = r.position >= 0 ? r.position : -1;
+                }
+                const P = pos >= 0 ? pos + 1 : -1;
+                const d = alphaDirections.length;
+                if (P === d) alphaSequenceDisplay.classList.add('alpha-seq--lex-prev');
+                else if (P === d + 1) alphaSequenceDisplay.classList.add('alpha-seq--lex-curr');
             }
 
             function refreshLineSummaryAndNa() {
@@ -15872,6 +15917,16 @@ function setupFeatureListeners(feature, callback, options) {
                 }
                 callback(result.filtered);
                 refreshAlphaLexPeekCompactLabel();
+                if (alphaLexPeekVisible) {
+                    alphaLexPeekSourceWords = Array.isArray(result.filtered) ? result.filtered.slice() : [];
+                    if (!parseUnifiedCustomAlphaLine((alphaLexPeekInput && alphaLexPeekInput.value) || '')) {
+                        alphaLexPeekLockedPosition = -1;
+                        alphaLexPeekLockedLetters = [];
+                    }
+                    refreshAlphaLexPeekPanelMeta();
+                } else {
+                    alphaUpdateDisplay();
+                }
                 return true;
             }
 
@@ -15884,7 +15939,7 @@ function setupFeatureListeners(feature, callback, options) {
                 }
                 const { position } = findPositionWithMostVarianceFrom(list, 3, 6);
                 alphaLexPeekCompactLabel.textContent =
-                    position >= 0 ? `Lex ~pos ${position + 1}` : 'Lex: —';
+                    position >= 0 ? `Lex ~${formatLexPositionLabel(position, list)}` : 'Lex: —';
             }
 
             function refreshAlphaLexPeekPanelMeta() {
@@ -15897,11 +15952,17 @@ function setupFeatureListeners(feature, callback, options) {
                 alphaLexPeekPosition = position;
                 alphaLexPeekLetters = letters || [];
                 if (alphaLexPeekPositionDisplay) {
-                    alphaLexPeekPositionDisplay.textContent = position >= 0 ? String(position + 1) : '—';
+                    alphaLexPeekPositionDisplay.textContent =
+                        position >= 0 ? formatLexPositionLabel(position, alphaLexPeekSourceWords) : '—';
                 }
                 if (alphaLexPeekLettersDisplay) {
-                    alphaLexPeekLettersDisplay.textContent = alphaLexPeekLetters.length ? alphaLexPeekLetters.join(', ') : '—';
+                    alphaLexPeekLettersDisplay.innerHTML = formatLexLetterStatsCompactHtml(
+                        alphaLexPeekSourceWords,
+                        position,
+                        alphaLexPeekLetters
+                    );
                 }
+                alphaUpdateDisplay();
             }
 
             function setAlphaLexPeekVisible(visible) {
@@ -15917,6 +15978,7 @@ function setupFeatureListeners(feature, callback, options) {
                 } else {
                     alphaLexPeekLockedPosition = -1;
                     alphaLexPeekLockedLetters = [];
+                    alphaUpdateDisplay();
                 }
             }
 
@@ -16061,7 +16123,6 @@ function setupFeatureListeners(feature, callback, options) {
                     return;
                 }
                 alphaDirections.push(dir);
-                alphaUpdateDisplay();
                 const ok = applyAlphaIncrementalFromCurrentDirections();
                 if (!ok) {
                     alphaDirections.pop();
@@ -16070,6 +16131,12 @@ function setupFeatureListeners(feature, callback, options) {
                     return;
                 }
                 if (alphaDirectionsCount > 0 && alphaDirections.length >= alphaDirectionsCount) unifiedAlphaSubmit();
+            }
+
+            function popAlphaDir() {
+                if (!alphaDirections.length) return;
+                alphaDirections.pop();
+                applyAlphaIncrementalFromCurrentDirections();
             }
 
             if (alphaLeftBtn) {
@@ -16100,6 +16167,7 @@ function setupFeatureListeners(feature, callback, options) {
                     alphaRightBtn.click();
                 }, { passive: false });
             }
+            attachUnifiedAlphaTapBtn(alphaBackspaceBtn, popAlphaDir);
             if (alphaSubmitBtn) {
                 alphaSubmitBtn.onclick = () => unifiedAlphaSubmit();
                 alphaSubmitBtn.addEventListener('touchstart', (e) => {
@@ -16942,10 +17010,15 @@ function setupFeatureListeners(feature, callback, options) {
                 newLexPeekPosition = position;
                 newLexPeekLetters = letters || [];
                 if (newLexPeekPositionDisplay) {
-                    newLexPeekPositionDisplay.textContent = position >= 0 ? String(position + 1) : '—';
+                    newLexPeekPositionDisplay.textContent =
+                        position >= 0 ? formatLexPositionLabel(position, newLexPeekSourceWords) : '—';
                 }
                 if (newLexPeekLettersDisplay) {
-                    newLexPeekLettersDisplay.textContent = newLexPeekLetters.length ? newLexPeekLetters.join(', ') : '—';
+                    newLexPeekLettersDisplay.innerHTML = formatLexLetterStatsCompactHtml(
+                        newLexPeekSourceWords,
+                        position,
+                        newLexPeekLetters
+                    );
                 }
             };
 
@@ -17256,7 +17329,10 @@ function setupFeatureListeners(feature, callback, options) {
                 newLexPeekLastInput = letters;
                 callback(filtered);
                 refreshNewLexPeekMeta();
-                if (!silent) setMessage(`LEX applied at position ${newLexPeekPosition + 1}: ${before} → ${filtered.length}`);
+                if (!silent) {
+                    const lexLab = formatLexPositionLabel(newLexPeekPosition, newLexPeekSourceWords);
+                    setMessage(`LEX applied at ${lexLab}: ${before} → ${filtered.length}`);
+                }
             }
 
             attachNewTapButton(newLexPeekToggleBtn, () => {
@@ -18401,9 +18477,34 @@ function findLeastVariancePosition(words, startPos, endPos) {
     return result;
 }
 
+/** Lex column from word start (0-based): never use the first letter (index 0). */
+const LEXICON_MIN_CHAR_INDEX = 1;
+
+/**
+ * Human label for a lex column (0-based `pos`):
+ * - If every eligible word has that column as the last letter → "L"
+ * - Else if every eligible word has it as second-from-last → "L2"
+ * - Otherwise → 1-based column index (pos + 1), never a mixed label like "5–L2"
+ */
+function formatLexPositionLabel(posZeroBased, words) {
+    if (!Number.isInteger(posZeroBased) || posZeroBased < LEXICON_MIN_CHAR_INDEX) return '—';
+    const ks = [];
+    for (const w of words || []) {
+        const up = String(w || '').toUpperCase();
+        if (up.length <= posZeroBased) continue;
+        const k = up.length - posZeroBased;
+        if (k >= 1) ks.push(k);
+    }
+    if (!ks.length) return '—';
+    if (ks.every((k) => k === 1)) return 'L';
+    if (ks.every((k) => k === 2)) return 'L2';
+    return String(posZeroBased + 1);
+}
+
 // Function to find position with most variance
 // ignorePosition1: when true, do not pick position 0 (Position 1); use next best of positions 1–5
 function findPositionWithMostVariance(words, ignorePosition1) {
+    void ignorePosition1; // legacy: first column never used (see LEXICON_MIN_CHAR_INDEX)
     // Initialize array to store unique letters for each position
     const positionLetters = Array(5).fill().map(() => new Set());
 
@@ -18420,7 +18521,7 @@ function findPositionWithMostVariance(words, ignorePosition1) {
     let resultLetters = [];
 
     positionLetters.forEach((letters, index) => {
-        if (ignorePosition1 && index === 0) return;
+        if (index < LEXICON_MIN_CHAR_INDEX) return;
         if (letters.size > maxVariance) {
             maxVariance = letters.size;
             result = index;
@@ -18437,7 +18538,7 @@ function findPositionWithMostVariance(words, ignorePosition1) {
 // Variant for NEW LEX peek: choose best position from a minimum index (inclusive).
 function findPositionWithMostVarianceFrom(words, minIndex, maxPositions) {
     const limit = Math.max(1, parseInt(maxPositions, 10) || 5);
-    const start = Math.max(0, parseInt(minIndex, 10) || 0);
+    const start = Math.max(LEXICON_MIN_CHAR_INDEX, parseInt(minIndex, 10) || 0);
     const positionLetters = Array(limit).fill().map(() => new Set());
     (words || []).forEach((word) => {
         const w = String(word || '').toUpperCase();
@@ -18462,7 +18563,7 @@ function findPositionWithMostVarianceFrom(words, minIndex, maxPositions) {
 // Combined position score across two candidate sets (for MUTE DUO LEX peek).
 function findBestLexPositionAcrossWordSets(wordsA, wordsB, minIndex, maxPositions) {
     const limit = Math.max(1, parseInt(maxPositions, 10) || 6);
-    const start = Math.max(0, parseInt(minIndex, 10) || 0);
+    const start = Math.max(LEXICON_MIN_CHAR_INDEX, parseInt(minIndex, 10) || 0);
     const setsA = Array(limit).fill().map(() => new Set());
     const setsB = Array(limit).fill().map(() => new Set());
     const freq = Array(limit).fill().map(() => new Map());
@@ -18496,6 +18597,69 @@ function findBestLexPositionAcrossWordSets(wordsA, wordsB, minIndex, maxPosition
         .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
         .map((x) => x[0]);
     return { position: bestPos, letters };
+}
+
+function buildLexLetterStatsAtPosition(words, position) {
+    const pos = Number.isInteger(position) ? position : -1;
+    const counts = new Map();
+    let total = 0;
+    if (pos < 0 || !Array.isArray(words) || !words.length) return [];
+    for (const word of words) {
+        const up = String(word || '').toUpperCase();
+        if (up.length <= pos) continue;
+        const ch = up[pos];
+        if (ch < 'A' || ch > 'Z') continue;
+        total++;
+        counts.set(ch, (counts.get(ch) || 0) + 1);
+    }
+    if (!total) return [];
+    return Array.from(counts.entries())
+        .map(([letter, count]) => {
+            const removalPct = ((total - count) / total) * 100;
+            return { letter, count, total, removalPct };
+        })
+        .sort((a, b) => {
+            const aDead = a.count === 0;
+            const bDead = b.count === 0;
+            if (aDead !== bDead) return aDead ? 1 : -1;
+            if (b.removalPct !== a.removalPct) return b.removalPct - a.removalPct;
+            if (a.count !== b.count) return a.count - b.count;
+            return a.letter.localeCompare(b.letter);
+        });
+}
+
+function formatLexRemovalPct(removalPct, totalWords) {
+    const n = Number(removalPct);
+    const t = Number(totalWords);
+    if (!Number.isFinite(n)) return Number.isFinite(t) && t > 100 ? '0.00' : '0';
+    if (Number.isFinite(t) && t > 100) return n.toFixed(2);
+    return String(Math.round(n));
+}
+
+function formatLexLetterStatsCompact(words, position, fallbackLetters) {
+    const stats = buildLexLetterStatsAtPosition(words, position);
+    if (stats.length) {
+        return stats.map((s) => `${s.letter} ${formatLexRemovalPct(s.removalPct, s.total)}%`).join(', ');
+    }
+    const fallback = Array.isArray(fallbackLetters) ? fallbackLetters.filter(Boolean) : [];
+    return fallback.length ? fallback.join(', ') : '—';
+}
+
+function formatLexLetterStatsCompactHtml(words, position, fallbackLetters) {
+    const stats = buildLexLetterStatsAtPosition(words, position);
+    if (stats.length) {
+        return stats
+            .map((s) => {
+                const pctStr = formatLexRemovalPct(s.removalPct, s.total);
+                let chipClass = 'lex-stat-chip';
+                if (s.count === 0) chipClass += ' lex-stat-chip--zero';
+                else if (s.count === 1 && s.total > 1) chipClass += ' lex-stat-chip--single';
+                return `<span class="${chipClass}"><span class="lex-letter">${s.letter}</span> <span class="lex-pct">${pctStr}%</span></span>`;
+            })
+            .join(', ');
+    }
+    const fallback = Array.isArray(fallbackLetters) ? fallbackLetters.filter(Boolean) : [];
+    return fallback.length ? fallback.join(', ') : '—';
 }
 
 // Function to filter words by original lex
