@@ -18992,6 +18992,7 @@ function formatLexLetterStatsCompactHtml(words, position, fallbackLetters) {
                 let chipClass = 'lex-stat-chip';
                 if (s.count === 0) chipClass += ' lex-stat-chip--zero';
                 else if (s.count === 1 && s.total > 1) chipClass += ' lex-stat-chip--single';
+                else if (s.count >= 2 && s.count <= 5) chipClass += ' lex-stat-chip--few';
                 return `<span class="${chipClass}"><span class="lex-letter">${s.letter}</span> <span class="lex-pct">${pctStr}%</span></span>`;
             })
             .join(', ');

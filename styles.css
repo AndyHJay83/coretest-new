@@ -994,6 +994,11 @@ body {
     font-weight: 600;
 }
 
+.lex-stat-chip--few .lex-pct {
+    color: #ea580c;
+    font-weight: 600;
+}
+
 .lex-stat-chip--zero .lex-pct {
     color: #b71c1c;
     font-weight: 600;
@@ -1008,6 +1013,12 @@ body {
 #muteDuoLexLettersDisplay1 .lex-stat-chip--single .lex-pct,
 #muteDuoLexLettersDisplay2 .lex-stat-chip--single .lex-pct {
     color: #16a34a;
+    font-weight: 600;
+}
+
+#muteDuoLexLettersDisplay1 .lex-stat-chip--few .lex-pct,
+#muteDuoLexLettersDisplay2 .lex-stat-chip--few .lex-pct {
+    color: #ea580c;
     font-weight: 600;
 }
 
@@ -4425,9 +4436,13 @@ input:checked + .slider:before {
 .workflow-report-human {
     max-height: min(52vh, 520px);
     overflow-y: auto;
+    overflow-x: hidden;
     margin: 0 0 12px 0;
     padding: 2px 6px 2px 2px;
     text-align: left;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
 }
 
 .workflow-report-empty {
@@ -4687,8 +4702,11 @@ input:checked + .slider:before {
     border-radius: 4px;
     font-size: 12px;
     line-height: 1.45;
-    overflow-x: auto;
+    overflow: auto;
+    max-height: min(40vh, 280px);
     font-family: ui-monospace, monospace;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .workflow-report-trace-compact {
@@ -4730,10 +4748,12 @@ input:checked + .slider:before {
     border-radius: 4px;
     font-size: 11px;
     line-height: 1.35;
-    overflow-x: auto;
+    overflow: auto;
     max-height: 220px;
-    overflow-y: auto;
     font-family: ui-monospace, monospace;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
 }
 
 .workflow-report-step-list {
@@ -4895,6 +4915,9 @@ input:checked + .slider:before {
     border: 1px solid #ddd;
     border-radius: 4px;
     font-family: ui-monospace, monospace;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
 }
 
 .workflow-report-pre--json {
@@ -4941,6 +4964,51 @@ button.close-info-button.workflow-report-close {
         width: 24px;
         height: 24px;
         font-size: 18px;
+    }
+
+    /* Workflow REPORT: scrollable overlay + taller debug panes on small screens */
+    #workflowReportInfo.feature-info-modal.active {
+        align-items: flex-start;
+        justify-content: flex-start;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        padding: 10px 8px 20px;
+        box-sizing: border-box;
+    }
+
+    #workflowReportInfo .feature-info-content.workflow-report-modal-content {
+        width: min(100%, calc(100vw - 16px));
+        max-width: 720px;
+        margin: 0 auto 16px;
+        flex-shrink: 0;
+    }
+
+    .workflow-report-human {
+        max-height: min(58dvh, 520px);
+        min-height: 120px;
+    }
+
+    .workflow-report-json-local {
+        max-height: min(42dvh, 320px);
+    }
+
+    .workflow-report-pre {
+        max-height: min(50dvh, 360px);
+    }
+
+    .workflow-report-pre--json {
+        max-height: min(40dvh, 280px);
+    }
+
+    .workflow-report-plan-pre {
+        max-height: min(38dvh, 260px);
+    }
+
+    .workflow-report-run-expand-body {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
     }
 }
 
