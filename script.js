@@ -1512,6 +1512,11 @@ const DEFAULT_SETTINGS = {
     omegaCustomShapes: [], // [{ name: "Shape", letters: "ABC" }, ...]
     omegaShapesCount: 0,    // 0 = until SUBMIT; N = auto-submit after N shapes
     omegaWordOrder: 'alphaFirst', // 'alphaFirst' | 'alphaLex'
+    /** When ON, OMEGA shows a mic to speak up to 5 objects (between trigger words) and rebuilds shape buttons. */
+    omegaVoiceInput: false,
+    /** Optional; empty = use ALPHA start/end trigger words for OMEGA voice strip + end-stop. */
+    omegaSpeechStartPhrase: '',
+    omegaSpeechEndPhrase: '',
     skipWorkflowDeleteConfirm: false,
     alphaDirectionsCount: 0,  // 0 = enter until SUBMIT; N = auto-submit after N directions
     alphaSwapPov: false,       // OFF: Left=toward A, Right=toward Z; ON: swap
@@ -1600,6 +1605,22 @@ const omegaMappings = {
 const omegaForbiddenPairs = [['Q', 'Z'], ['J', 'Q'], ['V', 'Q']];
 let omegaSelections = [];
 let omegaActiveMapping = {};
+
+/** Web Speech API session for OMEGA voice setup (cleared when OMEGA restarts or recognition stops). */
+let omegaVoiceSpeechRec = null;
+/** When true, the next recognition `onend` will not apply the transcript (user tapped mic again to cancel). */
+let omegaVoiceSkipApplyOnEnd = false;
+
+/** @param {boolean} [discardTranscript] If true, do not apply captured text when recognition ends (workflow step / cancel). */
+function stopOmegaVoiceSpeechIfAny(discardTranscript) {
+    if (!omegaVoiceSpeechRec) return;
+    if (discardTranscript) omegaVoiceSkipApplyOnEnd = true;
+    try {
+        omegaVoiceSpeechRec.stop();
+    } catch (e) {
+        /* ignore */
+    }
+}
 
 // CALCULUS: positional digit filter (like OMEGA Short but digits 0-9 → fixed letter sets). Same forbidden pairs as OMEGA.
 const calculusMapping = {
@@ -5497,11 +5518,14 @@ function updateAlphaEfficiencySubtitle() {
 }
 
 function startOmega(callback) {
+    stopOmegaVoiceSpeechIfAny(true);
     const modeSelect = document.getElementById('omegaModeSelect');
     const mode = (modeSelect && modeSelect.value) || (appSettings && appSettings.omegaMode) || 'esp';
-    omegaActiveMapping = mode === 'custom' ? getOmegaActiveMapping() : (omegaMappings[mode] || omegaMappings.esp);
+    const baseMap = mode === 'custom' ? getOmegaActiveMapping() : (omegaMappings[mode] || omegaMappings.esp);
+    omegaActiveMapping = baseMap && typeof baseMap === 'object' ? { ...baseMap } : {};
     omegaSelections = [];
     const omegaTrace = [];
+    let omegaVoiceResolvedKeys = null;
 
     const shapeFeature = document.getElementById('shapeFeature');
     if (!shapeFeature) return;
@@ -5516,7 +5540,13 @@ function startOmega(callback) {
     updateOmegaSequenceDisplay();
 
     const omegaShapesCount = Math.max(0, parseInt((appSettings && appSettings.omegaShapesCount) || 0, 10));
+    const omegaUserInputExtras = () => (
+        omegaVoiceResolvedKeys && omegaVoiceResolvedKeys.length
+            ? { voiceButtonOrder: omegaVoiceResolvedKeys.slice() }
+            : {}
+    );
     const omegaAutoSubmit = () => {
+        stopOmegaVoiceSpeechIfAny(true);
         const filtered = applyOmegaFilter(currentFilteredWords, omegaSelections);
         omegaTrace.push({
             action: 'AUTO_SUBMIT',
@@ -5529,7 +5559,8 @@ function startOmega(callback) {
             userInput: {
                 mode,
                 shapes: omegaSelections.slice(),
-                trace: omegaTrace.slice()
+                trace: omegaTrace.slice(),
+                ...omegaUserInputExtras()
             }
         };
         callback(filtered);
@@ -5653,27 +5684,180 @@ function startOmega(callback) {
             compactEl.innerHTML = `Lex ${pLabel}: ${l}`;
         }
     };
-    categoryButtons.innerHTML = '';
-    Object.keys(omegaActiveMapping).forEach(shape => {
-        const btn = document.createElement('button');
-        btn.className = 'shape-btn';
-        btn.textContent = shape;
-        btn.type = 'button';
-        btn.onclick = () => {
-            omegaSelections.push(shape);
-            updateOmegaSequenceDisplay();
-            omegaIncrementalFilter();
-            if (omegaShapesCount > 0 && omegaSelections.length >= omegaShapesCount) omegaAutoSubmit();
+
+    const rebuildOmegaCategoryButtons = () => {
+        categoryButtons.innerHTML = '';
+        Object.keys(omegaActiveMapping).forEach((shape) => {
+            const btn = document.createElement('button');
+            btn.className = 'shape-btn';
+            btn.textContent = shape;
+            btn.type = 'button';
+            btn.onclick = () => {
+                omegaSelections.push(shape);
+                updateOmegaSequenceDisplay();
+                omegaIncrementalFilter();
+                if (omegaShapesCount > 0 && omegaSelections.length >= omegaShapesCount) omegaAutoSubmit();
+            };
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); btn.click(); }, { passive: false });
+            categoryButtons.appendChild(btn);
+        });
+        if (mode === 'custom' && Object.keys(omegaActiveMapping).length === 0) {
+            const msg = document.createElement('p');
+            msg.className = 'omega-empty-custom-msg';
+            msg.style.margin = '12px 0';
+            msg.style.color = '#666';
+            msg.style.fontSize = '0.9em';
+            msg.textContent = 'Add shapes in Settings → OMEGA → Custom';
+            categoryButtons.appendChild(msg);
+        }
+    };
+
+    let omegaVoiceRow = shapeDisplay.querySelector('.omega-voice-row');
+    if (!omegaVoiceRow) {
+        omegaVoiceRow = document.createElement('div');
+        omegaVoiceRow.className = 'omega-voice-row';
+        shapeDisplay.insertBefore(omegaVoiceRow, categoryButtons);
+    }
+    const voiceInputOn = !!(appSettings && appSettings.omegaVoiceInput);
+    if (voiceInputOn) {
+        omegaVoiceRow.style.display = '';
+        omegaVoiceRow.innerHTML = `
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:10px;width:100%;">
+                <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">
+                    <button type="button" id="omegaVoiceMicBtn" class="alpha-line-mic-btn" title="Tap: dictate objects. Tap again while live to cancel. Say the end trigger to finish." aria-label="Speak OMEGA objects">\u{1F3A4}</button>
+                </div>
+                <p id="omegaVoiceMicStatus" style="margin:0;font-size:12px;color:#444;text-align:center;min-height:1.25em;" aria-live="polite"></p>
+            </div>
+        `;
+    } else {
+        omegaVoiceRow.innerHTML = '';
+        omegaVoiceRow.style.display = 'none';
+    }
+
+    rebuildOmegaCategoryButtons();
+
+    const applyOmegaVoiceTranscript = (rawText) => {
+        const statusEl = document.getElementById('omegaVoiceMicStatus');
+        const catalog = buildOmegaVoiceCatalogFromAppSettings();
+        const { orderedKeys, strippedTranscript, tokens } = parseOmegaVoiceTranscriptToOrderedKeys(rawText, catalog);
+        if (!orderedKeys.length) {
+            alert(
+                'No matching OMEGA objects found. Say names from ESP / Pocket / Restaurant / Straight–Curved (or your custom shapes). Check trigger words in Settings → OMEGA / ALPHA.'
+            );
+            if (statusEl) statusEl.textContent = '';
+            return;
+        }
+        omegaActiveMapping = Object.fromEntries(orderedKeys.map((k) => [k, catalog[k]]));
+        omegaVoiceResolvedKeys = orderedKeys.slice();
+        omegaSelections = [];
+        updateOmegaSequenceDisplay();
+        rebuildOmegaCategoryButtons();
+        omegaTrace.push({
+            action: 'VOICE_SETUP',
+            rawTranscript: rawText,
+            strippedTranscript,
+            tokenCount: tokens.length,
+            resolvedKeys: orderedKeys.slice(),
+            mapping: { ...omegaActiveMapping }
+        });
+        if (statusEl) statusEl.textContent = `Buttons: ${orderedKeys.join(', ')}`;
+        omegaIncrementalFilter();
+    };
+
+    const toggleOmegaVoice = () => {
+        const micBtn = document.getElementById('omegaVoiceMicBtn');
+        const statusEl = document.getElementById('omegaVoiceMicStatus');
+        const Ctor = getAlphaSpeechRecognitionConstructor();
+        if (!Ctor) {
+            alert('Speech recognition is not available in this browser. Use Chrome/Edge/Safari with HTTPS, or type object names in Settings → OMEGA → Custom.');
+            return;
+        }
+        if (omegaVoiceSpeechRec) {
+            stopOmegaVoiceSpeechIfAny(true);
+            return;
+        }
+        omegaVoiceSkipApplyOnEnd = false;
+        let omegaVoiceFinalBuf = '';
+        let omegaVoiceLastInterim = '';
+        const rec = new Ctor();
+        omegaVoiceSpeechRec = rec;
+        rec.lang = (navigator.language || 'en-US').replace('_', '-');
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.onstart = () => {
+            if (micBtn) micBtn.classList.add('alpha-line-mic-btn--listening');
+            if (statusEl) statusEl.textContent = 'Listening…';
         };
-        btn.addEventListener('touchstart', (e) => { e.preventDefault(); btn.click(); }, { passive: false });
-        categoryButtons.appendChild(btn);
-    });
-    if (mode === 'custom' && Object.keys(omegaActiveMapping).length === 0) {
-        const msg = document.createElement('p');
-        msg.className = 'omega-empty-custom-msg';
-        msg.style.margin = '12px 0'; msg.style.color = '#666'; msg.style.fontSize = '0.9em';
-        msg.textContent = 'Add shapes in Settings → OMEGA → Custom';
-        categoryButtons.appendChild(msg);
+        rec.onerror = () => {
+            if (statusEl) statusEl.textContent = '';
+            if (micBtn) micBtn.classList.remove('alpha-line-mic-btn--listening');
+            omegaVoiceSpeechRec = null;
+            omegaVoiceSkipApplyOnEnd = false;
+        };
+        rec.onresult = (ev) => {
+            let interim = '';
+            for (let i = ev.resultIndex; i < ev.results.length; i++) {
+                const r = ev.results[i];
+                if (r.isFinal) omegaVoiceFinalBuf += r[0].transcript;
+                else interim += r[0].transcript;
+            }
+            omegaVoiceLastInterim = interim;
+            const { endPhrase } = getOmegaSpeechTriggerPhrasesForStrip();
+            const live = (omegaVoiceFinalBuf + interim).trim();
+            if (statusEl) statusEl.textContent = live ? `Hearing: ${live}` : 'Listening…';
+            if (endPhrase && transcriptHasEndPhrase(omegaVoiceFinalBuf + interim, endPhrase)) {
+                try {
+                    rec.stop();
+                } catch (e) {
+                    /* ignore */
+                }
+            }
+        };
+        rec.onend = () => {
+            if (micBtn) micBtn.classList.remove('alpha-line-mic-btn--listening');
+            omegaVoiceSpeechRec = null;
+            const skip = omegaVoiceSkipApplyOnEnd;
+            omegaVoiceSkipApplyOnEnd = false;
+            const combined = (omegaVoiceFinalBuf + omegaVoiceLastInterim).trim();
+            omegaVoiceFinalBuf = '';
+            omegaVoiceLastInterim = '';
+            if (skip) {
+                if (statusEl) statusEl.textContent = '';
+                return;
+            }
+            if (combined) applyOmegaVoiceTranscript(combined);
+            else if (statusEl) statusEl.textContent = '';
+        };
+        try {
+            rec.start();
+        } catch (e) {
+            omegaVoiceSpeechRec = null;
+            if (micBtn) micBtn.classList.remove('alpha-line-mic-btn--listening');
+            alert('Could not start speech recognition. Check microphone permission and use HTTPS.');
+        }
+    };
+
+    if (voiceInputOn) {
+        const omegaVoiceMicBtn = document.getElementById('omegaVoiceMicBtn');
+        if (omegaVoiceMicBtn) {
+            let omegaVoiceTouch = false;
+            omegaVoiceMicBtn.addEventListener('click', () => {
+                if (omegaVoiceTouch) {
+                    omegaVoiceTouch = false;
+                    return;
+                }
+                toggleOmegaVoice();
+            });
+            omegaVoiceMicBtn.addEventListener(
+                'touchstart',
+                (e) => {
+                    e.preventDefault();
+                    omegaVoiceTouch = true;
+                    toggleOmegaVoice();
+                },
+                { passive: false }
+            );
+        }
     }
 
     // Insert LEX controls between shape buttons and action buttons
@@ -5814,6 +5998,7 @@ function startOmega(callback) {
     submitBtn.textContent = 'SUBMIT';
     submitBtn.type = 'button';
     submitBtn.onclick = () => {
+        stopOmegaVoiceSpeechIfAny(true);
         if (omegaSelections.length === 0) {
             alert('Add at least one shape to the sequence, then SUBMIT.');
             return;
@@ -5830,7 +6015,8 @@ function startOmega(callback) {
             userInput: {
                 mode,
                 shapes: omegaSelections.slice(),
-                trace: omegaTrace.slice()
+                trace: omegaTrace.slice(),
+                ...omegaUserInputExtras()
             }
         };
         callback(filtered);
@@ -5843,6 +6029,7 @@ function startOmega(callback) {
     skipBtn.textContent = 'SKIP';
     skipBtn.type = 'button';
     skipBtn.onclick = () => {
+        stopOmegaVoiceSpeechIfAny(true);
         omegaTrace.push({ action: 'SKIP', shapes: omegaSelections.slice() });
         pendingWorkflowStepPayload = {
             feature: 'omega',
@@ -5851,7 +6038,8 @@ function startOmega(callback) {
             userInput: {
                 mode,
                 shapes: omegaSelections.slice(),
-                trace: omegaTrace.slice()
+                trace: omegaTrace.slice(),
+                ...omegaUserInputExtras()
             }
         };
         callback(currentFilteredWords);
@@ -8713,6 +8901,156 @@ function transcriptHasEndPhrase(text, endPhrase) {
 function getAlphaSpeechRecognitionConstructor() {
     if (typeof window === 'undefined') return null;
     return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+/**
+ * Merge all built-in OMEGA maps plus saved custom shapes (for voice matching across modes).
+ * Custom entries overwrite built-ins when the shape name matches.
+ */
+function buildOmegaVoiceCatalogFromAppSettings() {
+    const out = {};
+    Object.keys(omegaMappings).forEach((modeKey) => {
+        const map = omegaMappings[modeKey];
+        if (!map || typeof map !== 'object') return;
+        Object.keys(map).forEach((shapeKey) => {
+            const letters = map[shapeKey];
+            if (typeof letters === 'string' && letters.trim()) {
+                out[shapeKey] = letters.toUpperCase().replace(/[^A-Z]/g, '');
+            }
+        });
+    });
+    const custom = (appSettings && appSettings.omegaCustomShapes) || [];
+    custom.forEach((s) => {
+        if (!s) return;
+        const name = (s.name || '').trim();
+        const letters = (s.letters || '').toUpperCase().replace(/[^A-Z]/g, '');
+        if (name && letters) out[name] = letters;
+    });
+    return out;
+}
+
+/** Spoken phrases → canonical keys (must exist in catalog). Phrases are matched lowercase. */
+const OMEGA_VOICE_EXTRA_SYNONYMS = [
+    ['wavy lines', 'WavyLines'],
+    ['wavy line', 'WavyLines'],
+    ['waves', 'WavyLines'],
+    ['some wavy lines', 'WavyLines'],
+    ['a circle', 'Circle'],
+    ['the circle', 'Circle'],
+    ['a cross', 'Cross'],
+    ['a square', 'Square'],
+    ['a star', 'Star'],
+    ['some keys', 'Keys'],
+    ['the keys', 'Keys'],
+    ['a key', 'Keys'],
+    ['your phone', 'Phone'],
+    ['my phone', 'Phone'],
+    ['cell phone', 'Phone'],
+    ['mobile phone', 'Phone'],
+    ['a phone', 'Phone'],
+    ['the phone', 'Phone'],
+    ['a coin', 'Coin'],
+    ['a card', 'Card'],
+    ['credit card', 'Card'],
+    ['a wallet', 'Wallet'],
+    ['a knife', 'Knife'],
+    ['the knife', 'Knife'],
+    ['a fork', 'Fork'],
+    ['a plate', 'Plate'],
+    ['a glass', 'Glass'],
+    ['a napkin', 'Napkin'],
+    ['straight lines', 'Straight'],
+    ['curved lines', 'Curved'],
+    ['straight letters', 'Straight'],
+    ['curved letters', 'Curved']
+];
+
+function omegaCanonicalToVoicePhrases(canonical) {
+    const phrases = new Set();
+    if (!canonical) return [];
+    const lower = String(canonical).trim().toLowerCase();
+    if (lower) phrases.add(lower);
+    const spaced = String(canonical).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+    if (spaced && spaced !== lower) phrases.add(spaced);
+    return Array.from(phrases);
+}
+
+function buildSortedOmegaVoicePhraseTable(catalog) {
+    const entries = [];
+    const seenPhrase = new Set();
+    const add = (phrase, canonical) => {
+        const p = String(phrase || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        if (!p || seenPhrase.has(p)) return;
+        if (!catalog[canonical]) return;
+        seenPhrase.add(p);
+        const words = p.split(/\s+/).filter(Boolean);
+        if (!words.length) return;
+        entries.push({ phrase: p, words, canonical });
+    };
+    Object.keys(catalog).forEach((canonical) => {
+        omegaCanonicalToVoicePhrases(canonical).forEach((ph) => add(ph, canonical));
+    });
+    OMEGA_VOICE_EXTRA_SYNONYMS.forEach(([ph, canonical]) => {
+        if (catalog[canonical]) add(ph, canonical);
+    });
+    entries.sort((a, b) => b.words.length - a.words.length);
+    return entries;
+}
+
+function getOmegaSpeechTriggerPhrasesForStrip() {
+    const oStart = normalizeAlphaSpeechPhrase((appSettings && appSettings.omegaSpeechStartPhrase) || '');
+    const oEnd = normalizeAlphaSpeechPhrase((appSettings && appSettings.omegaSpeechEndPhrase) || '');
+    const aStart = normalizeAlphaSpeechPhrase((appSettings && appSettings.alphaSpeechStartPhrase) || '');
+    const aEnd = normalizeAlphaSpeechPhrase((appSettings && appSettings.alphaSpeechEndPhrase) || '');
+    return {
+        startPhrase: oStart || aStart,
+        endPhrase: oEnd || aEnd
+    };
+}
+
+/**
+ * Up to 5 distinct canonical keys in spoken order. Duplicate object: last mention wins (reorders).
+ * After 5 distinct objects, additional new objects are ignored.
+ */
+function parseOmegaVoiceTranscriptToOrderedKeys(transcript, catalog) {
+    const { startPhrase, endPhrase } = getOmegaSpeechTriggerPhrasesForStrip();
+    const stripped = stripAlphaSpeechPhrasesFromTranscript(transcript, startPhrase, endPhrase);
+    const tokens = String(stripped || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean);
+    const phrases = buildSortedOmegaVoicePhraseTable(catalog);
+    const ordered = [];
+    const MAX_OBJECTS = 5;
+    let i = 0;
+    while (i < tokens.length) {
+        let matched = null;
+        for (let pi = 0; pi < phrases.length; pi++) {
+            const entry = phrases[pi];
+            const n = entry.words.length;
+            if (i + n > tokens.length) continue;
+            const slice = tokens.slice(i, i + n).join(' ');
+            if (slice === entry.phrase) {
+                matched = entry;
+                break;
+            }
+        }
+        if (matched) {
+            const c = matched.canonical;
+            const idx = ordered.indexOf(c);
+            if (idx >= 0) ordered.splice(idx, 1);
+            else if (ordered.length >= MAX_OBJECTS) {
+                i += matched.words.length;
+                continue;
+            }
+            ordered.push(c);
+            i += matched.words.length;
+        } else {
+            i += 1;
+        }
+    }
+    return { orderedKeys: ordered, strippedTranscript: stripped, tokens };
 }
 
 function customAlphaLineCharSet(line) {
@@ -20819,6 +21157,30 @@ function initSettingsUI() {
         omegaWordOrderSelect.value = orderMode === 'alphaLex' ? 'alphaLex' : 'alphaFirst';
         omegaWordOrderSelect.addEventListener('change', () => {
             appSettings.omegaWordOrder = omegaWordOrderSelect.value === 'alphaLex' ? 'alphaLex' : 'alphaFirst';
+            saveAppSettings();
+        });
+    }
+    const omegaVoiceInputToggle = document.getElementById('omegaVoiceInputToggle');
+    if (omegaVoiceInputToggle) {
+        omegaVoiceInputToggle.checked = !!(appSettings && appSettings.omegaVoiceInput);
+        omegaVoiceInputToggle.addEventListener('change', () => {
+            appSettings.omegaVoiceInput = omegaVoiceInputToggle.checked;
+            saveAppSettings();
+        });
+    }
+    const omegaSpeechStartPhraseInput = document.getElementById('omegaSpeechStartPhraseInput');
+    if (omegaSpeechStartPhraseInput) {
+        omegaSpeechStartPhraseInput.value = (appSettings && appSettings.omegaSpeechStartPhrase) || '';
+        omegaSpeechStartPhraseInput.addEventListener('input', () => {
+            appSettings.omegaSpeechStartPhrase = omegaSpeechStartPhraseInput.value;
+            saveAppSettings();
+        });
+    }
+    const omegaSpeechEndPhraseInput = document.getElementById('omegaSpeechEndPhraseInput');
+    if (omegaSpeechEndPhraseInput) {
+        omegaSpeechEndPhraseInput.value = (appSettings && appSettings.omegaSpeechEndPhrase) || '';
+        omegaSpeechEndPhraseInput.addEventListener('input', () => {
+            appSettings.omegaSpeechEndPhrase = omegaSpeechEndPhraseInput.value;
             saveAppSettings();
         });
     }

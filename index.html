@@ -1288,6 +1288,17 @@
                             <option value="straightCurved">Straight/Curved</option>
                             <option value="custom">Custom</option>
                         </select>
+                        <p class="settings-section-subtitle" style="margin-top: 14px;">Voice input</p>
+                        <label class="toggle-switch" style="margin-top: 8px;">
+                            <input type="checkbox" id="omegaVoiceInputToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Speak up to 5 objects (mix ESP / Pocket / Restaurant / Straight–Curved / custom); end trigger stops listening</span>
+                        <p class="settings-field-help" style="margin-top: 8px;">Trigger words: use OMEGA fields below, or leave them empty to use ALPHA’s Start / End trigger words. Say object names between triggers; buttons rebuild in spoken order (partial lists OK; repeat object = last mention wins).</p>
+                        <label for="omegaSpeechStartPhraseInput" style="display:block;margin-top:10px;">OMEGA start trigger (optional)</label>
+                        <input type="text" id="omegaSpeechStartPhraseInput" autocomplete="off" placeholder="Empty = use ALPHA start trigger" style="width:100%;max-width:520px;padding:6px;">
+                        <label for="omegaSpeechEndPhraseInput" style="display:block;margin-top:8px;">OMEGA end trigger (optional)</label>
+                        <input type="text" id="omegaSpeechEndPhraseInput" autocomplete="off" placeholder="Empty = use ALPHA end trigger" style="width:100%;max-width:520px;padding:6px;">
                         <div id="omegaCustomFields" class="omega-custom-fields" style="display: none;">
                             <label for="omegaCustomGroupName">Group name (optional):</label>
                             <input type="text" id="omegaCustomGroupName" placeholder="e.g. My set" maxlength="40">
