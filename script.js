@@ -144,6 +144,27 @@ const ALPHABET_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
 const VOWEL_SET = new Set(['A', 'E', 'I', 'O', 'U']);
 const CONSONANT_LETTERS = ALPHABET_LETTERS.filter(letter => !VOWEL_SET.has(letter));
 
+// --- Psychological Profiling (local, question-based pre-step) ---
+// Exactly matches the questions/options from the other app (wording stays the same).
+const PSYCHOLOGICAL_QUESTIONS = [
+    'When faced with a difficult decision, do you prefer to:',
+    'In social situations, do you tend to:',
+    'When solving problems, you usually:',
+    'Your preferred way to relax is:',
+    'In a group project, you typically:'
+];
+
+const PSYCHOLOGICAL_ANSWERS = [
+    ['Analyze all options carefully', 'Go with your gut feeling'],
+    ['Meet new people', 'Stick with familiar faces'],
+    ['Think through step by step', 'Jump in and figure it out'],
+    ['Read a book or meditate', 'Exercise or be active'],
+    ['Take charge and lead', 'Support and collaborate']
+];
+
+// Per-PERFORM cache: used by the quiz step + the MUTE DUO "RESULTS (hold)" button.
+let psychologicalProfilingRunData = null;
+
 // POSITION-CONS State Management
 const positionConsSequenceState = {};
 let lastPositionConsLetters = '';
@@ -669,11 +690,14 @@ function snapshotNewSettingsForReport(appSettingsRef) {
     const sec = Math.max(1, Math.min(60, parseInt(a.newAutoStopSeconds ?? 10, 10) || 10));
     const letterMode = (a.newLetterMode || a.scrollLetterMode || 'mixed');
     const isExact = a.newAnswerCountMode === 'exact';
+    const letterModeLabel = letterMode === 'alternating'
+        ? 'Alternating (consonant / vowel batches)'
+        : (letterMode === 'altConsMixed'
+            ? 'Alternating (4 consonants / 2 consonants + 2 vowels)'
+            : 'Mixed (2 consonants + 2 vowels per batch)');
     return {
         letterMode,
-        letterModeLabel: letterMode === 'alternating'
-            ? 'Alternating (consonant / vowel batches)'
-            : 'Mixed (2 consonants + 2 vowels per batch)',
+        letterModeLabel,
         customPositionMode: !!a.newCustomMode,
         answerDigitBuffer: !!a.newAnswerDigitBuffer,
         answerCountMode: isExact ? 'exact' : 'more',
@@ -1440,6 +1464,10 @@ function refreshWorkflowReportModalContent() {
 }
 let currentWorkflow = null;
 
+// Default custom letter string for MUTE / MUTE DUO:
+// The engine will step through this string first, then switch to Most Frequent letters.
+const DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE = 'NTRLCSEUAIO';
+
 // App-wide settings (persisted in localStorage)
 const DEFAULT_SETTINGS = {
     lengthBuffer1: false,
@@ -1483,6 +1511,7 @@ const DEFAULT_SETTINGS = {
     omegaCustomGroupName: '',
     omegaCustomShapes: [], // [{ name: "Shape", letters: "ABC" }, ...]
     omegaShapesCount: 0,    // 0 = until SUBMIT; N = auto-submit after N shapes
+    omegaWordOrder: 'alphaFirst', // 'alphaFirst' | 'alphaLex'
     skipWorkflowDeleteConfirm: false,
     alphaDirectionsCount: 0,  // 0 = enter until SUBMIT; N = auto-submit after N directions
     alphaSwapPov: false,       // OFF: Left=toward A, Right=toward Z; ON: swap
@@ -1502,7 +1531,7 @@ const DEFAULT_SETTINGS = {
     eyeTestBuiltinPresetId: '',
     /** Unified chart selection: '' | 'builtin:<id>' | 'saved:<uuid>' */
     eyeTestSelection: '',
-    /** NEW generation mode: 'mixed' | 'alternating' */
+    /** NEW generation mode: 'mixed' | 'alternating' | 'altConsMixed' */
     newLetterMode: 'mixed',
     /** NEW answer mode: 'more' | 'exact' */
     newAnswerCountMode: 'exact',
@@ -1518,8 +1547,13 @@ const DEFAULT_SETTINGS = {
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
     // MUTE / MUTE DUO: letter mode: 'az' = A–Z fixed sequence, 'mostFrequent' = dynamic most-frequent letter,
     // 'custom' = user-defined string then Most Frequent after it is exhausted
-    muteLetterMode: 'az',
-    muteCustomSequence: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    muteLetterMode: 'custom',
+    muteCustomSequence: DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE,
+    // When the fixed string (AZ/custom) is exhausted, either keep going with dynamic letters (ON)
+    // or complete this filter step and advance workflow (OFF).
+    muteBinaryDynamicAfterExhaust: true,
+    // Psychological Profiling (pre-step for workflows that include MUTE/MUTE DUO)
+    muteBinaryProfilingEnabled: false,
     // TMDB / Anthropic keys (stored locally in this browser)
     tmdbApiKey: '',
     anthropicApiKey: '',
@@ -1853,7 +1887,18 @@ function loadAppSettings() {
         const raw = localStorage.getItem('revolutionSettings');
         if (!raw) return { ...DEFAULT_SETTINGS };
         const parsed = JSON.parse(raw);
-        return { ...DEFAULT_SETTINGS, ...parsed };
+        const merged = { ...DEFAULT_SETTINGS, ...parsed };
+        // Migration: old default was A-Z; replace only when the stored value equals the old default.
+        const wasOldMuteCustomAZ = merged.muteCustomSequence === 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        if (wasOldMuteCustomAZ) {
+            merged.muteCustomSequence = DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE;
+            // If they were using the old "az" mode (fixed A-Z), migrate to custom mode
+            // so they see the new preset immediately.
+            if (merged.muteLetterMode === 'az') {
+                merged.muteLetterMode = 'custom';
+            }
+        }
+        return merged;
     } catch (e) {
         console.warn('Failed to load settings, using defaults', e);
         return { ...DEFAULT_SETTINGS };
@@ -2049,14 +2094,14 @@ let muteSequence = [];
 let muteLetterIndex = 0;
 let muteUsedLetters = new Set();
 let muteDynamicSequence = [];
-let muteLetterSequence = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+let muteLetterSequence = DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE;
 let muteMostFrequentEnabled = true;
 
 // MUTE DUO feature state (two independent words, shared letter stream)
 let muteDuoSequence1 = []; // Binary choices for Word 1
 let muteDuoSequence2 = []; // Binary choices for Word 2
 let muteDuoLetterIndex = 0; // Shared current letter index (like SpectatorFilterPage)
-let muteDuoLetterSequence = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+let muteDuoLetterSequence = DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE;
 let muteDuoUsedLetters = new Set();
 let muteDuoDynamicSequence = [];
 
@@ -3725,6 +3770,317 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
     });
 }
 
+// --- Psychological Profiling helpers ---
+function computePsychologicalProfileText(answerStrings) {
+    const answers = Array.isArray(answerStrings) ? answerStrings : [];
+    const answeredQuestions = answers.filter((answer) => (answer || '').trim().length > 0);
+    if (answeredQuestions.length < 3) return null;
+
+    // Keep the other app's "quirk": output depends mostly on how many questions were answered,
+    // and only checks whether question 1 and question 2 have been answered (by index), not which options.
+    const q1Answered = (answers[0] || '').trim().length > 0;
+    const q2Answered = (answers[1] || '').trim().length > 0;
+    return `Based on your answers, you appear to be a ${answeredQuestions.length >= 4 ? 'balanced' : 'focused'} individual who ${q1Answered ? 'prefers careful analysis' : 'trusts intuition'}. Your social approach is ${q2Answered ? 'outgoing and exploratory' : 'comfortable with familiarity'}.`;
+}
+
+function getPsychologicalProfilingResultsHtml(runData) {
+    if (!runData) return '<div>No psychological profiling data.</div>';
+
+    const renderSpecBlock = (specLabel, answersByIndex, generatedProfileText) => {
+        const safeAnswers = Array.isArray(answersByIndex) ? answersByIndex : [];
+        const rawAnswersHtml = PSYCHOLOGICAL_QUESTIONS.map((q, i) => {
+            const ans = safeAnswers[i] && String(safeAnswers[i]).trim().length ? String(safeAnswers[i]) : '—';
+            return `
+                <div class="psych-profiling-raw-row">
+                    <div class="psych-profiling-raw-q">${specLabel} Q${i + 1}</div>
+                    <div class="psych-profiling-raw-qtext">${q}</div>
+                    <div class="psych-profiling-raw-ans"><strong>Answer:</strong> ${ans}</div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="psych-profiling-results psych-profiling-results--spec">
+                <h3 class="psych-profiling-results-title">${specLabel}</h3>
+                <p class="psych-profiling-results-text">${generatedProfileText || '—'}</p>
+                <div class="psych-profiling-raw-block">
+                    <h4 class="psych-profiling-raw-title">${specLabel} raw answers</h4>
+                    ${rawAnswersHtml}
+                </div>
+            </div>
+        `;
+    };
+
+    if (runData.mode === 'muteDuo') {
+        return `
+            <div class="psych-profiling-results">
+                <h2 class="feature-title psych-quiz-title">Psychological Profiling Results</h2>
+                <div class="psych-profiling-results-duo">
+                    ${renderSpecBlock('SPEC 1 (Left)', runData.answersByQuestionIndexSpec1, runData.generatedProfileTextSpec1)}
+                    ${renderSpecBlock('SPEC 2 (Right)', runData.answersByQuestionIndexSpec2, runData.generatedProfileTextSpec2)}
+                </div>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="psych-profiling-results">
+            <h3 class="psych-profiling-results-title">Psychological Profile</h3>
+            <p class="psych-profiling-results-text">${runData.generatedProfileText || '—'}</p>
+            <div class="psych-profiling-raw-block">
+                <h4 class="psych-profiling-raw-title">Raw answers</h4>
+                ${PSYCHOLOGICAL_QUESTIONS.map((q, i) => {
+                    const ans =
+                        runData.answersByQuestionIndex &&
+                        runData.answersByQuestionIndex[i] &&
+                        String(runData.answersByQuestionIndex[i]).trim().length
+                            ? String(runData.answersByQuestionIndex[i])
+                            : '—';
+                    return `
+                        <div class="psych-profiling-raw-row">
+                            <div class="psych-profiling-raw-q">Q${i + 1}</div>
+                            <div class="psych-profiling-raw-qtext">${q}</div>
+                            <div class="psych-profiling-raw-ans"><strong>Answer:</strong> ${ans}</div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
+}
+
+async function runPsychologicalProfilingQuiz(resultsContainer, featureArea, quizMode) {
+    const mode = quizMode === 'muteDuo' ? 'muteDuo' : 'mute';
+    const answeredLenAt = () => {
+        if (mode === 'mute') {
+            return answersByQuestionIndex.filter(a => (a || '').trim().length > 0).length;
+        }
+        return {
+            spec1: answersByQuestionIndexSpec1.filter(a => (a || '').trim().length > 0).length,
+            spec2: answersByQuestionIndexSpec2.filter(a => (a || '').trim().length > 0).length,
+        };
+    };
+
+    // Local, in-run state
+    const answersByQuestionIndex = mode === 'mute' ? new Array(PSYCHOLOGICAL_QUESTIONS.length).fill('') : null;
+    const answersByQuestionIndexSpec1 = mode === 'muteDuo' ? new Array(PSYCHOLOGICAL_QUESTIONS.length).fill('') : null;
+    const answersByQuestionIndexSpec2 = mode === 'muteDuo' ? new Array(PSYCHOLOGICAL_QUESTIONS.length).fill('') : null;
+
+    let currentQuestionIndex = 0;
+    let quizComplete = false;
+    let quizResolved = false;
+
+    const finishQuiz = () => {
+        if (quizResolved) return;
+        quizResolved = true;
+
+        if (mode === 'mute') {
+            const answeredCountSingleNow = answersByQuestionIndex.filter(a => (a || '').trim().length > 0).length;
+            const profileText = computePsychologicalProfileText(answersByQuestionIndex);
+            resolveQuizData({
+                mode,
+                answersByQuestionIndex: answersByQuestionIndex.slice(),
+                answeredCount: answeredCountSingleNow,
+                generatedProfileText: profileText || '—',
+                generatedAt: new Date().toISOString(),
+            });
+            return;
+        }
+
+        const answeredCountSpec1Now = answersByQuestionIndexSpec1.filter(a => (a || '').trim().length > 0).length;
+        const answeredCountSpec2Now = answersByQuestionIndexSpec2.filter(a => (a || '').trim().length > 0).length;
+        const profileText1 = computePsychologicalProfileText(answersByQuestionIndexSpec1);
+        const profileText2 = computePsychologicalProfileText(answersByQuestionIndexSpec2);
+        resolveQuizData({
+            mode,
+            answersByQuestionIndexSpec1: answersByQuestionIndexSpec1.slice(),
+            answersByQuestionIndexSpec2: answersByQuestionIndexSpec2.slice(),
+            answeredCountSpec1: answeredCountSpec1Now,
+            answeredCountSpec2: answeredCountSpec2Now,
+            generatedProfileTextSpec1: profileText1 || '—',
+            generatedProfileTextSpec2: profileText2 || '—',
+            generatedAt: new Date().toISOString(),
+        });
+    };
+
+    const renderTopPanel = () => {
+        const qIndex = Math.min(currentQuestionIndex, PSYCHOLOGICAL_QUESTIONS.length - 1);
+        const question = PSYCHOLOGICAL_QUESTIONS[qIndex];
+        const progress = quizComplete ? 'Complete' : `Q${qIndex + 1} of ${PSYCHOLOGICAL_QUESTIONS.length}`;
+
+        resultsContainer.innerHTML = `
+            <div class="psych-quiz-container">
+                <h2 class="feature-title psych-quiz-title">Psychological Profiling${mode === 'muteDuo' ? ' (SPEC 1 + SPEC 2)' : ''}</h2>
+                <p class="psych-quiz-instructions">${progress}</p>
+                <div class="psych-quiz-q-row">
+                    <div class="psych-quiz-q-num">${quizComplete ? '—' : `Question ${qIndex + 1}`}</div>
+                    <div class="psych-quiz-q-text">${question}</div>
+                </div>
+            </div>
+        `;
+    };
+
+    const renderBottomPanel = () => {
+        if (mode === 'mute') {
+            const qIndex = Math.min(currentQuestionIndex, PSYCHOLOGICAL_QUESTIONS.length - 1);
+            const q = PSYCHOLOGICAL_QUESTIONS[qIndex];
+            const selected = answersByQuestionIndex[qIndex] || '';
+            const opt0 = PSYCHOLOGICAL_ANSWERS[qIndex][0];
+            const opt1 = PSYCHOLOGICAL_ANSWERS[qIndex][1];
+            const isSel0 = selected === opt0;
+            const isSel1 = selected === opt1;
+
+            featureArea.innerHTML = `
+                <div class="psych-quiz-bottom">
+                    <div class="psych-quiz-answer-block">
+                        <div class="psych-quiz-option-row">
+                            <button type="button"
+                                class="psych-option-btn ${isSel0 ? 'psych-option-btn--selected' : ''}"
+                                data-opt="0">
+                                ${opt0}
+                            </button>
+                            <button type="button"
+                                class="psych-option-btn ${isSel1 ? 'psych-option-btn--selected' : ''}"
+                                data-opt="1">
+                                ${opt1}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="psych-quiz-actions">
+                        <button type="button" id="psychSkipBtn" class="psych-skip-btn secondary-btn">SKIP</button>
+                    </div>
+                </div>
+            `;
+        } else {
+            const qIndex = Math.min(currentQuestionIndex, PSYCHOLOGICAL_QUESTIONS.length - 1);
+            const selected1 = answersByQuestionIndexSpec1[qIndex] || '';
+            const selected2 = answersByQuestionIndexSpec2[qIndex] || '';
+            const opt0 = PSYCHOLOGICAL_ANSWERS[qIndex][0];
+            const opt1 = PSYCHOLOGICAL_ANSWERS[qIndex][1];
+            const isSel10 = selected1 === opt0;
+            const isSel11 = selected1 === opt1;
+            const isSel20 = selected2 === opt0;
+            const isSel21 = selected2 === opt1;
+
+            featureArea.innerHTML = `
+                <div class="psych-quiz-bottom">
+                    <div class="psych-quiz-duo-grid">
+                        <div class="psych-quiz-spec-block">
+                            <h4 class="psych-quiz-spec-title">SPEC 1 (Left)</h4>
+                            <div class="psych-quiz-option-row">
+                                <button type="button"
+                                    class="psych-option-btn ${isSel10 ? 'psych-option-btn--selected' : ''}"
+                                    data-spec="1"
+                                    data-opt="0">
+                                    ${opt0}
+                                </button>
+                                <button type="button"
+                                    class="psych-option-btn ${isSel11 ? 'psych-option-btn--selected' : ''}"
+                                    data-spec="1"
+                                    data-opt="1">
+                                    ${opt1}
+                                </button>
+                            </div>
+                        </div>
+                        <div class="psych-quiz-spec-block">
+                            <h4 class="psych-quiz-spec-title">SPEC 2 (Right)</h4>
+                            <div class="psych-quiz-option-row">
+                                <button type="button"
+                                    class="psych-option-btn ${isSel20 ? 'psych-option-btn--selected' : ''}"
+                                    data-spec="2"
+                                    data-opt="0">
+                                    ${opt0}
+                                </button>
+                                <button type="button"
+                                    class="psych-option-btn ${isSel21 ? 'psych-option-btn--selected' : ''}"
+                                    data-spec="2"
+                                    data-opt="1">
+                                    ${opt1}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="psych-quiz-actions">
+                        <button type="button" id="psychSkipBtn" class="psych-skip-btn secondary-btn">SKIP</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Skip
+        const skipBtn = document.getElementById('psychSkipBtn');
+        if (skipBtn) {
+            skipBtn.onclick = () => {
+                if (quizComplete) return;
+                currentQuestionIndex++;
+                if (currentQuestionIndex >= PSYCHOLOGICAL_QUESTIONS.length) {
+                    quizComplete = true;
+                    finishQuiz();
+                    return;
+                }
+                renderTopPanel();
+                renderBottomPanel();
+            };
+        }
+
+        // Option clicks
+        const optionButtons = featureArea.querySelectorAll('.psych-option-btn[data-opt]');
+        optionButtons.forEach((btn) => {
+            btn.onclick = () => {
+                if (quizComplete) return;
+                const qIndex = currentQuestionIndex;
+                const optIndex = parseInt(btn.dataset.opt, 10);
+                const chosen = PSYCHOLOGICAL_ANSWERS[qIndex][optIndex];
+
+                if (mode === 'mute') {
+                    answersByQuestionIndex[qIndex] = chosen;
+                    currentQuestionIndex++;
+                    if (currentQuestionIndex >= PSYCHOLOGICAL_QUESTIONS.length) {
+                        quizComplete = true;
+                        finishQuiz();
+                        return;
+                    }
+                    renderTopPanel();
+                    renderBottomPanel();
+                    return;
+                }
+
+                const spec = btn.dataset.spec; // '1' or '2'
+                if (spec === '1') {
+                    answersByQuestionIndexSpec1[qIndex] = chosen;
+                } else {
+                    answersByQuestionIndexSpec2[qIndex] = chosen;
+                }
+
+                const spec1AnsweredNow = (answersByQuestionIndexSpec1[qIndex] || '').trim().length > 0;
+                const spec2AnsweredNow = (answersByQuestionIndexSpec2[qIndex] || '').trim().length > 0;
+
+                // Auto-advance only when both SPECs answered this question.
+                if (spec1AnsweredNow && spec2AnsweredNow) {
+                    currentQuestionIndex++;
+                    if (currentQuestionIndex >= PSYCHOLOGICAL_QUESTIONS.length) {
+                        quizComplete = true;
+                        finishQuiz();
+                        return;
+                    }
+                }
+
+                renderTopPanel();
+                renderBottomPanel();
+            };
+        });
+    };
+
+    let resolveQuizData = null;
+    const quizDataPromise = new Promise((resolve) => {
+        resolveQuizData = resolve;
+    });
+
+    renderTopPanel();
+    renderBottomPanel();
+    return quizDataPromise;
+}
+
 // Function to execute workflow
 async function executeWorkflow(steps) {
     try {
@@ -3755,6 +4111,7 @@ async function executeWorkflow(steps) {
         // Reset workflow state at the beginning of each workflow
         resetWorkflowState();
         console.log('Workflow state reset');
+        psychologicalProfilingRunData = null;
         
         // Reset all feature states
         currentFilteredWords = usingEngineWordlist ? [] : [...wordList]; // Start with selected wordlist
@@ -4016,6 +4373,17 @@ async function executeWorkflow(steps) {
             lastLoadedWordlist = selectedWordlist;
         }
         
+        // Optional psychological profiling pre-step (runs once per PERFORM, before any filtering)
+        const workflowHasMuteBinary = workflowSteps.some((s) => s && (s.feature === 'mute' || s.feature === 'muteDuo'));
+        const shouldRunPsychologicalProfiling = !!(appSettings && appSettings.muteBinaryProfilingEnabled && workflowHasMuteBinary);
+        if (shouldRunPsychologicalProfiling) {
+            const hasMuteDuo = workflowSteps.some((s) => s && s.feature === 'muteDuo');
+            const quizMode = hasMuteDuo ? 'muteDuo' : 'mute';
+            psychologicalProfilingRunData = await runPsychologicalProfilingQuiz(resultsContainer, featureArea, quizMode);
+        } else {
+            psychologicalProfilingRunData = null;
+        }
+        
         // Display initial wordlist
         displayResults(currentFilteredWords);
 
@@ -4042,12 +4410,44 @@ async function executeWorkflow(steps) {
         
         // Track the rank of MOST FREQUENT features
         let mostFrequentRank = 1;
+        let psychologicalProfilingPayloadAttached = false;
         
         // Execute each step in sequence
         for (let stepIndex = 0; stepIndex < workflowSteps.length; stepIndex++) {
             const step = workflowSteps[stepIndex];
             const previousStepFeature = stepIndex > 0 ? workflowSteps[stepIndex - 1].feature : null;
             pendingWorkflowStepPayload = null;
+            
+            // Attach the psychological profiling quiz results to the first MUTE/MUTE DUO step in the workflow.
+            if (
+                !psychologicalProfilingPayloadAttached &&
+                psychologicalProfilingRunData &&
+                (step.feature === 'mute' || step.feature === 'muteDuo')
+            ) {
+                pendingWorkflowStepPayload = {
+                    feature: step.feature,
+                    userInputRecorded: true,
+                    userInputSummary: 'Psychological Profiling (informational pre-step)',
+                    userInput: {
+                        mode: psychologicalProfilingRunData.mode,
+                        ...(psychologicalProfilingRunData.mode === 'muteDuo'
+                            ? {
+                                answersByQuestionIndexSpec1: psychologicalProfilingRunData.answersByQuestionIndexSpec1,
+                                answersByQuestionIndexSpec2: psychologicalProfilingRunData.answersByQuestionIndexSpec2,
+                                answeredCountSpec1: psychologicalProfilingRunData.answeredCountSpec1,
+                                answeredCountSpec2: psychologicalProfilingRunData.answeredCountSpec2,
+                                generatedProfileTextSpec1: psychologicalProfilingRunData.generatedProfileTextSpec1,
+                                generatedProfileTextSpec2: psychologicalProfilingRunData.generatedProfileTextSpec2,
+                            }
+                            : {
+                                answersByQuestionIndex: psychologicalProfilingRunData.answersByQuestionIndex,
+                                answeredCount: psychologicalProfilingRunData.answeredCount,
+                                generatedProfileText: psychologicalProfilingRunData.generatedProfileText,
+                            })
+                    }
+                };
+                psychologicalProfilingPayloadAttached = true;
+            }
             const stepWordsIn = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : 0;
             const stepStartedAt = Date.now();
             const stepWordCountTrace = [];
@@ -5101,6 +5501,7 @@ function startOmega(callback) {
     const mode = (modeSelect && modeSelect.value) || (appSettings && appSettings.omegaMode) || 'esp';
     omegaActiveMapping = mode === 'custom' ? getOmegaActiveMapping() : (omegaMappings[mode] || omegaMappings.esp);
     omegaSelections = [];
+    const omegaTrace = [];
 
     const shapeFeature = document.getElementById('shapeFeature');
     if (!shapeFeature) return;
@@ -5109,15 +5510,146 @@ function startOmega(callback) {
     const positionDisplay = shapeFeature.querySelector('.position-display');
     const categoryButtons = shapeFeature.querySelector('.category-buttons');
     if (!categoryButtons) return;
+    const shapeDisplay = shapeFeature.querySelector('.shape-display');
+    if (!shapeDisplay) return;
 
     updateOmegaSequenceDisplay();
 
     const omegaShapesCount = Math.max(0, parseInt((appSettings && appSettings.omegaShapesCount) || 0, 10));
     const omegaAutoSubmit = () => {
         const filtered = applyOmegaFilter(currentFilteredWords, omegaSelections);
+        omegaTrace.push({
+            action: 'AUTO_SUBMIT',
+            shapes: omegaSelections.slice(),
+            wordsOut: Array.isArray(filtered) ? filtered.length : null
+        });
+        pendingWorkflowStepPayload = {
+            feature: 'omega',
+            userInputSummary: omegaSelections.length ? `Shapes: ${omegaSelections.join(' → ')}` : 'Shapes: —',
+            userInput: {
+                mode,
+                shapes: omegaSelections.slice(),
+                trace: omegaTrace.slice()
+            }
+        };
         callback(filtered);
         shapeFeature.classList.add('completed');
-        shapeFeature.dispatchEvent(new Event('completed'));
+        dispatchWorkflowFeatureComplete(shapeFeature, 'omega', null);
+    };
+
+    // Incremental filtering: each tap/backspace narrows the wordlist immediately,
+    // but does not complete the step (completion still happens on SUBMIT/SKIP/auto-submit).
+    const omegaIncrementalFilter = () => {
+        const filtered = applyOmegaFilter(currentFilteredWords, omegaSelections);
+        omegaLexSourceWords = Array.isArray(filtered) ? filtered.slice() : [];
+        omegaTrace.push({
+            action: 'INCREMENT',
+            shapes: omegaSelections.slice(),
+            wordsOut: Array.isArray(filtered) ? filtered.length : null
+        });
+        const lexInputActive = !!parseUnifiedCustomAlphaLine((omegaLexInput && omegaLexInput.value) || '');
+        if (omegaLexVisible && lexInputActive) {
+            applyOmegaLexFilterFromInput();
+            return;
+        }
+        callback(filtered);
+        if (omegaLexVisible) {
+            refreshOmegaLexMeta();
+            renderOmegaResultsByLexState(filtered);
+        }
+    };
+
+    // OMEGA LEX UI/state
+    let omegaLexVisible = false;
+    let omegaLexPosition = -1;
+    let omegaLexLetters = [];
+    let omegaLexLockedPosition = -1;
+    // OMEGA-filtered baseline used for LEX filtering so typing multiple letters
+    // can re-expand correctly from the same source list.
+    let omegaLexSourceWords = Array.isArray(currentFilteredWords) ? currentFilteredWords.slice() : [];
+    const getOmegaWordOrderMode = () => {
+        const modeRaw = (appSettings && appSettings.omegaWordOrder) || 'alphaFirst';
+        return modeRaw === 'alphaLex' ? 'alphaLex' : 'alphaFirst';
+    };
+    const sortOmegaWordsForDisplay = (words) => {
+        const arr = Array.isArray(words) ? words.slice() : [];
+        const mode = getOmegaWordOrderMode();
+        if (mode !== 'alphaLex') {
+            return arr.sort((a, b) => String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' }));
+        }
+        const pos = omegaLexLockedPosition >= 0 ? omegaLexLockedPosition : omegaLexPosition;
+        if (pos < 0) {
+            return arr.sort((a, b) => String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' }));
+        }
+        return arr.sort((a, b) => {
+            const au = String(a || '').toUpperCase();
+            const bu = String(b || '').toUpperCase();
+            const aLex = pos < au.length ? au[pos] : '{';
+            const bLex = pos < bu.length ? bu[pos] : '{';
+            if (aLex !== bLex) return aLex.localeCompare(bLex);
+            return au.localeCompare(bu);
+        });
+    };
+
+    const renderOmegaLexHighlightedResults = (words) => {
+        const resultsContainer = document.getElementById('results');
+        if (!resultsContainer) return;
+
+        const safeWords = sortOmegaWordsForDisplay(words);
+        if (!safeWords.length) {
+            displayResults(safeWords);
+            return;
+        }
+
+        const pos = omegaLexLockedPosition >= 0 ? omegaLexLockedPosition : omegaLexPosition;
+        if (pos < 0) {
+            displayResults(safeWords);
+            return;
+        }
+
+        const listHtml = safeWords.map((word) => {
+            const w = String(word || '');
+            const up = w.toUpperCase();
+            if (pos < 0 || pos >= up.length) {
+                return `<li>${up}</li>`;
+            }
+            const before = up.slice(0, pos);
+            const ch = up[pos];
+            const after = up.slice(pos + 1);
+            return `<li>${before}<span class="omega-lex-highlight">${ch}</span>${after}</li>`;
+        }).join('');
+
+        resultsContainer.innerHTML = `<ul class="word-list">${listHtml}</ul>`;
+        updateWordCount(safeWords.length);
+        updateExportButtonState(safeWords);
+        updateSologramOverlay(safeWords);
+        updateT9DefinitesOverlay(safeWords);
+    };
+
+    const renderOmegaResultsByLexState = (words) => {
+        if (omegaLexVisible) {
+            renderOmegaLexHighlightedResults(words);
+        } else {
+            displayResults(sortOmegaWordsForDisplay(words));
+        }
+    };
+
+    const refreshOmegaLexMeta = () => {
+        const source = Array.isArray(omegaLexSourceWords) ? omegaLexSourceWords : [];
+        const meta = findPositionWithMostVarianceFrom(source, 3, 6);
+        omegaLexPosition = meta && Number.isInteger(meta.position) ? meta.position : -1;
+        omegaLexLetters = (meta && Array.isArray(meta.letters)) ? meta.letters : [];
+
+        const posEl = document.getElementById('omegaLexPositionDisplay');
+        const lettersEl = document.getElementById('omegaLexLettersDisplay');
+        const compactEl = document.getElementById('omegaLexCompactLabel');
+        if (posEl) posEl.textContent = omegaLexPosition >= 0 ? String(omegaLexPosition + 1) : '—';
+        if (lettersEl) lettersEl.textContent = omegaLexLetters.length ? omegaLexLetters.join(', ') : '—';
+        if (compactEl) {
+            const p = omegaLexPosition >= 0 ? String(omegaLexPosition + 1) : '—';
+            const l = omegaLexLetters.length ? omegaLexLetters.join(', ') : '—';
+            compactEl.textContent = `Lex ${p}: ${l}`;
+        }
     };
     categoryButtons.innerHTML = '';
     Object.keys(omegaActiveMapping).forEach(shape => {
@@ -5128,6 +5660,7 @@ function startOmega(callback) {
         btn.onclick = () => {
             omegaSelections.push(shape);
             updateOmegaSequenceDisplay();
+            omegaIncrementalFilter();
             if (omegaShapesCount > 0 && omegaSelections.length >= omegaShapesCount) omegaAutoSubmit();
         };
         btn.addEventListener('touchstart', (e) => { e.preventDefault(); btn.click(); }, { passive: false });
@@ -5141,6 +5674,114 @@ function startOmega(callback) {
         categoryButtons.appendChild(msg);
     }
 
+    // Insert LEX controls between shape buttons and action buttons
+    let lexRow = shapeFeature.querySelector('.omega-lex-row');
+    if (!lexRow) {
+        lexRow = document.createElement('div');
+        lexRow.className = 'omega-lex-row';
+        lexRow.style.marginTop = '10px';
+        lexRow.style.display = 'flex';
+        lexRow.style.justifyContent = 'center';
+        shapeDisplay.appendChild(lexRow);
+    }
+    lexRow.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; gap:6px; width:100%;">
+            <div style="display:flex; justify-content:center; width:100%;">
+                <button type="button" id="omegaLexToggleBtn" class="secondary-btn">LEX</button>
+            </div>
+            <div id="omegaLexPanel" style="display:none; width:100%; max-width:560px; padding:10px; border:1px solid #ddd; border-radius:10px; background:#fafafa;">
+                <div style="font-size:13px; margin-bottom:8px;">
+                    Lexicon position (excluding 1-3): <strong id="omegaLexPositionDisplay">—</strong>
+                </div>
+                <div style="font-size:13px; margin-bottom:8px;">
+                    Possible letters: <span id="omegaLexLettersDisplay">—</span>
+                </div>
+                <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+                    <input type="text" id="omegaLexInput" placeholder="Letter(s) or short word" maxlength="40" autocomplete="off" style="padding:8px; min-width:180px; text-transform:uppercase;">
+                </div>
+            </div>
+            <span id="omegaLexCompactLabel" style="font-size:12px;color:#444;">Lex: —</span>
+        </div>
+    `;
+
+    const omegaLexToggleBtn = document.getElementById('omegaLexToggleBtn');
+    const omegaLexPanel = document.getElementById('omegaLexPanel');
+    const omegaLexInput = document.getElementById('omegaLexInput');
+    const attachOmegaTap = (btn, run) => {
+        if (!btn) return;
+        let touchHandled = false;
+        btn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchHandled = true;
+            run();
+        }, { passive: false });
+        btn.addEventListener('click', () => {
+            if (touchHandled) {
+                touchHandled = false;
+                return;
+            }
+            run();
+        });
+    };
+
+    const setOmegaLexVisible = (visible) => {
+        omegaLexVisible = !!visible;
+        if (omegaLexPanel) omegaLexPanel.style.display = omegaLexVisible ? '' : 'none';
+        if (omegaLexToggleBtn) omegaLexToggleBtn.classList.toggle('active', omegaLexVisible);
+        if (omegaLexVisible) {
+            omegaLexSourceWords = Array.isArray(currentFilteredWords) ? currentFilteredWords.slice() : [];
+            omegaLexLockedPosition = -1;
+            refreshOmegaLexMeta();
+            renderOmegaResultsByLexState(currentFilteredWords);
+        } else {
+            omegaLexLockedPosition = -1;
+            renderOmegaResultsByLexState(currentFilteredWords);
+        }
+    };
+
+    attachOmegaTap(omegaLexToggleBtn, () => setOmegaLexVisible(!omegaLexVisible));
+    const applyOmegaLexFilterFromInput = () => {
+        const letters = parseUnifiedCustomAlphaLine((omegaLexInput && omegaLexInput.value) || '');
+        if (!letters) {
+            omegaLexLockedPosition = -1;
+            refreshOmegaLexMeta();
+            renderOmegaResultsByLexState(omegaLexSourceWords);
+            return false;
+        }
+        if (omegaLexLockedPosition < 0) {
+            refreshOmegaLexMeta();
+            omegaLexLockedPosition = omegaLexPosition;
+        }
+        const pos = omegaLexLockedPosition;
+        if (pos < 0) {
+            alert('No valid LEX position (4+) found for current words.');
+            return false;
+        }
+        const letterSet = new Set(letters.split(''));
+        const filtered = (Array.isArray(omegaLexSourceWords) ? omegaLexSourceWords : []).filter((w) => {
+            const up = String(w || '').toUpperCase();
+            return up.length > pos && letterSet.has(up[pos]);
+        });
+        omegaTrace.push({
+            action: 'LEX_APPLY',
+            shapes: omegaSelections.slice(),
+            lexPosition: pos + 1,
+            lexInput: letters,
+            wordsOut: filtered.length
+        });
+        callback(filtered);
+        refreshOmegaLexMeta();
+        renderOmegaResultsByLexState(filtered);
+        return true;
+    };
+    if (omegaLexInput) {
+        omegaLexInput.addEventListener('input', () => {
+            omegaLexInput.value = parseUnifiedCustomAlphaLine(omegaLexInput.value);
+            if (!omegaLexVisible) return;
+            applyOmegaLexFilterFromInput();
+        });
+    }
+
     let actionsRow = shapeFeature.querySelector('.omega-actions');
     if (!actionsRow) {
         actionsRow = document.createElement('div');
@@ -5150,7 +5791,7 @@ function startOmega(callback) {
         actionsRow.style.gap = '10px';
         actionsRow.style.flexWrap = 'wrap';
         actionsRow.style.justifyContent = 'center';
-        shapeFeature.querySelector('.shape-display').appendChild(actionsRow);
+        shapeDisplay.appendChild(actionsRow);
     }
     actionsRow.innerHTML = '';
     const backspaceBtn = document.createElement('button');
@@ -5161,6 +5802,8 @@ function startOmega(callback) {
         if (omegaSelections.length) {
             omegaSelections.pop();
             updateOmegaSequenceDisplay();
+            omegaTrace.push({ action: 'BACKSPACE', shapes: omegaSelections.slice() });
+            omegaIncrementalFilter();
         }
     };
     backspaceBtn.addEventListener('touchstart', (e) => { e.preventDefault(); backspaceBtn.click(); }, { passive: false });
@@ -5174,9 +5817,23 @@ function startOmega(callback) {
             return;
         }
         const filtered = applyOmegaFilter(currentFilteredWords, omegaSelections);
+        omegaTrace.push({
+            action: 'SUBMIT',
+            shapes: omegaSelections.slice(),
+            wordsOut: Array.isArray(filtered) ? filtered.length : null
+        });
+        pendingWorkflowStepPayload = {
+            feature: 'omega',
+            userInputSummary: `Shapes: ${omegaSelections.join(' → ')}`,
+            userInput: {
+                mode,
+                shapes: omegaSelections.slice(),
+                trace: omegaTrace.slice()
+            }
+        };
         callback(filtered);
         shapeFeature.classList.add('completed');
-        shapeFeature.dispatchEvent(new Event('completed'));
+        dispatchWorkflowFeatureComplete(shapeFeature, 'omega', null);
     };
     submitBtn.addEventListener('touchstart', (e) => { e.preventDefault(); submitBtn.click(); }, { passive: false });
     const skipBtn = document.createElement('button');
@@ -5184,9 +5841,20 @@ function startOmega(callback) {
     skipBtn.textContent = 'SKIP';
     skipBtn.type = 'button';
     skipBtn.onclick = () => {
+        omegaTrace.push({ action: 'SKIP', shapes: omegaSelections.slice() });
+        pendingWorkflowStepPayload = {
+            feature: 'omega',
+            skipped: true,
+            userInputSummary: 'SKIP — list unchanged',
+            userInput: {
+                mode,
+                shapes: omegaSelections.slice(),
+                trace: omegaTrace.slice()
+            }
+        };
         callback(currentFilteredWords);
         shapeFeature.classList.add('completed');
-        shapeFeature.dispatchEvent(new Event('completed'));
+        dispatchWorkflowFeatureComplete(shapeFeature, 'omega', null);
     };
     skipBtn.addEventListener('touchstart', (e) => { e.preventDefault(); skipBtn.click(); }, { passive: false });
     actionsRow.appendChild(backspaceBtn);
@@ -5793,6 +6461,9 @@ function createMuteFeature() {
             <button id="muteLeftButton" class="yes-btn">L</button>
             <button id="muteRightButton" class="no-btn">R</button>
         </div>
+        <div class="new-controls-row" style="justify-content:center; margin-top:8px;">
+            <button type="button" id="mutePsychProfileResultsBtn" class="secondary-btn">RESULTS</button>
+        </div>
     `;
     return div;
 }
@@ -5843,6 +6514,9 @@ function createMuteDuoFeature() {
         </div>
         <div class="new-controls-row" style="justify-content:center; margin-top:8px;">
             <button type="button" id="muteDuoLexToggleBtn" class="secondary-btn">LEX</button>
+        </div>
+        <div class="new-controls-row" style="justify-content:center; margin-top:8px;">
+            <button type="button" id="muteDuoPsychProfileResultsBtn" class="secondary-btn">RESULTS</button>
         </div>
         <div id="muteDuoLexPanel" style="display:none; margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:10px; background:#fafafa;">
             <div class="settings-toggle-row" style="margin:0 0 8px 0; justify-content:center; gap:8px;">
@@ -11253,6 +11927,9 @@ function setupFeatureListeners(feature, callback, options) {
             const letterEl = document.getElementById('muteCurrentLetter');
             const leftBtn = document.getElementById('muteLeftButton');
             const rightBtn = document.getElementById('muteRightButton');
+            const dynamicAfterExhaustOn = !!(appSettings && appSettings.muteBinaryDynamicAfterExhaust);
+            let muteCompletedOnce = false;
+            let seededFixedLettersIntoDynamic = false;
 
             // Reset MUTE state
             muteSequence = [];
@@ -11261,11 +11938,26 @@ function setupFeatureListeners(feature, callback, options) {
             muteDynamicSequence = [];
 
             const modeSetting = (appSettings && appSettings.muteLetterMode) || 'az';
-            const customSeq = (appSettings && appSettings.muteCustomSequence) || 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            const customSeq = (appSettings && appSettings.muteCustomSequence != null)
+                ? appSettings.muteCustomSequence
+                : DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE;
+            const upperCustomSeq = String(customSeq || '').toUpperCase();
+            const fixedSeqForSeeding = modeSetting === 'az' ? DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE : upperCustomSeq;
 
             const getMuteLetterParams = () => {
                 if (modeSetting === 'az') {
-                    return { effectiveMode: 'az', seq: muteLetterSequence, dyn: [] };
+                    // Preset letters first, then switch to Most Frequent (dynamic).
+                    const fixedSeq = DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE;
+                    if (muteLetterIndex < fixedSeq.length) {
+                        return { effectiveMode: 'customFixed', seq: fixedSeq, dyn: [] };
+                    }
+                    if (dynamicAfterExhaustOn) {
+                        // Keep seq as the fixed string so the engine can switch to dynamic
+                        // using dynamicIndex = currentLetterIndex - fixedSeq.length.
+                        return { effectiveMode: 'mostFrequent', seq: fixedSeq, dyn: muteDynamicSequence };
+                    }
+                    // OFF: finish this mute step after the fixed string runs out.
+                    return { effectiveMode: 'customFixed', seq: fixedSeq, dyn: [] };
                 }
                 if (modeSetting === 'custom') {
                     // While within the custom string length, use fixed custom letters.
@@ -11274,7 +11966,13 @@ function setupFeatureListeners(feature, callback, options) {
                     if (muteLetterIndex < upperCustom.length) {
                         return { effectiveMode: 'customFixed', seq: upperCustom, dyn: [] };
                     }
-                    return { effectiveMode: 'mostFrequent', seq: '', dyn: muteDynamicSequence };
+                    if (dynamicAfterExhaustOn) {
+                        // Keep seq as the custom string so the engine can switch to dynamic
+                        // using dynamicIndex = currentLetterIndex - customSeq.length.
+                        return { effectiveMode: 'mostFrequent', seq: upperCustom, dyn: muteDynamicSequence };
+                    }
+                    // OFF: finish this mute step after the fixed string runs out.
+                    return { effectiveMode: 'customFixed', seq: upperCustom, dyn: [] };
                 }
                 // modeSetting === 'mostFrequent'
                 return { effectiveMode: 'mostFrequent', seq: '', dyn: muteDynamicSequence };
@@ -11314,6 +12012,20 @@ function setupFeatureListeners(feature, callback, options) {
 
                 const params = getMuteLetterParams();
                 if (params.effectiveMode === 'mostFrequent') {
+                    // When switching into Most Frequent after the fixed string is exhausted,
+                    // treat fixed-string letters as already "used" so dynamic selection won't repeat them.
+                    if (
+                        dynamicAfterExhaustOn
+                        && modeSetting !== 'mostFrequent'
+                        && !seededFixedLettersIntoDynamic
+                        && muteLetterIndex >= fixedSeqForSeeding.length
+                    ) {
+                        for (const ch of fixedSeqForSeeding) {
+                            muteUsedLetters.add(ch);
+                        }
+                        seededFixedLettersIntoDynamic = true;
+                    }
+
                     const nextLetter = engine.selectNextDynamicLetter
                         ? engine.selectNextDynamicLetter(currentFilteredWords, muteUsedLetters)
                         : null;
@@ -11345,6 +12057,15 @@ function setupFeatureListeners(feature, callback, options) {
                 const combined = Array.from(new Set([...res.leftWords, ...res.rightWords]));
                 currentFilteredWords = combined;
                 updateWordCount(currentFilteredWords.length);
+
+                // If the letter stream is complete, auto-finish this mute step.
+                // (When dynamicAfterExhaustOn is OFF, this will occur right after the fixed string ends.)
+                if (!muteCompletedOnce && muteSequence.length > 0 && res && res.isComplete) {
+                    muteCompletedOnce = true;
+                    callback(currentFilteredWords);
+                    const muteFeatureEl = document.getElementById('muteFeature');
+                    dispatchWorkflowFeatureComplete(muteFeatureEl, 'mute', null);
+                }
             };
 
             if (leftBtn) {
@@ -11352,6 +12073,68 @@ function setupFeatureListeners(feature, callback, options) {
             }
             if (rightBtn) {
                 rightBtn.onclick = () => makeChoice('R');
+            }
+
+            // Psychological Profiling RESULTS: tap-and-hold shows the generated profile
+            // by temporarily replacing the #results (wordlist) panel.
+            const profilingResultsBtn = document.getElementById('mutePsychProfileResultsBtn');
+            const resultsContainer = document.getElementById('results');
+            if (profilingResultsBtn && resultsContainer) {
+                if (!psychologicalProfilingRunData) {
+                    profilingResultsBtn.disabled = true;
+                    profilingResultsBtn.title = 'Psychological profiling not available for this PERFORM (toggle may be off).';
+                    profilingResultsBtn.style.opacity = '0.55';
+                } else {
+                    let showing = false;
+                    let cachedHtml = null;
+                    let lastTouchAtMs = 0;
+
+                    const setMuteControlsDisabled = (disabled) => {
+                        if (leftBtn) leftBtn.disabled = disabled;
+                        if (rightBtn) rightBtn.disabled = disabled;
+                    };
+
+                    const showProfilingResults = () => {
+                        if (showing) return;
+                        showing = true;
+                        cachedHtml = resultsContainer.innerHTML;
+                        resultsContainer.innerHTML = getPsychologicalProfilingResultsHtml(psychologicalProfilingRunData);
+                        setMuteControlsDisabled(true);
+                    };
+
+                    const hideProfilingResults = () => {
+                        if (!showing) return;
+                        showing = false;
+                        if (cachedHtml != null) {
+                            resultsContainer.innerHTML = cachedHtml;
+                        }
+                        cachedHtml = null;
+                        setMuteControlsDisabled(false);
+                    };
+
+                    const toggleProfilingResults = () => {
+                        if (showing) hideProfilingResults();
+                        else showProfilingResults();
+                    };
+
+                    // Mouse click
+                    profilingResultsBtn.addEventListener('click', () => {
+                        // Guard against synthetic click after touchstart.
+                        if (Date.now() - lastTouchAtMs < 450) return;
+                        toggleProfilingResults();
+                    });
+
+                    // Touch tap (toggle)
+                    profilingResultsBtn.addEventListener(
+                        'touchstart',
+                        (e) => {
+                            e.preventDefault();
+                            lastTouchAtMs = Date.now();
+                            toggleProfilingResults();
+                        },
+                        { passive: false }
+                    );
+                }
             }
 
             // Do not call callback yet; next feature will see narrowed currentFilteredWords
@@ -11375,6 +12158,10 @@ function setupFeatureListeners(feature, callback, options) {
             const lexInput1 = document.getElementById('muteDuoLexInput1');
             const lexInput2 = document.getElementById('muteDuoLexInput2');
             const lexApplyBtn = document.getElementById('muteDuoLexApplyBtn');
+
+            const dynamicAfterExhaustOn = !!(appSettings && appSettings.muteBinaryDynamicAfterExhaust);
+            let muteDuoCompletedOnce = false;
+            let seededFixedLettersIntoDynamic = false;
 
             // Two independent candidate sets (Word 1, Word 2), both starting from currentFilteredWords
             let baseCandidates1 = currentFilteredWords.slice();
@@ -11401,18 +12188,39 @@ function setupFeatureListeners(feature, callback, options) {
             muteDuoDynamicSequence = [];
 
             const duoModeSetting = (appSettings && appSettings.muteLetterMode) || 'az';
-            const duoCustomSeq = (appSettings && appSettings.muteCustomSequence) || 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            const duoCustomSeq = (appSettings && appSettings.muteCustomSequence != null)
+                ? appSettings.muteCustomSequence
+                : DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE;
+            const upperCustomSeq = String(duoCustomSeq || '').toUpperCase();
+            const fixedSeqForSeeding = duoModeSetting === 'az' ? DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE : upperCustomSeq;
 
             const getDuoLetterParams = () => {
                 if (duoModeSetting === 'az') {
-                    return { effectiveMode: 'az', seq: muteDuoLetterSequence, dyn: [] };
+                    // Preset letters first, then switch to Most Frequent (dynamic).
+                    const fixedSeq = DEFAULT_MUTE_BINARY_CUSTOM_SEQUENCE;
+                    if (muteDuoLetterIndex < fixedSeq.length) {
+                        return { effectiveMode: 'customFixed', seq: fixedSeq, dyn: [] };
+                    }
+                    if (dynamicAfterExhaustOn) {
+                        // Keep seq as the fixed string so the engine can switch to dynamic
+                        // using dynamicIndex = currentLetterIndex - fixedSeq.length.
+                        return { effectiveMode: 'mostFrequent', seq: fixedSeq, dyn: muteDuoDynamicSequence };
+                    }
+                    // OFF: finish this muteDuo step after the fixed string runs out.
+                    return { effectiveMode: 'customFixed', seq: fixedSeq, dyn: [] };
                 }
                 if (duoModeSetting === 'custom') {
                     const upperCustom = String(duoCustomSeq || '').toUpperCase();
                     if (muteDuoLetterIndex < upperCustom.length) {
                         return { effectiveMode: 'customFixed', seq: upperCustom, dyn: [] };
                     }
-                    return { effectiveMode: 'mostFrequent', seq: '', dyn: muteDuoDynamicSequence };
+                    if (dynamicAfterExhaustOn) {
+                        // Keep seq as the custom string so the engine can switch to dynamic
+                        // using dynamicIndex = currentLetterIndex - customSeq.length.
+                        return { effectiveMode: 'mostFrequent', seq: upperCustom, dyn: muteDuoDynamicSequence };
+                    }
+                    // OFF: finish this muteDuo step after the fixed string runs out.
+                    return { effectiveMode: 'customFixed', seq: upperCustom, dyn: [] };
                 }
                 // duoModeSetting === 'mostFrequent'
                 return { effectiveMode: 'mostFrequent', seq: '', dyn: muteDuoDynamicSequence };
@@ -11545,7 +12353,11 @@ function setupFeatureListeners(feature, callback, options) {
                 const union = Array.from(new Set([...word1Left, ...word1Right, ...word2Left, ...word2Right]));
                 currentFilteredWords = union;
                 updateWordCount(currentFilteredWords.length);
-                if (lexVisible) refreshMuteDuoLexMeta();
+                // Keep the "possible letters" meta stable while the user is typing.
+                // This avoids wiping SPEC 2's label when only SPEC 1 has input.
+                if (lexVisible && !letters1Raw && !letters2Raw) {
+                    refreshMuteDuoLexMeta();
+                }
             };
 
             const updateAll = () => {
@@ -11561,6 +12373,21 @@ function setupFeatureListeners(feature, callback, options) {
 
                 const params = getDuoLetterParams();
                 if (params.effectiveMode === 'mostFrequent') {
+                    // When switching into Most Frequent after the fixed string is exhausted,
+                    // treat fixed-string letters as already "used" so dynamic selection won't repeat them.
+                    if (
+                        dynamicAfterExhaustOn
+                        && duoModeSetting !== 'mostFrequent'
+                        && !seededFixedLettersIntoDynamic
+                        && muteDuoLetterIndex >= fixedSeqForSeeding.length
+                    ) {
+                        const usedFixedLen = Math.min(fixedSeqForSeeding.length, muteDuoLetterIndex);
+                        for (let i = 0; i < usedFixedLen; i++) {
+                            muteDuoUsedLetters.add(fixedSeqForSeeding[i]);
+                        }
+                        seededFixedLettersIntoDynamic = true;
+                    }
+
                     const unionWords = Array.from(new Set([...baseCandidates1, ...baseCandidates2]));
                     const nextLetter = engine.selectNextDynamicLetter
                         ? engine.selectNextDynamicLetter(unionWords, muteDuoUsedLetters)
@@ -11613,6 +12440,14 @@ function setupFeatureListeners(feature, callback, options) {
                             muteDuoDynamicSequence.push(letter);
                         }
                     }
+                }
+
+                // If the letter stream is complete, auto-finish this muteDuo step.
+                if (!muteDuoCompletedOnce && muteDuoSequence1.length > 0 && (res1.isComplete || res2.isComplete)) {
+                    muteDuoCompletedOnce = true;
+                    callback(currentFilteredWords);
+                    const muteDuoFeatureEl = document.getElementById('muteDuoFeature');
+                    dispatchWorkflowFeatureComplete(muteDuoFeatureEl, 'muteDuo', null);
                 }
 
             };
@@ -11701,6 +12536,70 @@ function setupFeatureListeners(feature, callback, options) {
                     refreshMuteDuoLexMeta();
                     renderWithLexOverlay();
                 });
+            }
+
+            // Psychological Profiling RESULTS: tap-and-hold shows the generated profile
+            // by temporarily replacing the #results (wordlist) panel.
+            const profilingResultsBtn = document.getElementById('muteDuoPsychProfileResultsBtn');
+            const resultsContainer = document.getElementById('results');
+            if (profilingResultsBtn && resultsContainer) {
+                if (!psychologicalProfilingRunData) {
+                    profilingResultsBtn.disabled = true;
+                    profilingResultsBtn.title = 'Psychological profiling not available for this PERFORM (toggle may be off).';
+                    profilingResultsBtn.style.opacity = '0.55';
+                } else {
+                    let showing = false;
+                    let cachedHtml = null;
+                    let lastTouchAtMs = 0;
+
+                    const setMuteDuoControlsDisabled = (disabled) => {
+                        if (btnUp) btnUp.disabled = disabled;
+                        if (btnRight) btnRight.disabled = disabled;
+                        if (btnDown) btnDown.disabled = disabled;
+                        if (btnLeft) btnLeft.disabled = disabled;
+                    };
+
+                    const showProfilingResults = () => {
+                        if (showing) return;
+                        showing = true;
+                        cachedHtml = resultsContainer.innerHTML;
+                        resultsContainer.innerHTML = getPsychologicalProfilingResultsHtml(psychologicalProfilingRunData);
+                        setMuteDuoControlsDisabled(true);
+                    };
+
+                    const hideProfilingResults = () => {
+                        if (!showing) return;
+                        showing = false;
+                        if (cachedHtml != null) {
+                            resultsContainer.innerHTML = cachedHtml;
+                        }
+                        cachedHtml = null;
+                        setMuteDuoControlsDisabled(false);
+                    };
+
+                    const toggleProfilingResults = () => {
+                        if (showing) hideProfilingResults();
+                        else showProfilingResults();
+                    };
+
+                    // Mouse click
+                    profilingResultsBtn.addEventListener('click', () => {
+                        // Guard against synthetic click after touchstart.
+                        if (Date.now() - lastTouchAtMs < 450) return;
+                        toggleProfilingResults();
+                    });
+
+                    // Touch tap (toggle)
+                    profilingResultsBtn.addEventListener(
+                        'touchstart',
+                        (e) => {
+                            e.preventDefault();
+                            lastTouchAtMs = Date.now();
+                            toggleProfilingResults();
+                        },
+                        { passive: false }
+                    );
+                }
             }
 
             // As with MUTE, do not call callback; workflow continues with narrowed currentFilteredWords
@@ -15954,7 +16853,9 @@ function setupFeatureListeners(feature, callback, options) {
             let pendingCustomTarget = null; // { kind: 'position'|'anywhere', position?: number }
             let lockedTargetForActiveBatch = null;
             const savedNewMode = appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode);
-            const scrollMode = savedNewMode === 'alternating' ? 'alternating' : 'mixed';
+            const scrollMode = savedNewMode === 'alternating' || savedNewMode === 'altConsMixed'
+                ? savedNewMode
+                : 'mixed';
             const newAnswerCountMode = (appSettings && appSettings.newAnswerCountMode === 'exact') ? 'exact' : 'more';
             const answerCountHintEl = document.getElementById('newAnswerCountHint');
             if (answerCountHintEl) {
@@ -16118,6 +17019,16 @@ function setupFeatureListeners(feature, callback, options) {
                         batchCycleSize = Math.max(1, SCROLL_CONSONANTS_LIST.length);
                         batch = buildScrollSingleTypeBatchAtK(consDesc, consAsc, scrollBatchIndex);
                     }
+                } else if (scrollMode === 'altConsMixed') {
+                    const emitMixed = (scrollBatchIndex % 2) !== 0;
+                    if (emitMixed) {
+                        currentBatchType = 'mixed';
+                        batch = buildScrollBatchAtK(consDesc, consAsc, vowDesc, vowAsc, scrollBatchIndex);
+                    } else {
+                        currentBatchType = 'consonant';
+                        batchCycleSize = Math.max(1, SCROLL_CONSONANTS_LIST.length);
+                        batch = buildScrollSingleTypeBatchAtK(consDesc, consAsc, scrollBatchIndex);
+                    }
                 } else {
                     currentBatchType = 'mixed';
                     batch = buildScrollBatchAtK(consDesc, consAsc, vowDesc, vowAsc, scrollBatchIndex);
@@ -16249,7 +17160,7 @@ function setupFeatureListeners(feature, callback, options) {
                     scrollBatchIndex++;
                     showBatch();
                     const shownIndex = (scrollBatchIndex % batchCycleSize) + 1;
-                    if (scrollMode === 'alternating') {
+                    if (scrollMode === 'alternating' || scrollMode === 'altConsMixed') {
                         const suffix = forceConsonantsUntilStop ? ' · consonants-only until stop' : '';
                         setMessage(`${currentBatchType.toUpperCase()} batch ${shownIndex} / ${batchCycleSize} (cycling)${suffix}`);
                     } else {
@@ -19449,7 +20360,7 @@ function initSettingsUI() {
     }
     const newLetterModeSelect = document.getElementById('newLetterModeSelect');
     if (newLetterModeSelect) {
-        const validModes = new Set(['mixed', 'alternating']);
+        const validModes = new Set(['mixed', 'alternating', 'altConsMixed']);
         const savedMode = (appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode)) || 'mixed';
         const resolved = validModes.has(savedMode) ? savedMode : 'mixed';
         newLetterModeSelect.value = resolved;
@@ -19675,6 +20586,7 @@ function initSettingsUI() {
     });
 
     const omegaModeSelect = document.getElementById('omegaModeSelect');
+    const omegaWordOrderSelect = document.getElementById('omegaWordOrderSelect');
     const omegaCustomFields = document.getElementById('omegaCustomFields');
     const omegaCustomGroupName = document.getElementById('omegaCustomGroupName');
     const omegaCustomShapeList = document.getElementById('omegaCustomShapeList');
@@ -19736,6 +20648,14 @@ function initSettingsUI() {
             saveAppSettings();
             syncOmegaCustomUI();
             updateOmegaEfficiencySubtitle();
+        });
+    }
+    if (omegaWordOrderSelect) {
+        const orderMode = (appSettings && appSettings.omegaWordOrder) || 'alphaFirst';
+        omegaWordOrderSelect.value = orderMode === 'alphaLex' ? 'alphaLex' : 'alphaFirst';
+        omegaWordOrderSelect.addEventListener('change', () => {
+            appSettings.omegaWordOrder = omegaWordOrderSelect.value === 'alphaLex' ? 'alphaLex' : 'alphaFirst';
+            saveAppSettings();
         });
     }
     const omegaShapesCountInput = document.getElementById('omegaShapesCountInput');
@@ -20110,8 +21030,12 @@ function initSettingsUI() {
             if (muteCustomSequenceFields) {
                 muteCustomSequenceFields.style.display = mode === 'custom' ? '' : 'none';
             }
-            if (mode === 'custom' && muteCustomSequenceInput && appSettings && appSettings.muteCustomSequence) {
-                muteCustomSequenceInput.value = appSettings.muteCustomSequence;
+            if (mode === 'custom' && muteCustomSequenceInput) {
+                // Allow empty string so mobile users can clear the field and type their own.
+                muteCustomSequenceInput.value =
+                    appSettings && appSettings.muteCustomSequence != null
+                        ? appSettings.muteCustomSequence
+                        : '';
             }
         };
         syncMuteCustomUI();
@@ -20124,9 +21048,10 @@ function initSettingsUI() {
             syncMuteCustomUI();
         });
         if (muteCustomSequenceInput) {
-            if (appSettings && appSettings.muteCustomSequence) {
-                muteCustomSequenceInput.value = appSettings.muteCustomSequence;
-            }
+            muteCustomSequenceInput.value =
+                appSettings && appSettings.muteCustomSequence != null
+                    ? appSettings.muteCustomSequence
+                    : '';
             muteCustomSequenceInput.addEventListener('input', () => {
                 let val = (muteCustomSequenceInput.value || '').toUpperCase().replace(/[^A-Z]/g, '');
                 // Optional: dedupe to avoid repeated letters
@@ -20138,14 +21063,29 @@ function initSettingsUI() {
                         deduped += ch;
                     }
                 }
-                if (deduped.length === 0) {
-                    deduped = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-                }
                 muteCustomSequenceInput.value = deduped;
                 appSettings.muteCustomSequence = deduped;
                 saveAppSettings();
             });
         }
+    }
+
+    const muteBinaryDynamicAfterExhaustToggle = document.getElementById('muteBinaryDynamicAfterExhaustToggle');
+    if (muteBinaryDynamicAfterExhaustToggle) {
+        muteBinaryDynamicAfterExhaustToggle.checked = !!(appSettings && appSettings.muteBinaryDynamicAfterExhaust);
+        muteBinaryDynamicAfterExhaustToggle.addEventListener('change', () => {
+            appSettings.muteBinaryDynamicAfterExhaust = muteBinaryDynamicAfterExhaustToggle.checked;
+            saveAppSettings();
+        });
+    }
+
+    const muteBinaryProfilingToggle = document.getElementById('muteBinaryProfilingToggle');
+    if (muteBinaryProfilingToggle) {
+        muteBinaryProfilingToggle.checked = !!(appSettings && appSettings.muteBinaryProfilingEnabled);
+        muteBinaryProfilingToggle.addEventListener('change', () => {
+            appSettings.muteBinaryProfilingEnabled = muteBinaryProfilingToggle.checked;
+            saveAppSettings();
+        });
     }
 
     const zeroCurvesApproxToggle = document.getElementById('zeroCurvesApproxToggle');

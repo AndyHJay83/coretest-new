@@ -1044,15 +1044,30 @@
                         <p class="settings-section-subtitle">Letter selection mode</p>
                         <label for="muteLetterModeSelect">Mode:</label>
                         <select id="muteLetterModeSelect">
-                            <option value="az">A–Z (fixed sequence)</option>
+                            <option value="az">NTRLCSEUAIO (then Most Frequent)</option>
                             <option value="custom">Custom, then Most Frequent</option>
                             <option value="mostFrequent">Most Frequent (dynamic)</option>
                         </select>
                         <div id="muteCustomSequenceFields" class="mute-custom-sequence-fields" style="margin-top: 8px; display: none;">
                             <label for="muteCustomSequenceInput">Custom letter string (A–Z only, no spaces):</label>
                             <input type="text" id="muteCustomSequenceInput" placeholder="e.g. ETAOINSHRDLU" maxlength="26" autocomplete="off" style="width: 100%; text-transform: uppercase;">
-                            <p class="settings-field-help">MUTE/MUTE DUO will step through this string first, then switch to Most Frequent letters automatically.</p>
+                            <p class="settings-field-help">MUTE/MUTE DUO will step through this string first, then either continue with Most Frequent letters or move on (depending on the toggle below).</p>
                         </div>
+                        <p class="settings-section-subtitle" style="margin-top: 14px;">Dynamic after string exhausted</p>
+                        <label class="toggle-switch" style="margin-top: 8px;">
+                            <input type="checkbox" id="muteBinaryDynamicAfterExhaustToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">
+                            If ON: continue with Most Frequent letters
+                            · If OFF: move on to the next filter when the string ends
+                        </span>
+                        <p class="settings-section-subtitle" style="margin-top: 14px;">Psychological Profiling</p>
+                        <label class="toggle-switch" style="margin-top: 8px;">
+                            <input type="checkbox" id="muteBinaryProfilingToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Enable profiling before MUTE/MUTE DUO</span>
                     </div>
                     <div class="settings-section" id="settings-section-name-engine">
                         <h3 class="settings-section-title">NAME ENGINE</h3>
@@ -1236,6 +1251,7 @@
                         <select id="newLetterModeSelect" style="max-width: 100%; margin-bottom: 6px;">
                             <option value="mixed">Mixed (2 consonants + 2 vowels)</option>
                             <option value="alternating">Alternating (all consonants / all vowels)</option>
+                            <option value="altConsMixed">Alternating (4 consonants / 2 consonants + 2 vowels)</option>
                         </select>
                         <label for="newAnswerCountModeSelect">Answer count mode:</label>
                         <select id="newAnswerCountModeSelect" style="max-width: 100%; margin-bottom: 6px;">
@@ -1259,6 +1275,11 @@
                         <p class="settings-section-subtitle">Which shape/object set to use for the OMEGA filter</p>
                         <label for="omegaShapesCountInput">Number of shapes (0 = until SUBMIT):</label>
                         <input type="number" id="omegaShapesCountInput" min="0" max="99" value="0" style="width: 4em;">
+                        <label for="omegaWordOrderSelect">Word order in OMEGA results:</label>
+                        <select id="omegaWordOrderSelect">
+                            <option value="alphaFirst">Alphabetical by First Letter</option>
+                            <option value="alphaLex">Alphabetical by Lexicon Letter</option>
+                        </select>
                         <label for="omegaModeSelect">Mode:</label>
                         <select id="omegaModeSelect">
                             <option value="esp">ESP</option>
