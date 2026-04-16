@@ -1579,18 +1579,18 @@ const omegaMappings = {
         Star: 'AEHJKLMNRTVWXYZ'
     },
     pocket: {
-        Keys: 'MNRT',
-        Coin: 'OCDG',
-        Card: 'ACEK',
-        Phone: 'PHNOE',
-        Wallet: 'WALT'
+        Coin: 'BCDGJMNOPQRSUW',
+        Pen: 'ACDFHIJLNOPSTUVY',
+        Fold: 'ADEFHIKLMNRTVWXYZ',
+        Card: 'BCDEFGHIJLMNOPQUWZ',
+        Keys: 'ABEFGHIKLMNPRTVWXYZ'
     },
     restaurant: {
-        Plate: 'PLATE',
-        Knife: 'KNIFE',
-        Fork: 'FORK',
-        Glass: 'GLASS',
-        Napkin: 'NAPKIN'
+        Plate: 'BCDGJMOPQRSUW',
+        Napkin: 'ABDEFGHJKLMNPRTUVWXYZ',
+        Knife: 'BDEFGHIJKLMNPRSTUWXYZ',
+        Fork: 'EFHIJKLMNPQRTUVWXYZ',
+        Spoon: 'BCDFGIJOPQRSTUY'
     },
     straightCurved: {
         Straight: 'AEFHIKLMNTVWXYZ',
