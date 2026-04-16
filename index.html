@@ -1246,13 +1246,16 @@
                     </div>
                     <div class="settings-section" id="settings-section-new">
                         <h3 class="settings-section-title">NEW</h3>
-                        <p class="settings-section-subtitle">4-letter batch generation for the NEW filter</p>
-                        <label for="newLetterModeSelect">Letter mode:</label>
-                        <select id="newLetterModeSelect" style="max-width: 100%; margin-bottom: 6px;">
-                            <option value="mixed">Mixed (2 consonants + 2 vowels)</option>
-                            <option value="alternating">Alternating (all consonants / all vowels)</option>
-                            <option value="altConsMixed">Alternating (4 consonants / 2 consonants + 2 vowels)</option>
-                        </select>
+                        <p class="settings-section-subtitle">4-letter batch generation for the NEW filter (fixed: 2 consonants + 2 vowels per batch)</p>
+                        <!-- Letter mode UI hidden: performance always uses mixed; alternating / altConsMixed remain in script for possible future use. -->
+                        <div id="newLetterModeSettingsWrap" style="display: none;" aria-hidden="true">
+                            <label for="newLetterModeSelect">Letter mode:</label>
+                            <select id="newLetterModeSelect" style="max-width: 100%; margin-bottom: 6px;">
+                                <option value="mixed">Mixed (2 consonants + 2 vowels)</option>
+                                <option value="alternating">Alternating (all consonants / all vowels)</option>
+                                <option value="altConsMixed">Alternating (4 consonants / 2 consonants + 2 vowels)</option>
+                            </select>
+                        </div>
                         <label for="newAnswerCountModeSelect">Answer count mode:</label>
                         <select id="newAnswerCountModeSelect" style="max-width: 100%; margin-bottom: 6px;">
                             <option value="exact">Exact count (includes assumed first/second)</option>

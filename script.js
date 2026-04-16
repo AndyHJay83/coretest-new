@@ -688,13 +688,10 @@ function onWorkflowReportHumanClick(e) {
 function snapshotNewSettingsForReport(appSettingsRef) {
     const a = appSettingsRef || {};
     const sec = Math.max(1, Math.min(60, parseInt(a.newAutoStopSeconds ?? 10, 10) || 10));
-    const letterMode = (a.newLetterMode || a.scrollLetterMode || 'mixed');
+    /* NEW letter batch mode is fixed to mixed in UI / performance (other modes kept in codebase only). */
+    const letterMode = 'mixed';
+    const letterModeLabel = 'Mixed (2 consonants + 2 vowels per batch)';
     const isExact = a.newAnswerCountMode === 'exact';
-    const letterModeLabel = letterMode === 'alternating'
-        ? 'Alternating (consonant / vowel batches)'
-        : (letterMode === 'altConsMixed'
-            ? 'Alternating (4 consonants / 2 consonants + 2 vowels)'
-            : 'Mixed (2 consonants + 2 vowels per batch)');
     return {
         letterMode,
         letterModeLabel,
@@ -1536,7 +1533,7 @@ const DEFAULT_SETTINGS = {
     eyeTestBuiltinPresetId: '',
     /** Unified chart selection: '' | 'builtin:<id>' | 'saved:<uuid>' */
     eyeTestSelection: '',
-    /** NEW generation mode: 'mixed' | 'alternating' | 'altConsMixed' */
+    /** NEW generation mode: 'mixed' | 'alternating' | 'altConsMixed' (UI hidden; performance uses mixed only). */
     newLetterMode: 'mixed',
     /** NEW answer mode: 'more' | 'exact' */
     newAnswerCountMode: 'exact',
@@ -17258,10 +17255,8 @@ function setupFeatureListeners(feature, callback, options) {
             let newLexPeekLockedLetters = [];
             let pendingCustomTarget = null; // { kind: 'position'|'anywhere', position?: number }
             let lockedTargetForActiveBatch = null;
-            const savedNewMode = appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode);
-            const scrollMode = savedNewMode === 'alternating' || savedNewMode === 'altConsMixed'
-                ? savedNewMode
-                : 'mixed';
+            /* Fixed to mixed: alternating / altConsMixed remain in showBatch() for possible future UI. */
+            const scrollMode = 'mixed';
             const newAnswerCountMode = (appSettings && appSettings.newAnswerCountMode === 'exact') ? 'exact' : 'more';
             const answerCountHintEl = document.getElementById('newAnswerCountHint');
             if (answerCountHintEl) {
@@ -20864,10 +20859,7 @@ function initSettingsUI() {
     const newLetterModeSelect = document.getElementById('newLetterModeSelect');
     if (newLetterModeSelect) {
         const validModes = new Set(['mixed', 'alternating', 'altConsMixed']);
-        const savedMode = (appSettings && (appSettings.newLetterMode || appSettings.scrollLetterMode)) || 'mixed';
-        const resolved = validModes.has(savedMode) ? savedMode : 'mixed';
-        newLetterModeSelect.value = resolved;
-        appSettings.newLetterMode = resolved;
+        newLetterModeSelect.value = 'mixed';
         newLetterModeSelect.addEventListener('change', () => {
             const next = validModes.has(newLetterModeSelect.value) ? newLetterModeSelect.value : 'mixed';
             appSettings.newLetterMode = next;
