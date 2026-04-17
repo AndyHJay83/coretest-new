@@ -19661,19 +19661,13 @@ function pickLexiconLetterIndexForOverlay(sourceWords, autoLetterIndex, requeste
     return autoLetterIndex;
 }
 
-/** Letter at lex column using same raw `toUpperCase` + index rules as OMEGA LEX (not NFD-sanitized). */
+/** Letter at lex column: same sanitization + index rules as clue generation (`separateLettersIntoCategoriesAdvanced`). */
 function getLetterForLexFilter(raw, letterIndex) {
-    const up = String(raw || '')
-        .toUpperCase()
-        .replace(/\s+/g, '');
-    if (!up.length) return null;
-    if (letterIndex === ADV_LEX_LTE_SENTINEL) {
-        const ch = up[up.length - 1];
-        return ch >= 'A' && ch <= 'Z' ? ch : null;
-    }
-    if (!Number.isInteger(letterIndex) || letterIndex < 0 || up.length <= letterIndex) return null;
-    const ch = up[letterIndex];
-    return ch >= 'A' && ch <= 'Z' ? ch : null;
+    const w = sanitizeLexiconWordForAdvanced(raw);
+    if (!w.length) return null;
+    const ch = getLetterAtAdvancedLexIndex(w, letterIndex);
+    if (!ch || ch < 'A' || ch > 'Z') return null;
+    return ch;
 }
 
 /**

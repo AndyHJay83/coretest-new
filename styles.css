@@ -7251,7 +7251,7 @@ button.close-info-button.workflow-report-close {
     margin: 6px 0;
 }
 
-/* Tappable words: read as body text, no chip */
+/* Tappable words: plain body text (no underline/cursor hint) */
 .lexicon-fakegpt-overlay button.lexicon-fakegpt-clue {
     display: inline !important;
     padding: 0 !important;
@@ -7267,18 +7267,11 @@ button.close-info-button.workflow-report-close {
     background-color: transparent !important;
     border: none !important;
     border-radius: 0 !important;
-    cursor: pointer !important;
+    cursor: default !important;
     text-align: left !important;
-    text-decoration: underline !important;
-    text-decoration-color: rgba(255, 255, 255, 0.35) !important;
-    text-underline-offset: 3px !important;
+    text-decoration: none !important;
     box-shadow: none !important;
     -webkit-tap-highlight-color: transparent;
-}
-
-.lexicon-fakegpt-overlay button.lexicon-fakegpt-clue:active {
-    opacity: 0.85 !important;
-    background-color: transparent !important;
 }
 
 /* Action row under assistant message */
@@ -7565,10 +7558,6 @@ button.close-info-button.workflow-report-close {
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-numbered .lexicon-fakegpt-line {
     margin: 12px 0;
-}
-
-.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa button.lexicon-fakegpt-clue {
-    text-underline-offset: 6px !important;
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-msg-actions {
