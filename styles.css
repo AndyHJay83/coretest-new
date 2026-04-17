@@ -6859,6 +6859,8 @@ button.close-info-button.workflow-report-close {
     /* Slightly shorter header + full black to avoid gaps in standalone PWA */
     --lexgpt-header-min-h: 72px;
     --lexgpt-header-pad-y: 12px;
+    /* Clear system status bar / notch so header controls stay tappable (standalone PWA) */
+    --lexgpt-pwa-top-spacer: 10vh;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
 }
@@ -6991,6 +6993,12 @@ button.close-info-button.workflow-report-close {
     z-index: 5;
     cursor: pointer;
     background: transparent;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-dismiss-zone {
+    top: calc(
+        var(--lexgpt-pwa-top-spacer) + var(--lexgpt-header-min-h) + max(var(--lexgpt-header-pad-y), env(safe-area-inset-top))
+    );
 }
 
 .lexicon-fakegpt-inner {
@@ -7410,6 +7418,7 @@ button.close-info-button.workflow-report-close {
 
 /* PWA standalone: ~2× ChatGPT-style overlay (text, icons, composer) */
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-header {
+    margin-top: var(--lexgpt-pwa-top-spacer);
     grid-template-columns: 88px 1fr auto;
     gap: 16px;
     padding-left: 24px;
