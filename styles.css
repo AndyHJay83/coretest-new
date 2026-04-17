@@ -7279,29 +7279,32 @@ button.close-info-button.workflow-report-close {
 
 .lexicon-fakegpt-overlay .lexicon-fakegpt-numbered .lexicon-fakegpt-line {
     margin: 6px 0;
+    width: 100%;
+    max-width: 100%;
 }
 
-/* Tappable words: plain body text (no underline/cursor hint) */
+/* Tappable words: full-row hit target (still no link styling) */
 .lexicon-fakegpt-overlay button.lexicon-fakegpt-clue {
-    display: inline !important;
-    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 48px !important;
+    padding: 12px 14px !important;
     margin: 0 !important;
-    width: auto !important;
-    min-width: 0 !important;
-    min-height: 0 !important;
     font: inherit !important;
     font-size: inherit !important;
     line-height: inherit !important;
     color: var(--lexgpt-text) !important;
-    background: none !important;
-    background-color: transparent !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    background-color: rgba(255, 255, 255, 0.06) !important;
     border: none !important;
-    border-radius: 0 !important;
+    border-radius: 12px !important;
     cursor: default !important;
     text-align: left !important;
     text-decoration: none !important;
     box-shadow: none !important;
-    -webkit-tap-highlight-color: transparent;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.15);
 }
 
 /* Action row under assistant message */
@@ -7589,7 +7592,13 @@ button.close-info-button.workflow-report-close {
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-numbered .lexicon-fakegpt-line {
-    margin: 12px 0;
+    margin: 10px 0;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa button.lexicon-fakegpt-clue {
+    min-height: 72px !important;
+    padding: 18px 22px !important;
+    border-radius: 16px !important;
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-msg-actions {
@@ -7614,9 +7623,26 @@ button.close-info-button.workflow-report-close {
     background-color: #000;
 }
 
-/* Extra black below composer while IME is open (avoids white gap under keyboard on iOS PWA) */
+/* Extra black below composer while IME is open (iOS Safari + PWA keyboard gap) */
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa.lexgpt-keyboard-open .typing-container {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + max(24px, 42vh));
+}
+
+/* Same keyboard strip for mobile browser (not only standalone PWA) */
+@media (max-width: 768px) {
+    .lexicon-fakegpt-overlay {
+        min-height: 100dvh;
+        min-height: 100lvh;
+        min-height: -webkit-fill-available;
+        background-color: #000;
+    }
+    .lexicon-fakegpt-overlay .typing-container {
+        background: #000;
+        background-color: #000;
+    }
+    .lexicon-fakegpt-overlay.lexgpt-keyboard-open .typing-container {
+        padding-bottom: calc(env(safe-area-inset-bottom, 0px) + max(24px, 42vh));
+    }
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-composer-pill {
