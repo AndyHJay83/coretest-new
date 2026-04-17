@@ -19799,12 +19799,25 @@ function lexiconFakeGptResetChatUi(messagesEl, inputEl, sendBtn, syncFn) {
     if (messagesEl) messagesEl.scrollTop = 0;
 }
 
+function initLexiconFakeGptKeyboardCoverOnce() {
+    const root = document.getElementById('lexiconFakeGptOverlay');
+    const inputEl = document.getElementById('lexiconFakeGptInput');
+    if (!root || !inputEl || root.dataset.lexgptKbBound === '1') return;
+    root.dataset.lexgptKbBound = '1';
+    const setKb = (on) => {
+        if (root.isConnected) root.classList.toggle('lexgpt-keyboard-open', !!on);
+    };
+    inputEl.addEventListener('focus', () => setKb(true));
+    inputEl.addEventListener('blur', () => setKb(false));
+}
+
 function closeAdvancedLexiconFakeGptOverlay() {
     document.body.classList.remove('lexgpt-fakegpt-open');
     const root = document.getElementById('lexiconFakeGptOverlay');
     if (root) {
         root.style.display = 'none';
         root.classList.remove('lexicon-fakegpt-overlay--pwa');
+        root.classList.remove('lexgpt-keyboard-open');
     }
     if (_lexiconFakeGptSession && _lexiconFakeGptSession.thinkingTimer) {
         clearTimeout(_lexiconFakeGptSession.thinkingTimer);
@@ -20022,6 +20035,7 @@ function openAdvancedLexiconFakeGptOverlay(ctx) {
     const letterIndex = pickLexiconLetterIndexForOverlay(sourceWords, meta.letterIndex, requestedIdx);
 
     ensureAdvancedLexiconFakeGptOverlay();
+    initLexiconFakeGptKeyboardCoverOnce();
     const root = document.getElementById('lexiconFakeGptOverlay');
     const messagesEl = document.getElementById('lexiconFakeGptChatScroll');
     const inputEl = document.getElementById('lexiconFakeGptInput');

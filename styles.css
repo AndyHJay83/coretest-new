@@ -125,7 +125,7 @@ body {
     }
 }
 
-/* In standalone PWA mode: keep header hidden */
+/* In standalone PWA mode: keep header hidden; fill screen with safe-area insets only */
 @media (display-mode: standalone) {
     html {
         height: 100%;
@@ -134,17 +134,15 @@ body {
     body {
         min-height: 100%;
         min-height: -webkit-fill-available;
-        /* Avoid extra bottom inset stacking with shortened .container */
-        padding-bottom: 0;
+        padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
     }
-    /* Inset the app ~10% from top; use 90dvh so top/bottom stay on-screen */
     .container {
-        height: 90dvh;
-        max-height: 90dvh;
-        min-height: 0;
-        margin-top: 10dvh;
-        padding-bottom: env(safe-area-inset-bottom, 0px);
+        margin-top: 0;
         box-sizing: border-box;
+        min-height: 100dvh;
+        min-height: -webkit-fill-available;
+        height: auto;
+        max-height: none;
     }
     .header {
         display: none !important;
@@ -153,9 +151,12 @@ body {
         margin: 0 !important;
         min-height: 0 !important;
     }
-    /* PWA Perform only: header 40% larger so HOME/SAVE buttons are not too high */
-    body.perform-view .pwa-header-spacer {
-        min-height: calc(env(safe-area-inset-top) + 36px);
+    /* PERFORM: flex fills shell; beat inline 100dvh from script */
+    #workflowExecution {
+        height: auto !important;
+        max-height: none;
+        min-height: 0 !important;
+        flex: 1 1 0 !important;
     }
     .version-display {
         display: none !important;
@@ -167,6 +168,8 @@ html:has(body.lexgpt-fakegpt-open) {
     background-color: #000;
     overflow: hidden;
     height: 100%;
+    min-height: 100lvh;
+    min-height: 100dvh;
 }
 
 /* Overlay draws its own safe insets; drop body padding so nothing peeks through seams */
@@ -177,6 +180,8 @@ body.lexgpt-fakegpt-open {
     padding-left: 0 !important;
     padding-right: 0 !important;
     padding-bottom: 0 !important;
+    min-height: 100lvh;
+    min-height: 100dvh;
 }
 
 .toggles-container {
@@ -4217,13 +4222,6 @@ input:checked + .slider:before {
     }
 }
 
-@media (display-mode: standalone) {
-    #workflowCreation {
-        top: calc(env(safe-area-inset-top) + 26px + 10dvh);
-        height: calc(100dvh - env(safe-area-inset-top) - 26px - 10dvh);
-    }
-}
-
 /* Workflow builder in-panel header: hidden on desktop */
 .workflow-builder-mobile-header {
     display: none;
@@ -5984,6 +5982,22 @@ button.close-info-button.workflow-report-close {
     }
 }
 
+/* PWA: fixed controls clear status bar / home indicator (stylesheet wins over injected button CSS) */
+@media (display-mode: standalone) {
+    .perform-home-button {
+        top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
+        left: calc(env(safe-area-inset-left, 0px) + 8px) !important;
+    }
+    .export-button {
+        top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
+        right: calc(env(safe-area-inset-right, 0px) + 12px) !important;
+    }
+    .reset-workflow-button {
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 16px) !important;
+        right: calc(env(safe-area-inset-right, 0px) + 16px) !important;
+    }
+}
+
 /* Ensure back button is clickable in mobile/PWA mode */
 @media (max-width: 768px) {
     .back-button {
@@ -6902,23 +6916,26 @@ button.close-info-button.workflow-report-close {
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa {
-    /* Header row = status-bar band (safe top inset); composer = bottom + home indicator */
+    /* Safe areas on shell; header/composer sit in content box (not under status bar / home indicator) */
     --lexgpt-header-min-h: 72px;
     --lexgpt-header-pad-y: 12px;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     overscroll-behavior: none;
+    position: fixed;
+    inset: 0;
+    padding-top: env(safe-area-inset-top, 0px);
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    /* Stretch with top/bottom — avoids iOS PWA gap vs 100dvh / min-height fights */
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
     height: auto;
-    min-height: 0;
+    /* Large viewport min-height keeps black behind the keyboard; min-height:0 allowed iOS white strip */
+    min-height: 100dvh;
+    min-height: 100lvh;
+    min-height: -webkit-fill-available;
     max-height: none;
+    box-sizing: border-box;
+    background-color: #000;
 }
 
 .lexicon-fakegpt-overlay *,
@@ -7052,7 +7069,8 @@ button.close-info-button.workflow-report-close {
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-dismiss-zone {
-    left: env(safe-area-inset-left, 0px);
+    left: 0;
+    top: calc(var(--lexgpt-header-min-h) + var(--lexgpt-header-pad-y));
 }
 
 .lexicon-fakegpt-inner {
@@ -7469,6 +7487,8 @@ button.close-info-button.workflow-report-close {
     gap: 16px;
     padding-left: 24px;
     padding-right: 24px;
+    /* Overlay already has padding-top: safe-area */
+    padding-top: var(--lexgpt-header-pad-y);
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-header-iconbtn .material-symbols-rounded {
@@ -7590,6 +7610,13 @@ button.close-info-button.workflow-report-close {
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .typing-container {
     padding: 16px 24px 12px;
+    background: #000;
+    background-color: #000;
+}
+
+/* Extra black below composer while IME is open (avoids white gap under keyboard on iOS PWA) */
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa.lexgpt-keyboard-open .typing-container {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + max(24px, 42vh));
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-composer-pill {
