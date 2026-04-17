@@ -19737,13 +19737,6 @@ function attachLexApplyHoldOpensFakeGpt(applyBtn, onShortApply, onLongHoldOpenFa
 
 let _lexiconFakeGptSession = null;
 
-const LEXFAKEGPT_WELCOME_SUGGESTIONS = [
-    'Give me 10 random English words in a numbered list',
-    'Tell me a joke',
-    'Write a short story',
-    'What is the capital of Japan?'
-];
-
 function isLexiconFakeGptPwaDisplayMode() {
     try {
         return (
@@ -19758,17 +19751,11 @@ function isLexiconFakeGptPwaDisplayMode() {
 }
 
 function renderLexiconFakeGptEmptyStateHtml() {
-    const chips = LEXFAKEGPT_WELCOME_SUGGESTIONS.map((s) => {
-        const esc = escapeHtmlLexFakeGpt(s);
-        const attr = escapeAttrLexFakeGpt(s);
-        return `<button type="button" class="lexicon-fakegpt-suggestion-chip" data-lexgpt-suggestion="${attr}"><span class="lexicon-fakegpt-suggestion-text">${esc}</span></button>`;
-    }).join('');
     return `<div class="lexicon-fakegpt-empty-state">
     <div class="lexicon-fakegpt-logo-wrap">
       <div class="lexicon-fakegpt-logo-circle" aria-hidden="true"><span class="lexicon-fakegpt-logo-glyph">\u2726</span></div>
     </div>
     <h2 class="lexicon-fakegpt-empty-title">How can I help you?</h2>
-    <div class="lexicon-fakegpt-suggestions-row">${chips}</div>
   </div>`;
 }
 
@@ -19910,22 +19897,6 @@ function ensureAdvancedLexiconFakeGptOverlay() {
                     </button>
                     <div class="lexicon-fakegpt-composer-voice" aria-hidden="true">
                         <span class="lexicon-fakegpt-voice-mic"><span class="material-symbols-rounded">mic</span></span>
-                        <span class="lexicon-fakegpt-voice-wave-wrap">
-                            <span class="lexicon-fakegpt-waveform" aria-hidden="true">
-                                <span class="lexicon-fakegpt-wave-bar" style="height:8px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:14px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:10px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:18px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:12px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:16px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:9px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:15px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:11px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:13px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:17px"></span>
-                                <span class="lexicon-fakegpt-wave-bar" style="height:10px"></span>
-                            </span>
-                        </span>
                     </div>
                 </div>
             </div>
@@ -19959,40 +19930,8 @@ function ensureAdvancedLexiconFakeGptOverlay() {
     root.__lexgptSyncComposer = syncLexiconFakeGptComposerChrome;
 
     if (messagesEl) {
-        let lexgptSuggestionTouchConsumed = false;
-        messagesEl.addEventListener(
-            'touchstart',
-            (e) => {
-                const sug = e.target.closest('[data-lexgpt-suggestion]');
-                if (!sug || !inputEl || !_lexiconFakeGptSession || !_lexiconFakeGptSession.ready || _lexiconFakeGptSession.sent) {
-                    return;
-                }
-                e.preventDefault();
-                lexgptSuggestionTouchConsumed = true;
-                const st = sug.getAttribute('data-lexgpt-suggestion') || '';
-                if (!st) return;
-                inputEl.value = st;
-                syncLexiconFakeGptComposerChrome();
-                doSend();
-            },
-            { passive: false }
-        );
         messagesEl.addEventListener('click', (e) => {
-            const sug = e.target.closest('[data-lexgpt-suggestion]');
-            if (sug && inputEl && _lexiconFakeGptSession && !_lexiconFakeGptSession.sent && _lexiconFakeGptSession.ready) {
-                if (lexgptSuggestionTouchConsumed) {
-                    lexgptSuggestionTouchConsumed = false;
-                    return;
-                }
-                e.preventDefault();
-                const st = sug.getAttribute('data-lexgpt-suggestion') || '';
-                if (!st) return;
-                inputEl.value = st;
-                syncLexiconFakeGptComposerChrome();
-                doSend();
-                return;
-            }
-                       const t = e.target.closest('[data-lexicon-clue]');
+            const t = e.target.closest('[data-lexicon-clue]');
             if (!t || !_lexiconFakeGptSession) return;
             const clue = t.getAttribute('data-lexicon-clue') || '';
             if (!clue || clue === '—') return;
