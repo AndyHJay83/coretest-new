@@ -6498,7 +6498,8 @@ function startOmega(callback) {
                 </div>
                 <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
                     <input type="text" id="omegaLexInput" placeholder="Letter(s) or short word" maxlength="40" autocomplete="off" style="padding:8px; min-width:180px; text-transform:uppercase;">
-                    <button type="button" id="omegaLexApplyBtn" class="secondary-btn" title="Apply LEX (hold 3 seconds for Advanced Lex)">Apply LEX</button>
+                    <button type="button" id="omegaLexApplyBtn" class="secondary-btn" title="Apply LEX filter">Apply LEX</button>
+                    <button type="button" id="omegaLexChatGptBtn" class="secondary-btn" title="Advanced Lex (ChatGPT-style)">ChatGPT</button>
                 </div>
             </div>
             <span id="omegaLexCompactLabel" style="font-size:12px;color:#444;">Lex: —</span>
@@ -6566,7 +6567,9 @@ function startOmega(callback) {
         });
     };
     const omegaLexApplyBtn = document.getElementById('omegaLexApplyBtn');
-    attachLexApplyHoldOpensFakeGpt(omegaLexApplyBtn, () => applyOmegaLexFilterFromInput(), openOmegaAdvancedLexiconFakeGpt);
+    const omegaLexChatGptBtn = document.getElementById('omegaLexChatGptBtn');
+    attachOmegaTap(omegaLexApplyBtn, () => applyOmegaLexFilterFromInput());
+    attachOmegaTap(omegaLexChatGptBtn, () => openOmegaAdvancedLexiconFakeGpt());
     const applyOmegaLexFilterFromInput = () => {
         const letters = parseUnifiedCustomAlphaLine((omegaLexInput && omegaLexInput.value) || '');
         if (!letters) {
@@ -7860,7 +7863,8 @@ function createUnifiedAlphaFeature(workflowKind) {
             </div>
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
                 <input type="text" id="alphaLexPeekInput" placeholder="Letter(s) or short word" maxlength="40" autocomplete="off" style="padding:8px; min-width:180px; text-transform:uppercase;">
-                <button type="button" id="alphaLexPeekApplyBtn" class="secondary-btn" title="Apply LEX (hold 3 seconds for Advanced Lex)">Apply LEX</button>
+                <button type="button" id="alphaLexPeekApplyBtn" class="secondary-btn" title="Apply LEX filter">Apply LEX</button>
+                <button type="button" id="alphaLexPeekChatGptBtn" class="secondary-btn" title="Advanced Lex (ChatGPT-style)">ChatGPT</button>
             </div>
         </div>
     `;
@@ -16056,6 +16060,7 @@ function setupFeatureListeners(feature, callback, options) {
             const alphaLexPeekLettersDisplay = document.getElementById('alphaLexPeekLettersDisplay');
             const alphaLexPeekInput = document.getElementById('alphaLexPeekInput');
             const alphaLexPeekApplyBtn = document.getElementById('alphaLexPeekApplyBtn');
+            const alphaLexPeekChatGptBtn = document.getElementById('alphaLexPeekChatGptBtn');
             let alphaLexPeekVisible = false;
             let alphaLexPeekPosition = -1;
             let alphaLexPeekLetters = [];
@@ -17160,11 +17165,8 @@ function setupFeatureListeners(feature, callback, options) {
                     }
                 });
             };
-            attachLexApplyHoldOpensFakeGpt(
-                alphaLexPeekApplyBtn,
-                () => applyAlphaLexPeekFilter(),
-                openAlphaAdvancedLexiconFakeGpt
-            );
+            attachUnifiedAlphaTapBtn(alphaLexPeekApplyBtn, () => applyAlphaLexPeekFilter());
+            attachUnifiedAlphaTapBtn(alphaLexPeekChatGptBtn, () => openAlphaAdvancedLexiconFakeGpt());
             if (alphaLexPeekInput) {
                 alphaLexPeekInput.addEventListener('input', () => {
                     if (alphaLexPeekInput) {
@@ -19686,46 +19688,6 @@ function filterWordsByAdvancedLexiconClue(wordList, clueWord, letterIndex, keyLe
         if (!ch) return false;
         if (k) return ch === k;
         return clue.includes(ch);
-    });
-}
-
-const LEX_FAKEGPT_APPLY_HOLD_MS = 3000;
-
-/** Short press / click runs `onShortApply`. Hold `LEX_FAKEGPT_APPLY_HOLD_MS` opens fake ChatGPT (`onLongHoldOpenFakeGpt`). */
-function attachLexApplyHoldOpensFakeGpt(applyBtn, onShortApply, onLongHoldOpenFakeGpt) {
-    if (!applyBtn || typeof onShortApply !== 'function' || typeof onLongHoldOpenFakeGpt !== 'function') return;
-    let holdT = null;
-    let suppressClick = false;
-    const clearHold = () => {
-        if (holdT) {
-            clearTimeout(holdT);
-            holdT = null;
-        }
-    };
-    applyBtn.addEventListener('pointerdown', () => {
-        clearHold();
-        holdT = setTimeout(() => {
-            holdT = null;
-            suppressClick = true;
-            onLongHoldOpenFakeGpt();
-        }, LEX_FAKEGPT_APPLY_HOLD_MS);
-    });
-    applyBtn.addEventListener('pointerup', () => {
-        if (holdT) {
-            clearHold();
-            suppressClick = true;
-            onShortApply();
-        }
-    });
-    applyBtn.addEventListener('pointerleave', clearHold);
-    applyBtn.addEventListener('pointercancel', clearHold);
-    applyBtn.addEventListener('click', (e) => {
-        if (suppressClick) {
-            suppressClick = false;
-            e.preventDefault();
-            return;
-        }
-        onShortApply();
     });
 }
 
