@@ -134,12 +134,17 @@ body {
     body {
         min-height: 100%;
         min-height: -webkit-fill-available;
+        /* Avoid extra bottom inset stacking with shortened .container */
+        padding-bottom: 0;
     }
+    /* Inset the app ~10% from top; use 90dvh so top/bottom stay on-screen */
     .container {
-        min-height: 100%;
-        min-height: -webkit-fill-available;
-        max-height: 100dvh;
-        max-height: -webkit-fill-available;
+        height: 90dvh;
+        max-height: 90dvh;
+        min-height: 0;
+        margin-top: 10dvh;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        box-sizing: border-box;
     }
     .header {
         display: none !important;
@@ -4209,6 +4214,13 @@ input:checked + .slider:before {
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         padding-bottom: min(60vh, 520px);
+    }
+}
+
+@media (display-mode: standalone) {
+    #workflowCreation {
+        top: calc(env(safe-area-inset-top) + 26px + 10dvh);
+        height: calc(100dvh - env(safe-area-inset-top) - 26px - 10dvh);
     }
 }
 
