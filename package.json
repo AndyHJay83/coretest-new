@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "build:wordfreq": "node scripts/build-en-unigram-zipf.mjs",
+    "build:subtlex": "node scripts/build-en-subtlex-zipf.mjs"
   },
   "dependencies": {
     "dotenv": "^17.3.1",

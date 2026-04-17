@@ -179,6 +179,552 @@ const WORKFLOW_REPORT_MAX = 10;
 const WORKFLOW_DEBUG_SNAPSHOT_MAX_WORDS = 1500;
 /** Set before dispatching `completed` on a feature so REPORT can store step-specific data */
 let pendingWorkflowStepPayload = null;
+/** Latest ranking/confidence snapshot from display layer (for REPORT payload merge). */
+let latestConfidenceSnapshot = null;
+
+/** Optional per-word manual boosts/overrides for confidence ranking (uppercase key). */
+const CONFIDENCE_WORD_SCORE_OVERRIDES = {};
+
+/** Datamuse API: cached word → { f: number, t: timestamp } (f from tags "f:…"). */
+const DATAMUSE_CACHE_STORAGE_KEY = 'coretest_datamuse_freq_v1';
+const DATAMUSE_CACHE_MAX_ENTRIES = 6000;
+const DATAMUSE_FETCH_TIMEOUT_MS = 8000;
+const DATAMUSE_FETCH_CONCURRENCY = 4;
+/** Skip network if the filtered list has more unique spellings than this (keeps UI responsive; uses heuristic only). */
+const CONFIDENCE_DATAMUSE_MAX_UNIQUE_WORDS = 300;
+/** Likelihood ranking + green highlights run only when fewer than this many words remain. */
+const CONFIDENCE_MAX_WORDLIST_RUN = 1000;
+let datamuseCacheObject = null;
+let datamuseCacheSaveTimer = null;
+
+function getDatamuseCache() {
+    if (!datamuseCacheObject) {
+        try {
+            const raw = localStorage.getItem(DATAMUSE_CACHE_STORAGE_KEY);
+            datamuseCacheObject = raw ? JSON.parse(raw) : {};
+            if (!datamuseCacheObject || typeof datamuseCacheObject !== 'object') datamuseCacheObject = {};
+        } catch {
+            datamuseCacheObject = {};
+        }
+    }
+    return datamuseCacheObject;
+}
+
+function scheduleDatamuseCachePersist() {
+    if (datamuseCacheSaveTimer) clearTimeout(datamuseCacheSaveTimer);
+    datamuseCacheSaveTimer = setTimeout(() => {
+        datamuseCacheSaveTimer = null;
+        try {
+            const cache = getDatamuseCache();
+            localStorage.setItem(DATAMUSE_CACHE_STORAGE_KEY, JSON.stringify(cache));
+        } catch (e) {
+            console.warn('Datamuse cache persist failed', e);
+        }
+    }, 400);
+}
+
+function trimDatamuseCacheIfNeeded() {
+    const cache = getDatamuseCache();
+    const keys = Object.keys(cache);
+    if (keys.length <= DATAMUSE_CACHE_MAX_ENTRIES) return;
+    const arr = keys.map((k) => [k, cache[k]]).sort((a, b) => (a[1].t || 0) - (b[1].t || 0));
+    const remove = keys.length - Math.floor(DATAMUSE_CACHE_MAX_ENTRIES * 0.85);
+    for (let i = 0; i < remove && i < arr.length; i++) {
+        delete cache[arr[i][0]];
+    }
+}
+
+function confidenceNormKeyWord(w) {
+    return String(w || '').toUpperCase().replace(/[^A-Z]/g, '');
+}
+
+function parseDatamuseFrequencyTag(item) {
+    const tags = item && item.tags;
+    if (!Array.isArray(tags)) return null;
+    for (const t of tags) {
+        if (typeof t === 'string' && t.startsWith('f:')) {
+            const v = parseFloat(t.slice(2));
+            if (Number.isFinite(v)) return v;
+        }
+    }
+    return null;
+}
+
+async function fetchDatamuseFrequencyForUpper(upperLetters) {
+    const up = String(upperLetters || '').toUpperCase().replace(/[^A-Z]/g, '');
+    if (!up) return null;
+    const q = encodeURIComponent(up.toLowerCase());
+    const url = `https://api.datamuse.com/words?sp=${q}&md=f&max=1`;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), DATAMUSE_FETCH_TIMEOUT_MS);
+    try {
+        const res = await fetch(url, { signal: ctrl.signal });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) return null;
+        const row = data[0];
+        const wBack = String(row.word || '').toUpperCase().replace(/[^A-Z]/g, '');
+        if (wBack !== up) return null;
+        return parseDatamuseFrequencyTag(row);
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(tid);
+    }
+}
+
+/** Map Datamuse `f:` tag to log-space for min–max norm (same space as offline log10 counts). */
+function datamuseFtoNormX(f) {
+    const v = Number(f);
+    if (!Number.isFinite(v)) return null;
+    return Math.log10(Math.abs(v) + 1e-12);
+}
+
+/**
+ * @param {string[]} sourceWords
+ * @returns {Promise<{ rawByUpper: Record<string, number|null>, hits: number, misses: number, fromCache: number }>}
+ */
+async function fetchDatamuseRawByUpperForWords(sourceWords) {
+    const upperSet = new Set();
+    for (const w of sourceWords) {
+        const up = confidenceNormKeyWord(w);
+        if (up) upperSet.add(up);
+    }
+    const upperList = [...upperSet];
+    const cache = getDatamuseCache();
+    const rawByUpper = {};
+    let fromCache = 0;
+    const pending = [];
+    for (const up of upperList) {
+        const hit = cache[up];
+        if (hit && Number.isFinite(hit.f)) {
+            rawByUpper[up] = datamuseFtoNormX(hit.f);
+            fromCache++;
+        } else {
+            pending.push(up);
+        }
+    }
+    let p = 0;
+    async function worker() {
+        while (p < pending.length) {
+            const i = p++;
+            const up = pending[i];
+            try {
+                const f = await fetchDatamuseFrequencyForUpper(up);
+                if (f != null && Number.isFinite(f)) {
+                    cache[up] = { f, t: Date.now() };
+                    rawByUpper[up] = datamuseFtoNormX(f);
+                } else {
+                    rawByUpper[up] = null;
+                }
+            } catch {
+                rawByUpper[up] = null;
+            }
+        }
+    }
+    const nWorkers = Math.min(DATAMUSE_FETCH_CONCURRENCY, Math.max(1, pending.length));
+    await Promise.all(Array.from({ length: nWorkers }, () => worker()));
+    trimDatamuseCacheIfNeeded();
+    scheduleDatamuseCachePersist();
+    let hits = 0;
+    let misses = 0;
+    for (const up of upperList) {
+        const v = rawByUpper[up];
+        if (v != null && Number.isFinite(v)) hits++;
+        else misses++;
+    }
+    return { rawByUpper, hits, misses, fromCache };
+}
+
+/**
+ * Normalize corpus frequency scores to 0–1 within this wordlist.
+ * `rawByUpper` values must already be in comparable log-space (Datamuse f via datamuseFtoNormX, or offline log10 count).
+ * @param {string[]} sourceWords
+ * @param {Record<string, number|null|undefined>} rawByUpper
+ * @returns {Map<string, number>} keys = uppercase A–Z form
+ */
+function buildCorpusFreqNormByUpperForSource(sourceWords, rawByUpper) {
+    const normByUpper = new Map();
+    const xs = [];
+    for (const w of sourceWords) {
+        const up = confidenceNormKeyWord(w);
+        if (!up) continue;
+        const x = rawByUpper[up];
+        if (x != null && Number.isFinite(x)) xs.push(x);
+    }
+    if (xs.length === 0) return normByUpper;
+    const min = Math.min(...xs);
+    const max = Math.max(...xs);
+    for (const w of sourceWords) {
+        const up = confidenceNormKeyWord(w);
+        if (!up) continue;
+        const x = rawByUpper[up];
+        if (x != null && Number.isFinite(x)) {
+            const n = max <= min ? 0.5 : clamp01((x - min) / (max - min));
+            normByUpper.set(up, n);
+        }
+    }
+    return normByUpper;
+}
+
+let offlineEnglishZipfObject = null;
+let offlineEnglishZipfPromise = null;
+/** Tracks which JSON URL was loaded so changing Settings invalidates cache. */
+let offlineEnglishZipfSourceKey = null;
+
+function getOfflineCorpusUrl() {
+    const mode = String((appSettings && appSettings.confidenceOfflineCorpus) || 'subtlex').toLowerCase();
+    if (mode === 'books' || mode === 'book' || mode === 'unigram') {
+        return 'data/en_unigram_zipf.json';
+    }
+    return 'data/en_subtlex_zipf.json';
+}
+
+/** Short label for UI / REPORT. */
+function getOfflineCorpusLabel() {
+    const mode = String((appSettings && appSettings.confidenceOfflineCorpus) || 'subtlex').toLowerCase();
+    if (mode === 'books' || mode === 'book' || mode === 'unigram') return 'books';
+    return 'SUBTLEX';
+}
+
+async function loadOfflineEnglishZipfMap() {
+    const url = getOfflineCorpusUrl();
+    if (offlineEnglishZipfSourceKey !== url) {
+        offlineEnglishZipfSourceKey = url;
+        offlineEnglishZipfObject = null;
+        offlineEnglishZipfPromise = null;
+    }
+    if (offlineEnglishZipfObject) return offlineEnglishZipfObject;
+    if (!offlineEnglishZipfPromise) {
+        offlineEnglishZipfPromise = fetch(url)
+            .then((r) => (r.ok ? r.json() : {}))
+            .catch(() => ({}))
+            .then((obj) => {
+                offlineEnglishZipfObject = obj && typeof obj === 'object' ? obj : {};
+                return offlineEnglishZipfObject;
+            });
+    }
+    return offlineEnglishZipfPromise;
+}
+
+function mergeOfflineZipfIntoRawByUpper(sourceWords, rawByUpper, zipfMap) {
+    const seen = new Set();
+    for (const w of sourceWords) {
+        const up = confidenceNormKeyWord(w);
+        if (!up || seen.has(up)) continue;
+        seen.add(up);
+        if (rawByUpper[up] != null && Number.isFinite(rawByUpper[up])) continue;
+        const z = zipfMap[up];
+        if (z != null && Number.isFinite(z)) rawByUpper[up] = z;
+    }
+}
+
+/**
+ * Apply Datamuse scores only where `rawByUpper` has no value yet (offline-first policy).
+ * @returns {number} how many unique spellings received a Datamuse value from this step
+ */
+function mergeDatamuseGapFillIntoRawByUpper(sourceWords, rawByUpper, dmRawByUpper) {
+    let applied = 0;
+    const seen = new Set();
+    for (const w of sourceWords) {
+        const up = confidenceNormKeyWord(w);
+        if (!up || seen.has(up)) continue;
+        seen.add(up);
+        const had = rawByUpper[up] != null && Number.isFinite(rawByUpper[up]);
+        if (had) continue;
+        const dm = dmRawByUpper[up];
+        if (dm == null || !Number.isFinite(dm)) continue;
+        rawByUpper[up] = dm;
+        applied++;
+    }
+    return applied;
+}
+
+function countOfflineZipfCoverage(sourceWords, zipfMap) {
+    let withZipf = 0;
+    let total = 0;
+    const seen = new Set();
+    for (const w of sourceWords) {
+        const up = confidenceNormKeyWord(w);
+        if (!up || seen.has(up)) continue;
+        seen.add(up);
+        total++;
+        if (zipfMap[up] != null && Number.isFinite(zipfMap[up])) withZipf++;
+    }
+    return { uniqueWithZipf: withZipf, uniqueTotal: total };
+}
+
+/**
+ * Book corpora over-rank surnames/brands vs everyday nouns. Nudge log₁₀(count) up for
+ * typical concrete/abstract noun endings (-ment, -tion, …) before within-list normalization.
+ * @returns {number} unique spellings adjusted
+ */
+/** ~40% relative frequency bump; tuned so typical -ment nouns edge typical book-heavy surnames (e.g. PAVEMENT vs SINCLAIR). */
+const NOUN_CORPUS_LOG_BONUS = 0.16;
+const NOUN_CORPUS_SUFFIXES_LONGEST_FIRST = [
+    'ATION', 'ITION', 'UTION',
+    'MENT', 'TION', 'SION',
+    'NESS', 'ANCE', 'ENCE',
+    'SHIP', 'HOOD',
+    'URE', 'ERY',
+    'ITY'
+];
+
+function applyNounSuffixCorpusLogBoost(rawByUpper, sourceWords) {
+    let adjusted = 0;
+    const seen = new Set();
+    for (const w of sourceWords) {
+        const up = confidenceNormKeyWord(w);
+        if (!up || seen.has(up)) continue;
+        seen.add(up);
+        const x = rawByUpper[up];
+        if (x == null || !Number.isFinite(x)) continue;
+        let hit = false;
+        for (const suf of NOUN_CORPUS_SUFFIXES_LONGEST_FIRST) {
+            if (up.length > suf.length && up.endsWith(suf)) {
+                hit = true;
+                break;
+            }
+        }
+        if (hit) {
+            rawByUpper[up] = x + NOUN_CORPUS_LOG_BONUS;
+            adjusted++;
+        }
+    }
+    return adjusted;
+}
+
+function clamp01(n) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return 0;
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    return x;
+}
+
+function confidenceEscapeHtml(raw) {
+    return String(raw || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function scoreWordThinkability(word) {
+    const up = String(word || '').toUpperCase().replace(/[^A-Z]/g, '');
+    if (!up) return 0.5;
+    const overridden = CONFIDENCE_WORD_SCORE_OVERRIDES[up];
+    if (Number.isFinite(overridden)) return clamp01(overridden);
+
+    const len = up.length;
+    const lengthFit = clamp01(1 - (Math.abs(len - 6) / 8)); // Peak around 6 letters
+    let vowels = 0;
+    let duplicates = 0;
+    const seen = new Set();
+    for (let i = 0; i < up.length; i++) {
+        const ch = up[i];
+        if (VOWEL_SET.has(ch)) vowels++;
+        if (seen.has(ch)) duplicates++;
+        else seen.add(ch);
+    }
+    const vowelRatio = vowels / Math.max(1, len);
+    const vowelBalance = clamp01(1 - Math.abs(vowelRatio - 0.40) / 0.40);
+    const duplicatePenalty = clamp01(1 - (duplicates / Math.max(1, len - 1)));
+
+    const rareLetters = new Set(['J', 'Q', 'X', 'Z', 'V', 'K']);
+    let rareCount = 0;
+    for (const ch of up) if (rareLetters.has(ch)) rareCount++;
+    const rarityPenalty = clamp01(1 - (rareCount / Math.max(1, len)));
+
+    const commonBigrams = ['TH', 'ER', 'ON', 'AN', 'RE', 'IN', 'AT', 'EN', 'ST', 'ND', 'AR', 'LE', 'OR'];
+    let bigramHits = 0;
+    for (const bg of commonBigrams) {
+        if (up.includes(bg)) bigramHits++;
+    }
+    const bigramBoost = clamp01(bigramHits / 4);
+
+    const score =
+        (0.36 * lengthFit) +
+        (0.22 * vowelBalance) +
+        (0.20 * rarityPenalty) +
+        (0.12 * duplicatePenalty) +
+        (0.10 * bigramBoost);
+    return clamp01(score);
+}
+
+/**
+ * Sort scored word pairs by thinkability (desc), then optional tie-break on {word, score} pairs.
+ * @param {{word: string, score: number}[]} pairs
+ * @param {(a: {word: string, score: number}, b: {word: string, score: number}) => number} [secondaryCompare]
+ */
+function sortConfidenceScorePairs(pairs, secondaryCompare) {
+    const sec =
+        typeof secondaryCompare === 'function'
+            ? secondaryCompare
+            : (a, b) => String(a.word || '').localeCompare(String(b.word || ''), undefined, { sensitivity: 'base' });
+    pairs.sort((a, b) => {
+        const ds = b.score - a.score;
+        if (ds !== 0) return ds;
+        return sec(a, b);
+    });
+}
+
+function confidenceRowClass(word, confidenceView) {
+    if (!confidenceView || !confidenceView.enabled || !confidenceView.highConfidenceWordSet) return '';
+    return confidenceView.highConfidenceWordSet.has(word) ? ' word-confidence-block--high' : '';
+}
+
+/**
+ * @param {string[]} words
+ * @param {{ secondaryCompare?: (a: {word: string, score: number}, b: {word: string, score: number}) => number }} [options]
+ * @returns {Promise<{ enabled: boolean, rankedWords: string[], summaryHtml: string, highConfidenceWordSet: Set<string> }>}
+ */
+async function buildConfidenceView(words, options) {
+    const source = Array.isArray(words) ? words.slice() : [];
+    const opts = options && typeof options === 'object' ? options : {};
+    if (!source.length || !(appSettings && appSettings.confidenceLayerEnabled)) {
+        latestConfidenceSnapshot = null;
+        return {
+            enabled: false,
+            rankedWords: source,
+            summaryHtml: '',
+            highConfidenceWordSet: new Set()
+        };
+    }
+    if (source.length >= CONFIDENCE_MAX_WORDLIST_RUN) {
+        latestConfidenceSnapshot = null;
+        return {
+            enabled: false,
+            rankedWords: source,
+            summaryHtml: '',
+            highConfidenceWordSet: new Set()
+        };
+    }
+    const secondaryCompare = typeof opts.secondaryCompare === 'function' ? opts.secondaryCompare : null;
+    const useDatamuse = appSettings && appSettings.confidenceDatamuse !== false;
+    const useOfflineZipf = appSettings && appSettings.confidenceOfflineZipf !== false;
+    const blend = clamp01(Number((appSettings && appSettings.confidenceFrequencyBlend) ?? 0));
+
+    const uniqueCount = new Set(source.map((w) => confidenceNormKeyWord(w)).filter(Boolean)).size;
+    /** @type {Record<string, number|null|undefined>} */
+    const mergedRawByUpper = {};
+    let datamuseMeta = null;
+    let offlineZipfMeta = null;
+
+    if (blend < 1) {
+        // Offline unigram counts first (book/news-style frequency, stable ordering like PAVEMENT > SEMINARY).
+        if (useOfflineZipf) {
+            try {
+                const zipfMap = await loadOfflineEnglishZipfMap();
+                offlineZipfMeta = countOfflineZipfCoverage(source, zipfMap);
+                mergeOfflineZipfIntoRawByUpper(source, mergedRawByUpper, zipfMap);
+            } catch (e) {
+                console.warn('Offline word frequency load failed.', e);
+                offlineZipfMeta = { uniqueWithZipf: 0, uniqueTotal: uniqueCount, error: String(e && e.message ? e.message : e) };
+            }
+        }
+        // Datamuse only fills spellings still missing (avoids overriding offline with a different corpus).
+        if (useDatamuse) {
+            if (uniqueCount > CONFIDENCE_DATAMUSE_MAX_UNIQUE_WORDS) {
+                datamuseMeta = {
+                    skipped: true,
+                    reason: 'too_many_words',
+                    uniqueCount,
+                    max: CONFIDENCE_DATAMUSE_MAX_UNIQUE_WORDS
+                };
+            } else {
+                try {
+                    const dm = await fetchDatamuseRawByUpperForWords(source);
+                    const gapApplied = mergeDatamuseGapFillIntoRawByUpper(source, mergedRawByUpper, dm.rawByUpper);
+                    datamuseMeta = {
+                        hits: dm.hits,
+                        misses: dm.misses,
+                        fromCache: dm.fromCache,
+                        uniqueLookups: Object.keys(dm.rawByUpper).length,
+                        gapApplied
+                    };
+                } catch (e) {
+                    console.warn('Datamuse confidence fetch failed.', e);
+                    datamuseMeta = {
+                        hits: 0,
+                        misses: uniqueCount,
+                        fromCache: 0,
+                        gapApplied: 0,
+                        error: String(e && e.message ? e.message : e)
+                    };
+                }
+            }
+        }
+    }
+
+    let nounSuffixBoostCount = 0;
+    if (blend < 1 && appSettings && appSettings.confidenceNounSuffixBias !== false) {
+        nounSuffixBoostCount = applyNounSuffixCorpusLogBoost(mergedRawByUpper, source);
+    }
+
+    const normByUpper = buildCorpusFreqNormByUpperForSource(source, mergedRawByUpper);
+
+    const scored = source.map((w) => {
+        const h = scoreWordThinkability(w);
+        const up = confidenceNormKeyWord(w);
+        const fn = normByUpper.get(up);
+        let s = h;
+        if (blend < 1 && fn != null && Number.isFinite(fn)) {
+            s = (1 - blend) * fn + blend * h;
+        }
+        return { word: w, score: s };
+    });
+    sortConfidenceScorePairs(scored, secondaryCompare);
+    const rankedWords = scored.map((x) => x.word);
+
+    const topN = Math.max(1, Math.min(10, parseInt((appSettings && appSettings.confidenceTopCount) || 5, 10) || 5));
+    const top = scored.slice(0, topN);
+    const highConfidenceWordSet = new Set();
+    for (let i = 0; i < Math.min(topN, scored.length); i++) {
+        highConfidenceWordSet.add(scored[i].word);
+    }
+    const top1 = scored[0] ? scored[0].score : 0;
+    const top2 = scored[1] ? scored[1].score : 0;
+    const marginNorm = clamp01((top1 - top2) / 0.35);
+    const totalScore = scored.reduce((sum, x) => sum + x.score, 0);
+    const top3Score = scored.slice(0, 3).reduce((sum, x) => sum + x.score, 0);
+    const top3Share = totalScore > 0 ? clamp01(top3Score / totalScore) : 0;
+    const confidence = clamp01((0.60 * marginNorm) + (0.40 * top3Share));
+
+    const highThreshold = clamp01((appSettings && appSettings.confidenceHighThreshold) ?? 0.75);
+    const mediumThreshold = clamp01((appSettings && appSettings.confidenceMediumThreshold) ?? 0.55);
+    const band = confidence >= highThreshold ? 'high' : (confidence >= mediumThreshold ? 'medium' : 'low');
+
+    const topWords = top.map((x) => String(x.word || '').toUpperCase());
+    const summaryHtml = '';
+
+    latestConfidenceSnapshot = {
+        enabled: true,
+        confidence,
+        confidencePct: Math.round(confidence * 100),
+        band,
+        highThreshold,
+        mediumThreshold,
+        topCount: top.length,
+        totalCount: scored.length,
+        topWords: topWords.slice(),
+        topScores: top.map((x) => Math.round(x.score * 100) / 100),
+        datamuse: useDatamuse && blend < 1 ? datamuseMeta : null,
+        offlineZipf: useOfflineZipf && blend < 1 ? offlineZipfMeta : null,
+        offlineCorpus: useOfflineZipf && blend < 1 ? getOfflineCorpusLabel() : null,
+        corpusNormCount: normByUpper.size,
+        nounSuffixBoostCount,
+        confidenceBlend: blend
+    };
+
+    return {
+        enabled: true,
+        rankedWords,
+        summaryHtml,
+        highConfidenceWordSet
+    };
+}
 
 /**
  * Dispatch feature `completed` and attach debug payload for workflow REPORT.
@@ -198,6 +744,14 @@ function dispatchWorkflowFeatureComplete(element, featureId, debug) {
             };
         } else if (!pendingWorkflowStepPayload.feature) {
             pendingWorkflowStepPayload.feature = featureId;
+        }
+        if (
+            latestConfidenceSnapshot &&
+            pendingWorkflowStepPayload &&
+            typeof pendingWorkflowStepPayload === 'object' &&
+            !pendingWorkflowStepPayload.confidenceLayer
+        ) {
+            pendingWorkflowStepPayload.confidenceLayer = { ...latestConfidenceSnapshot };
         }
         element.dispatchEvent(new Event('completed'));
         return;
@@ -220,6 +774,14 @@ function dispatchWorkflowFeatureComplete(element, featureId, debug) {
             userInputRecorded: true,
             userInputSummary: debug
         };
+    }
+    if (
+        latestConfidenceSnapshot &&
+        pendingWorkflowStepPayload &&
+        typeof pendingWorkflowStepPayload === 'object' &&
+        !pendingWorkflowStepPayload.confidenceLayer
+    ) {
+        pendingWorkflowStepPayload.confidenceLayer = { ...latestConfidenceSnapshot };
     }
     element.dispatchEvent(new Event('completed'));
 }
@@ -1545,6 +2107,21 @@ const DEFAULT_SETTINGS = {
     newAnswerDigitBuffer: false,
     /** Optional: thought-of word (A–Z) recorded on each workflow run for REPORT target tracing when set before PERFORM */
     workflowDebugTargetWord: '',
+    // Confidence layer: rank remaining words by thinkability score to surface likely thought-of options.
+    confidenceLayerEnabled: true,
+    confidenceHighThreshold: 0.75,
+    confidenceMediumThreshold: 0.55,
+    confidenceTopCount: 5,
+    /** When true (and blend below 1), rank using Datamuse corpus frequency normalized within the current list (requires network). */
+    confidenceDatamuse: true,
+    /** When true, merge in offline English frequencies for any word; required for large lists. */
+    confidenceOfflineZipf: true,
+    /** Offline JSON: 'subtlex' (subtitle/spoken norms, default) or 'books' (FrequencyWords / book-heavy). */
+    confidenceOfflineCorpus: 'subtlex',
+    /** When true, boost offline/Datamuse log-score for words ending like common nouns (-ment, -tion, …). */
+    confidenceNounSuffixBias: true,
+    /** 0 = frequency only (plus heuristic for words with no corpus hit); 1 = shape heuristic only (skips Datamuse). */
+    confidenceFrequencyBlend: 0,
     calculusMode: 'abstract',  // 'abstract' (digits 0–9) or 'curvesStraight' (C/S)
     advLexIgnorePosition1: false,  // ADV-LEX: when ON, do not suggest Position 1; use next best position
     // MUTE / MUTE DUO: letter mode: 'az' = A–Z fixed sequence, 'mostFrequent' = dynamic most-frequent letter,
@@ -5583,7 +6160,7 @@ function startOmega(callback) {
         callback(filtered);
         if (omegaLexVisible) {
             refreshOmegaLexMeta();
-            renderOmegaResultsByLexState(filtered);
+            void renderOmegaResultsByLexState(filtered).catch((e) => console.warn('OMEGA results render', e));
         }
     };
 
@@ -5618,47 +6195,87 @@ function startOmega(callback) {
             return au.localeCompare(bu);
         });
     };
+    /** Tie-break for confidence sort: honour OMEGA word-order setting among equal thinkability scores. */
+    const makeOmegaConfidenceSecondaryCompare = () => {
+        const mode = getOmegaWordOrderMode();
+        return (a, b) => {
+            const wa = a.word;
+            const wb = b.word;
+            if (mode !== 'alphaLex') {
+                return String(wa || '').localeCompare(String(wb || ''), undefined, { sensitivity: 'base' });
+            }
+            const pos = omegaLexLockedPosition >= 0 ? omegaLexLockedPosition : omegaLexPosition;
+            if (pos < 0) {
+                return String(wa || '').localeCompare(String(wb || ''), undefined, { sensitivity: 'base' });
+            }
+            const au = String(wa || '').toUpperCase();
+            const bu = String(wb || '').toUpperCase();
+            const aLex = pos < au.length ? au[pos] : '{';
+            const bLex = pos < bu.length ? bu[pos] : '{';
+            if (aLex !== bLex) return aLex.localeCompare(bLex);
+            return au.localeCompare(bu);
+        };
+    };
 
-    const renderOmegaLexHighlightedResults = (words) => {
+    const renderOmegaLexHighlightedResults = async (words) => {
         const resultsContainer = document.getElementById('results');
         if (!resultsContainer) return;
 
-        const safeWords = sortOmegaWordsForDisplay(words);
+        let cv = null;
+        let safeWords;
+        if (appSettings && appSettings.confidenceLayerEnabled) {
+            cv = await buildConfidenceView(words, { secondaryCompare: makeOmegaConfidenceSecondaryCompare() });
+            safeWords = cv.rankedWords;
+        } else {
+            safeWords = sortOmegaWordsForDisplay(words);
+        }
         if (!safeWords.length) {
-            displayResults(safeWords);
+            await displayResults(safeWords);
             return;
         }
 
         const pos = omegaLexLockedPosition >= 0 ? omegaLexLockedPosition : omegaLexPosition;
         if (pos < 0) {
-            displayResults(safeWords);
+            if (appSettings && appSettings.confidenceLayerEnabled) {
+                await displayResults(words, { confidenceSecondaryCompare: makeOmegaConfidenceSecondaryCompare() });
+            } else {
+                await displayResults(sortOmegaWordsForDisplay(words));
+            }
             return;
         }
 
+        const highSet = (cv && cv.highConfidenceWordSet) ? cv.highConfidenceWordSet : new Set();
+        const summaryHtml = (cv && cv.summaryHtml) ? cv.summaryHtml : '';
+
         const listHtml = safeWords.map((word) => {
+            const confCls = highSet.has(word) ? 'word-confidence-block--high' : '';
             const w = String(word || '');
             const up = w.toUpperCase();
+            const liClass = [confCls].filter(Boolean).join(' ');
+            const classAttr = liClass ? ` class="${liClass}"` : '';
             if (pos < 0 || pos >= up.length) {
-                return `<li>${up}</li>`;
+                return `<li${classAttr}>${up}</li>`;
             }
             const before = up.slice(0, pos);
             const ch = up[pos];
             const after = up.slice(pos + 1);
-            return `<li>${before}<span class="omega-lex-highlight">${ch}</span>${after}</li>`;
+            return `<li${classAttr}>${before}<span class="omega-lex-highlight">${ch}</span>${after}</li>`;
         }).join('');
 
-        resultsContainer.innerHTML = `<ul class="word-list">${listHtml}</ul>`;
+        resultsContainer.innerHTML = `${summaryHtml}<ul class="word-list">${listHtml}</ul>`;
         updateWordCount(safeWords.length);
         updateExportButtonState(safeWords);
         updateSologramOverlay(safeWords);
         updateT9DefinitesOverlay(safeWords);
     };
 
-    const renderOmegaResultsByLexState = (words) => {
+    const renderOmegaResultsByLexState = async (words) => {
         if (omegaLexVisible) {
-            renderOmegaLexHighlightedResults(words);
+            await renderOmegaLexHighlightedResults(words);
+        } else if (appSettings && appSettings.confidenceLayerEnabled) {
+            await displayResults(words, { confidenceSecondaryCompare: makeOmegaConfidenceSecondaryCompare() });
         } else {
-            displayResults(sortOmegaWordsForDisplay(words));
+            await displayResults(sortOmegaWordsForDisplay(words));
         }
     };
 
@@ -5915,10 +6532,10 @@ function startOmega(callback) {
             omegaLexSourceWords = Array.isArray(currentFilteredWords) ? currentFilteredWords.slice() : [];
             omegaLexLockedPosition = -1;
             refreshOmegaLexMeta();
-            renderOmegaResultsByLexState(currentFilteredWords);
+            void renderOmegaResultsByLexState(currentFilteredWords).catch((e) => console.warn('OMEGA results render', e));
         } else {
             omegaLexLockedPosition = -1;
-            renderOmegaResultsByLexState(currentFilteredWords);
+            void renderOmegaResultsByLexState(currentFilteredWords).catch((e) => console.warn('OMEGA results render', e));
         }
     };
 
@@ -5928,7 +6545,7 @@ function startOmega(callback) {
         if (!letters) {
             omegaLexLockedPosition = -1;
             refreshOmegaLexMeta();
-            renderOmegaResultsByLexState(omegaLexSourceWords);
+            void renderOmegaResultsByLexState(omegaLexSourceWords).catch((e) => console.warn('OMEGA results render', e));
             return false;
         }
         if (omegaLexLockedPosition < 0) {
@@ -5954,7 +6571,7 @@ function startOmega(callback) {
         });
         callback(filtered);
         refreshOmegaLexMeta();
-        renderOmegaResultsByLexState(filtered);
+        void renderOmegaResultsByLexState(filtered).catch((e) => console.warn('OMEGA results render', e));
         return true;
     };
     if (omegaLexInput) {
@@ -7173,11 +7790,6 @@ function createUnifiedAlphaFeature(workflowKind) {
             <button type="button" class="section-btn alpha-unified-first-straight-btn" data-alpha-first-straight-pos="4">4</button>
             <button type="button" class="section-btn alpha-unified-first-straight-btn" data-alpha-first-straight-pos="5">5</button>
             <button type="button" class="section-btn alpha-unified-first-straight-btn" data-alpha-first-straight-pos="6">6</button>
-        </div>
-        <p style="text-align:center;margin:0 0 6px;font-weight:600;">Are they different?</p>
-        <div class="alpha-unified-straight-diff-yn" style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
-            <button type="button" class="yes-btn alpha-unified-straight-diff-btn" data-alpha-straight-diff="yes">YES</button>
-            <button type="button" class="no-btn alpha-unified-straight-diff-btn" data-alpha-straight-diff="no">NO</button>
         </div>
         <p style="text-align:center;margin:0 0 6px;font-weight:600;">Shape of next letter</p>
         <div class="section-buttons alpha-unified-next-shape-row" style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
@@ -15398,7 +16010,6 @@ function setupFeatureListeners(feature, callback, options) {
             const sectionBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-section-btn')) : [];
             const repeatBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-repeat-btn')) : [];
             const firstStraightPosBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-first-straight-btn')) : [];
-            const straightDiffBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-straight-diff-btn')) : [];
             const nextShapeBtns = rootEl ? Array.from(rootEl.querySelectorAll('.alpha-unified-next-shape-btn')) : [];
             const alphaDirectionsCount = Math.max(0, parseInt((appSettings && appSettings.alphaDirectionsCount) || 0, 10));
             const alphaSwapPov = !!(appSettings && appSettings.alphaSwapPov);
@@ -15409,7 +16020,6 @@ function setupFeatureListeners(feature, callback, options) {
             let selectedFirstSection = null;
             let selectedRepeatMode = null;
             let selectedFirstStraightPos = null;
-            let selectedStraightDiffMode = null;
             let selectedNextShape = null;
 
             const alphaLexPeekCompactLabel = document.getElementById('alphaLexPeekCompactLabel');
@@ -15684,12 +16294,6 @@ function setupFeatureListeners(feature, callback, options) {
                     btn.classList.toggle('active', Number.isInteger(n) && n === selectedFirstStraightPos);
                 });
             }
-            function syncStraightDiffHighlight() {
-                straightDiffBtns.forEach((btn) => {
-                    const v = btn.getAttribute('data-alpha-straight-diff');
-                    btn.classList.toggle('active', v === selectedStraightDiffMode);
-                });
-            }
             function syncNextShapeHighlight() {
                 nextShapeBtns.forEach((btn) => {
                     const v = btn.getAttribute('data-alpha-next-shape');
@@ -15698,11 +16302,6 @@ function setupFeatureListeners(feature, callback, options) {
             }
             function syncStraightDependentControlsEnabled() {
                 const enabled = Number.isInteger(selectedFirstStraightPos) && selectedFirstStraightPos >= 1 && selectedFirstStraightPos <= 6;
-                straightDiffBtns.forEach((btn) => {
-                    btn.disabled = !enabled;
-                    btn.style.opacity = enabled ? '' : '0.5';
-                    btn.style.pointerEvents = enabled ? '' : 'none';
-                });
                 nextShapeBtns.forEach((btn) => {
                     btn.disabled = !enabled;
                     btn.style.opacity = enabled ? '' : '0.5';
@@ -15713,7 +16312,6 @@ function setupFeatureListeners(feature, callback, options) {
             syncSectionHighlight();
             syncRepeatHighlight();
             syncFirstStraightPosHighlight();
-            syncStraightDiffHighlight();
             syncNextShapeHighlight();
             syncStraightDependentControlsEnabled();
 
@@ -15778,35 +16376,11 @@ function setupFeatureListeners(feature, callback, options) {
                     if (selectedFirstStraightPos === val) selectedFirstStraightPos = null;
                     else selectedFirstStraightPos = val;
                     if (!selectedFirstStraightPos) {
-                        selectedStraightDiffMode = null;
                         selectedNextShape = null;
                     }
                     syncFirstStraightPosHighlight();
-                    syncStraightDiffHighlight();
                     syncNextShapeHighlight();
                     syncStraightDependentControlsEnabled();
-                    applyAlphaIncrementalFromCurrentDirections();
-                };
-                attachUnifiedAlphaTapBtn(btn, run);
-            });
-            straightDiffBtns.forEach((btn) => {
-                const run = () => {
-                    if (!selectedFirstStraightPos) return;
-                    const val = btn.getAttribute('data-alpha-straight-diff');
-                    if (val !== 'yes' && val !== 'no') return;
-                    if (selectedStraightDiffMode === val) {
-                        selectedStraightDiffMode = null;
-                    } else {
-                        selectedStraightDiffMode = val;
-                        if (selectedStraightDiffMode === 'yes' && selectedNextShape === 'straight') {
-                            selectedStraightDiffMode = null;
-                        }
-                        if (selectedStraightDiffMode === 'no' && selectedNextShape === 'straight') {
-                            selectedNextShape = null;
-                            syncNextShapeHighlight();
-                        }
-                    }
-                    syncStraightDiffHighlight();
                     applyAlphaIncrementalFromCurrentDirections();
                 };
                 attachUnifiedAlphaTapBtn(btn, run);
@@ -15820,13 +16394,6 @@ function setupFeatureListeners(feature, callback, options) {
                         selectedNextShape = null;
                     } else {
                         selectedNextShape = val;
-                        if (selectedNextShape === 'straight' && selectedStraightDiffMode === 'yes') {
-                            selectedStraightDiffMode = null;
-                            syncStraightDiffHighlight();
-                        }
-                        if (selectedNextShape === 'straight' && selectedStraightDiffMode === 'no') {
-                            selectedNextShape = null;
-                        }
                     }
                     syncNextShapeHighlight();
                     applyAlphaIncrementalFromCurrentDirections();
@@ -16193,8 +16760,7 @@ function setupFeatureListeners(feature, callback, options) {
                     alphaUnifiedLastLettersInput && alphaUnifiedLastLettersInput.value
                 );
                 const firstStraightPos = Number.isInteger(selectedFirstStraightPos) ? selectedFirstStraightPos : null;
-                const areDifferentMode =
-                    selectedStraightDiffMode === 'yes' || selectedStraightDiffMode === 'no' ? selectedStraightDiffMode : null;
+                const areDifferentMode = null;
                 const nextShapeGroup =
                     selectedNextShape === 'straight' || selectedNextShape === 'mixed' || selectedNextShape === 'curved'
                         ? selectedNextShape
@@ -16388,7 +16954,6 @@ function setupFeatureListeners(feature, callback, options) {
                 const repeatMode = resultMeta.repeatMode;
                 const lastLetterSet = resultMeta.lastLetterSet;
                 const firstStraightPos = resultMeta.firstStraightPos;
-                const areDifferentMode = resultMeta.areDifferentMode;
                 const nextShapeGroup = resultMeta.nextShapeGroup;
                 const directionsHuman = alphaDirections
                     .map((d) => (d === 'L' ? 'Left' : d === 'R' ? 'Right' : d === 'NA' ? 'N/A' : 'Repeat'))
@@ -16396,7 +16961,6 @@ function setupFeatureListeners(feature, callback, options) {
                 const sectionLabel = selectedFirstSection == null ? 'first letter unset' : selectedFirstSection;
                 const repeatLabel = selectedRepeatMode == null ? 'doubles unset' : selectedRepeatMode.toUpperCase();
                 const firstStraightLabel = firstStraightPos == null ? 'first straight unset' : `first straight at ${firstStraightPos}`;
-                const diffLabel = areDifferentMode == null ? 'next-vs-straight unset' : `next-vs-straight ${areDifferentMode.toUpperCase()}`;
                 const nextShapeLabel = nextShapeGroup == null ? 'next-shape unset' : `next-shape ${nextShapeGroup.toUpperCase()}`;
                 const lastLettersSorted = lastLetterSet.size ? [...lastLetterSet].sort().join('') : '';
                 const lastSummary = lastLetterSet.size ? `last ∈ {${lastLettersSorted}}` : 'no last-letter filter';
@@ -16419,12 +16983,12 @@ function setupFeatureListeners(feature, callback, options) {
                 pendingWorkflowStepPayload = {
                     feature: workflowFeatureKey,
                     skipped: false,
-                    userInputSummary: `${workflowFeatureKey}: ${customSummary} · ${sectionLabel} · doubles ${repeatLabel} · ${firstStraightLabel} · ${diffLabel} · ${nextShapeLabel} · ${lastSummary} · ${directionsHuman}`,
+                    userInputSummary: `${workflowFeatureKey}: ${customSummary} · ${sectionLabel} · doubles ${repeatLabel} · ${firstStraightLabel} · ${nextShapeLabel} · ${lastSummary} · ${directionsHuman}`,
                     userInput: {
                         firstLetterSection,
                         repeatMode,
                         firstStraightPos,
-                        areDifferentMode,
+                        areDifferentMode: null,
                         nextShapeGroup,
                         lastLetters: lastLettersSorted,
                         customAlphaLine:
@@ -17873,7 +18437,8 @@ function setupFeatureListeners(feature, callback, options) {
 }
 
 // Function to display results
-function displayResults(words) {
+async function displayResults(words, displayOpts) {
+    const opts = displayOpts && typeof displayOpts === 'object' ? displayOpts : {};
     const resultsContainer = document.getElementById('results');
     if (!resultsContainer) {
         console.error('Results container not found');
@@ -17888,8 +18453,13 @@ function displayResults(words) {
     // Capture SCRABBLE1 exact-match set for highlighting (used in list build and load-more)
     const exactHighlightSet = new Set(scrabble1ExactMatchSet);
     const getDisplayWord = (word) => (engineDisplayMap && engineDisplayMap.get(word)) || word;
+    const confidenceView = await buildConfidenceView(words, {
+        secondaryCompare: opts.confidenceSecondaryCompare
+    });
+    words = confidenceView.rankedWords;
     
     if (words.length === 0) {
+        latestConfidenceSnapshot = null;
         resultsContainer.innerHTML = '<p>No words match the current criteria.</p>';
         updateWordCount(0);
         updateSologramOverlay([]);
@@ -17923,17 +18493,20 @@ function displayResults(words) {
         const wordListHTML = initialWords.map(word => {
             const displayWord = getDisplayWord(word);
             const scrabble1Cls = exactHighlightSet.has(word) ? ' scrabble1-exact' : '';
+            const confCls = confidenceRowClass(word, confidenceView);
             if (userShowT9ByLongPress) {
                 const t9String = t9StringsMap.get(word) || wordToT9(word);
                 const firstFour = t9String.substring(0, 4);
                 const rest = t9String.substring(4);
-                return `<li class="word-with-t9${scrabble1Cls}" data-word="${word}"><div style="font-weight: bold; margin-bottom: 8px;">${displayWord}</div><div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;"><span style="color: red; font-weight: bold;">${firstFour}</span>${rest}</div></li>`;
+                return `<li class="word-with-t9${scrabble1Cls}${confCls}" data-word="${word}"><div style="font-weight: bold; margin-bottom: 8px;">${displayWord}</div><div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;"><span style="color: red; font-weight: bold;">${firstFour}</span>${rest}</div></li>`;
             }
-            const cls = exactHighlightSet.has(word) ? ' class="scrabble1-exact"' : '';
+            const baseCls = `${exactHighlightSet.has(word) ? 'scrabble1-exact' : ''}${confCls}`.trim();
+            const cls = baseCls ? ` class="${baseCls}"` : '';
             return `<li${cls}>${displayWord}</li>`;
         }).join('');
         
         resultsContainer.innerHTML = `
+            ${confidenceView.summaryHtml || ''}
             <ul class="word-list">
                 ${wordListHTML}
             </ul>
@@ -17952,16 +18525,19 @@ function displayResults(words) {
                 const allWordsHTML = words.map(word => {
                     const displayWord = getDisplayWord(word);
                     const scrabble1Cls = exactHighlightSet.has(word) ? ' scrabble1-exact' : '';
+                    const confCls = confidenceRowClass(word, confidenceView);
                     if (userShowT9ByLongPress) {
                         const t9String = t9StringsMap.get(word) || wordToT9(word);
                         const firstFour = t9String.substring(0, 4);
                         const rest = t9String.substring(4);
-                        return `<li class="word-with-t9${scrabble1Cls}" data-word="${word}"><div style="font-weight: bold; margin-bottom: 8px;">${displayWord}</div><div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;"><span style="color: red; font-weight: bold;">${firstFour}</span>${rest}</div></li>`;
+                        return `<li class="word-with-t9${scrabble1Cls}${confCls}" data-word="${word}"><div style="font-weight: bold; margin-bottom: 8px;">${displayWord}</div><div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;"><span style="color: red; font-weight: bold;">${firstFour}</span>${rest}</div></li>`;
                     }
-                    const cls = exactHighlightSet.has(word) ? ' class="scrabble1-exact"' : '';
+                    const baseCls = `${exactHighlightSet.has(word) ? 'scrabble1-exact' : ''}${confCls}`.trim();
+                    const cls = baseCls ? ` class="${baseCls}"` : '';
                     return `<li${cls}>${displayWord}</li>`;
                 }).join('');
                 resultsContainer.innerHTML = `
+                    ${confidenceView.summaryHtml || ''}
                     <ul class="word-list">
                         ${allWordsHTML}
                     </ul>
@@ -17976,13 +18552,14 @@ function displayResults(words) {
         const wordListHTML = words.map(word => {
             const displayWord = getDisplayWord(word);
             const scrabble1Cls = exactHighlightSet.has(word) ? ' scrabble1-exact' : '';
+            const confCls = confidenceRowClass(word, confidenceView);
             if (shouldAutoShowT9 || userShowT9ByLongPress) {
                 // Auto-display or tap-to-hold: word and T9 string (first 4 digits in red)
                 const t9String = t9StringsMap.get(word) || wordToT9(word);
                 const firstFour = t9String.substring(0, 4);
                 const rest = t9String.substring(4);
                 
-                return `<li class="word-with-t9${scrabble1Cls}" data-word="${word}" style="cursor: pointer;">
+                return `<li class="word-with-t9${scrabble1Cls}${confCls}" data-word="${word}" style="cursor: pointer;">
                     <div style="font-weight: bold; margin-bottom: 8px;">${displayWord}</div>
                     <div style="border-top: 1px solid #ddd; margin: 8px 0; padding-top: 8px;">
                         <span style="color: red; font-weight: bold;">${firstFour}</span>${rest}
@@ -17990,15 +18567,17 @@ function displayResults(words) {
                 </li>`;
             } else if (shouldShowT9) {
                 // Make clickable for 11-20 words (click to reveal T9)
-                return `<li class="word-clickable${scrabble1Cls}" data-word="${word}" style="cursor: pointer;">${displayWord}</li>`;
+                return `<li class="word-clickable${scrabble1Cls}${confCls}" data-word="${word}" style="cursor: pointer;">${displayWord}</li>`;
             } else {
                 // Just show word for 21+ words or no T9 features
-                const cls = scrabble1Cls ? ` class="${scrabble1Cls.trim()}"` : '';
+                const baseCls = `${scrabble1Cls.trim()}${confCls}`.trim();
+                const cls = baseCls ? ` class="${baseCls}"` : '';
                 return `<li${cls}>${displayWord}</li>`;
             }
         }).join('');
         
         resultsContainer.innerHTML = `
+            ${confidenceView.summaryHtml || ''}
             <ul class="word-list">
                 ${wordListHTML}
             </ul>
@@ -18116,7 +18695,7 @@ function displayResults(words) {
             longPressTimer = setTimeout(() => {
                 longPressTimer = null;
                 userShowT9ByLongPress = !userShowT9ByLongPress;
-                displayResults(currentFilteredWords);
+                void displayResults(currentFilteredWords).catch((e) => console.warn('displayResults', e));
             }, LONG_PRESS_MS);
         };
         const onPointerMove = (e) => {
@@ -21702,6 +22281,115 @@ function initSettingsUI() {
             saveAppSettings();
         });
     }
+
+    const confidenceLayerEnabledToggle = document.getElementById('confidenceLayerEnabledToggle');
+    const confidenceLayerFields = document.getElementById('confidenceLayerFields');
+    const confidenceTopCountInput = document.getElementById('confidenceTopCountInput');
+    const confidenceHighThresholdInput = document.getElementById('confidenceHighThresholdInput');
+    const confidenceMediumThresholdInput = document.getElementById('confidenceMediumThresholdInput');
+    const syncConfidenceFieldsVisibility = () => {
+        if (confidenceLayerFields) {
+            confidenceLayerFields.style.display = (appSettings && appSettings.confidenceLayerEnabled) ? '' : 'none';
+        }
+    };
+    if (confidenceLayerEnabledToggle) {
+        confidenceLayerEnabledToggle.checked = !!(appSettings && appSettings.confidenceLayerEnabled);
+        confidenceLayerEnabledToggle.addEventListener('change', () => {
+            appSettings.confidenceLayerEnabled = confidenceLayerEnabledToggle.checked;
+            syncConfidenceFieldsVisibility();
+            saveAppSettings();
+        });
+    }
+    if (confidenceTopCountInput) {
+        const n = parseInt((appSettings && appSettings.confidenceTopCount) || 5, 10);
+        confidenceTopCountInput.value = String(Math.max(1, Math.min(10, isNaN(n) ? 5 : n)));
+        confidenceTopCountInput.addEventListener('input', () => {
+            const next = parseInt(confidenceTopCountInput.value, 10);
+            if (!isNaN(next) && next >= 1 && next <= 10) {
+                appSettings.confidenceTopCount = next;
+                saveAppSettings();
+            }
+        });
+    }
+    if (confidenceHighThresholdInput) {
+        const n = Number((appSettings && appSettings.confidenceHighThreshold) ?? 0.75);
+        confidenceHighThresholdInput.value = String(clamp01(Number.isFinite(n) ? n : 0.75));
+        confidenceHighThresholdInput.addEventListener('input', () => {
+            const next = Number(confidenceHighThresholdInput.value);
+            if (Number.isFinite(next)) {
+                appSettings.confidenceHighThreshold = clamp01(next);
+                if (appSettings.confidenceMediumThreshold > appSettings.confidenceHighThreshold) {
+                    appSettings.confidenceMediumThreshold = appSettings.confidenceHighThreshold;
+                    if (confidenceMediumThresholdInput) {
+                        confidenceMediumThresholdInput.value = String(appSettings.confidenceMediumThreshold);
+                    }
+                }
+                saveAppSettings();
+            }
+        });
+    }
+    if (confidenceMediumThresholdInput) {
+        const n = Number((appSettings && appSettings.confidenceMediumThreshold) ?? 0.55);
+        confidenceMediumThresholdInput.value = String(clamp01(Number.isFinite(n) ? n : 0.55));
+        confidenceMediumThresholdInput.addEventListener('input', () => {
+            const next = Number(confidenceMediumThresholdInput.value);
+            if (Number.isFinite(next)) {
+                appSettings.confidenceMediumThreshold = clamp01(next);
+                if (appSettings.confidenceMediumThreshold > appSettings.confidenceHighThreshold) {
+                    appSettings.confidenceMediumThreshold = appSettings.confidenceHighThreshold;
+                    confidenceMediumThresholdInput.value = String(appSettings.confidenceMediumThreshold);
+                }
+                saveAppSettings();
+            }
+        });
+    }
+    const confidenceDatamuseToggle = document.getElementById('confidenceDatamuseToggle');
+    const confidenceOfflineZipfToggle = document.getElementById('confidenceOfflineZipfToggle');
+    const confidenceFrequencyBlendInput = document.getElementById('confidenceFrequencyBlendInput');
+    if (confidenceDatamuseToggle) {
+        confidenceDatamuseToggle.checked = !!(appSettings && appSettings.confidenceDatamuse !== false);
+        confidenceDatamuseToggle.addEventListener('change', () => {
+            appSettings.confidenceDatamuse = confidenceDatamuseToggle.checked;
+            saveAppSettings();
+        });
+    }
+    if (confidenceOfflineZipfToggle) {
+        confidenceOfflineZipfToggle.checked = !!(appSettings && appSettings.confidenceOfflineZipf !== false);
+        confidenceOfflineZipfToggle.addEventListener('change', () => {
+            appSettings.confidenceOfflineZipf = confidenceOfflineZipfToggle.checked;
+            saveAppSettings();
+        });
+    }
+    const confidenceOfflineCorpusSelect = document.getElementById('confidenceOfflineCorpusSelect');
+    if (confidenceOfflineCorpusSelect) {
+        const corp = String((appSettings && appSettings.confidenceOfflineCorpus) || 'subtlex').toLowerCase();
+        confidenceOfflineCorpusSelect.value =
+            corp === 'books' || corp === 'book' || corp === 'unigram' ? 'books' : 'subtlex';
+        confidenceOfflineCorpusSelect.addEventListener('change', () => {
+            appSettings.confidenceOfflineCorpus = confidenceOfflineCorpusSelect.value === 'books' ? 'books' : 'subtlex';
+            saveAppSettings();
+        });
+    }
+    const confidenceNounSuffixBiasToggle = document.getElementById('confidenceNounSuffixBiasToggle');
+    if (confidenceNounSuffixBiasToggle) {
+        confidenceNounSuffixBiasToggle.checked = !!(appSettings && appSettings.confidenceNounSuffixBias !== false);
+        confidenceNounSuffixBiasToggle.addEventListener('change', () => {
+            appSettings.confidenceNounSuffixBias = confidenceNounSuffixBiasToggle.checked;
+            saveAppSettings();
+        });
+    }
+    if (confidenceFrequencyBlendInput) {
+        const b = Number((appSettings && appSettings.confidenceFrequencyBlend) ?? 0);
+        confidenceFrequencyBlendInput.value = String(clamp01(Number.isFinite(b) ? b : 0));
+        confidenceFrequencyBlendInput.addEventListener('input', () => {
+            const next = Number(confidenceFrequencyBlendInput.value);
+            if (Number.isFinite(next)) {
+                appSettings.confidenceFrequencyBlend = clamp01(next);
+                saveAppSettings();
+            }
+        });
+    }
+    syncConfidenceFieldsVisibility();
 
     const workflowDebugTargetWordInput = document.getElementById('workflowDebugTargetWordInput');
     if (workflowDebugTargetWordInput) {

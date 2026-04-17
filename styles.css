@@ -1155,60 +1155,6 @@ body {
     background-color: #051a38 !important;
 }
 
-/* Unified ALPHA: Are they different? YES/NO uses same active styling */
-.feature-section .alpha-unified-straight-diff-yn .yes-btn,
-.feature-section .alpha-unified-straight-diff-yn .no-btn {
-    min-width: 88px;
-    padding: 12px 20px;
-    border-radius: 8px;
-    border: 2px solid #b0bec5 !important;
-    transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
-}
-.feature-section .alpha-unified-straight-diff-yn .yes-btn:not(.active),
-.feature-section .alpha-unified-straight-diff-yn .no-btn:not(.active) {
-    background-color: #eceff1 !important;
-    color: #455a64 !important;
-    box-shadow: none !important;
-}
-.feature-section .alpha-unified-straight-diff-yn .yes-btn:not(.active):hover,
-.feature-section .alpha-unified-straight-diff-yn .no-btn:not(.active):hover {
-    background-color: #cfd8dc !important;
-    color: #263238 !important;
-    opacity: 1 !important;
-    transform: translateY(-1px);
-}
-.feature-section .alpha-unified-straight-diff-yn .yes-btn:not(.active):active,
-.feature-section .alpha-unified-straight-diff-yn .no-btn:not(.active):active {
-    background-color: #b0bec5 !important;
-    transform: translateY(0);
-}
-.feature-section .alpha-unified-straight-diff-yn .yes-btn.active {
-    background-color: #1976d2 !important;
-    color: #fff !important;
-    border-color: #0d47a1 !important;
-    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.35) !important;
-}
-.feature-section .alpha-unified-straight-diff-yn .yes-btn.active:hover {
-    background-color: #1565c0 !important;
-    opacity: 1 !important;
-}
-.feature-section .alpha-unified-straight-diff-yn .yes-btn.active:active {
-    background-color: #0d47a1 !important;
-}
-.feature-section .alpha-unified-straight-diff-yn .no-btn.active {
-    background-color: #0d47a1 !important;
-    color: #fff !important;
-    border-color: #082c5c !important;
-    box-shadow: 0 0 0 3px rgba(13, 71, 161, 0.4) !important;
-}
-.feature-section .alpha-unified-straight-diff-yn .no-btn.active:hover {
-    background-color: #082c5c !important;
-    opacity: 1 !important;
-}
-.feature-section .alpha-unified-straight-diff-yn .no-btn.active:active {
-    background-color: #051a38 !important;
-}
-
 /* Unified ALPHA: first straight position 1-6 on one evenly spaced row */
 .feature-section .alpha-unified-first-straight-row {
     display: grid !important;
@@ -2044,6 +1990,59 @@ input[type="text"] {
     padding: 10px;
     position: relative;
     z-index: 1;
+}
+
+.confidence-summary {
+    border: 1px solid #d6d6d6;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin: 0 0 10px 0;
+    background: #fafafa;
+}
+
+.confidence-summary-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 700;
+    color: #555;
+    margin-bottom: 5px;
+}
+
+.confidence-summary-main {
+    font-weight: 700;
+    color: #1f2937;
+    font-size: 14px;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.confidence-summary-sub {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #666;
+}
+
+.confidence-summary--high {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.confidence-summary--medium {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.confidence-summary--low {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+/* Confidence layer: top “likely thought-of” words in the main grid */
+.word-list li.word-confidence-block--high {
+    background: #e8f5e9;
+    border: 1px solid #c8e6c9;
+    box-shadow: 0 1px 2px rgba(46, 125, 50, 0.08);
 }
 
 .lexicon-input input,

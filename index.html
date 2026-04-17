@@ -1472,6 +1472,53 @@
                     <div class="settings-section" id="settings-section-report">
                         <h3 class="settings-section-title">REPORT</h3>
                         <p class="settings-section-subtitle">The last 10 runs — word counts per step, NEW settings snapshot when NEW was in the workflow, optional target word per run, readable view plus JSON export. Stored in this browser only.</p>
+                        <p class="settings-section-subtitle" style="margin-top: 14px;">Confidence layer (likelihood ranking)</p>
+                        <p class="settings-field-help" style="margin:0 0 6px;font-size:12px;color:#666;">When there are <strong>fewer than 1000</strong> words left, the list is re-ordered and the top picks get a light green highlight. No summary banner—only the tiles.</p>
+                        <label class="toggle-switch" style="margin-top: 8px;">
+                            <input type="checkbox" id="confidenceLayerEnabledToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Enable likelihood ranking and green highlights (under 1000 words)</span>
+                        <div id="confidenceLayerFields" style="display:none; margin-top:10px;">
+                            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+                                <label for="confidenceTopCountInput">Top words shown:</label>
+                                <input type="number" id="confidenceTopCountInput" min="1" max="10" value="5" style="width: 5em;">
+                            </div>
+                            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px;">
+                                <label for="confidenceHighThresholdInput">High threshold (0-1):</label>
+                                <input type="number" id="confidenceHighThresholdInput" min="0" max="1" step="0.01" value="0.75" style="width: 6em;">
+                                <label for="confidenceMediumThresholdInput">Medium threshold (0-1):</label>
+                                <input type="number" id="confidenceMediumThresholdInput" min="0" max="1" step="0.01" value="0.55" style="width: 6em;">
+                            </div>
+                            <label class="toggle-switch" style="margin-top:12px;">
+                                <input type="checkbox" id="confidenceDatamuseToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Use Datamuse to fill gaps (online; only words missing from offline list; lists ≤300 words)</span>
+                            <label class="toggle-switch" style="margin-top:10px;">
+                                <input type="checkbox" id="confidenceOfflineZipfToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Use offline English frequency (large wordlists)</span>
+                            <div style="margin-top:10px;">
+                                <label for="confidenceOfflineCorpusSelect">Offline corpus:</label>
+                                <select id="confidenceOfflineCorpusSelect" style="margin-left:8px;max-width:min(100%,360px);">
+                                    <option value="subtlex">SUBTLEX-US — subtitles / spoken (default)</option>
+                                    <option value="books">Books / web — FrequencyWords (en_unigram_zipf.json)</option>
+                                </select>
+                            </div>
+                            <p class="settings-field-help" style="margin:6px 0 0;font-size:12px;color:#666;">SUBTLEX: see <code>data/SUBTLEX_ATTRIBUTION.txt</code>. Rebuild: <code>npm run build:subtlex</code>. Words missing from offline data still use Datamuse (≤300 words) then the shape heuristic.</p>
+                            <label class="toggle-switch" style="margin-top:10px;">
+                                <input type="checkbox" id="confidenceNounSuffixBiasToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Boost common noun endings (-ment, -tion, -ness, …) vs names / edge cases</span>
+                            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px;">
+                                <label for="confidenceFrequencyBlendInput">Mix shape heuristic (0–1):</label>
+                                <input type="number" id="confidenceFrequencyBlendInput" min="0" max="1" step="0.05" value="0" style="width: 5em;" title="0 = rank by frequency within this list; 1 = shape heuristic only (no Datamuse)">
+                            </div>
+                            <p class="settings-field-help" style="margin:8px 0 0;font-size:12px;color:#666;">The chosen offline file is applied first; Datamuse only fills words still missing (≤300 unique words in the list). Scores are min–max normalized within the words shown. Words missing from both still use the shape heuristic. Set mix to 1 for heuristic-only. Thresholds below affect REPORT snapshots only.</p>
+                        </div>
                         <label for="workflowDebugTargetWordInput">Debug target word (optional, letters A–Z):</label>
                         <input type="text" id="workflowDebugTargetWordInput" maxlength="60" autocomplete="off" placeholder="e.g. thought-of word before PERFORM" style="width:100%;max-width:420px;padding:8px;margin:8px 0;text-transform:uppercase;">
                         <p class="settings-field-help" style="margin:0 0 10px;font-size:12px;color:#666;">If set before you perform, REPORT can record whether this word was still in the list after each step and pinpoint elimination (including within-step updates). You can still set or change the target on each run in REPORT afterward; if the word differs from this setting, tracing uses saved word-list snapshots when the list is small enough.</p>
