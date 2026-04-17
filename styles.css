@@ -7289,8 +7289,8 @@ button.close-info-button.workflow-report-close {
     align-items: center !important;
     width: 100% !important;
     max-width: 100% !important;
-    min-height: 48px !important;
-    padding: 12px 14px !important;
+    min-height: 26px !important;
+    padding: 6px 14px !important;
     margin: 0 !important;
     font: inherit !important;
     font-size: inherit !important;
@@ -7596,8 +7596,8 @@ button.close-info-button.workflow-report-close {
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa button.lexicon-fakegpt-clue {
-    min-height: 72px !important;
-    padding: 18px 22px !important;
+    min-height: 36px !important;
+    padding: 9px 18px !important;
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-msg-actions {
