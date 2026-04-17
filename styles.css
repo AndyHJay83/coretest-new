@@ -7283,7 +7283,7 @@ button.close-info-button.workflow-report-close {
     max-width: 100%;
 }
 
-/* Tappable words: full-row hit target (still no link styling) */
+/* Tappable words: full-row invisible hit target (reads as plain list text) */
 .lexicon-fakegpt-overlay button.lexicon-fakegpt-clue {
     display: flex !important;
     align-items: center !important;
@@ -7296,15 +7296,15 @@ button.close-info-button.workflow-report-close {
     font-size: inherit !important;
     line-height: inherit !important;
     color: var(--lexgpt-text) !important;
-    background: rgba(255, 255, 255, 0.06) !important;
-    background-color: rgba(255, 255, 255, 0.06) !important;
+    background: none !important;
+    background-color: transparent !important;
     border: none !important;
-    border-radius: 12px !important;
+    border-radius: 0 !important;
     cursor: default !important;
     text-align: left !important;
     text-decoration: none !important;
     box-shadow: none !important;
-    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.15);
+    -webkit-tap-highlight-color: transparent;
 }
 
 /* Action row under assistant message */
@@ -7598,7 +7598,6 @@ button.close-info-button.workflow-report-close {
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa button.lexicon-fakegpt-clue {
     min-height: 72px !important;
     padding: 18px 22px !important;
-    border-radius: 16px !important;
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-msg-actions {
