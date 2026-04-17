@@ -6486,7 +6486,7 @@ function startOmega(callback) {
     }
     lexRow.innerHTML = `
         <div style="display:flex; flex-direction:column; align-items:center; gap:6px; width:100%;">
-            <div style="display:flex; justify-content:center; width:100%;">
+            <div style="display:flex; justify-content:center; width:100%; gap:8px; flex-wrap:wrap;">
                 <button type="button" id="omegaLexToggleBtn" class="secondary-btn">LEX</button>
             </div>
             <div id="omegaLexPanel" style="display:none; width:100%; max-width:560px; padding:10px; border:1px solid #ddd; border-radius:10px; background:#fafafa;">
@@ -6498,6 +6498,7 @@ function startOmega(callback) {
                 </div>
                 <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
                     <input type="text" id="omegaLexInput" placeholder="Letter(s) or short word" maxlength="40" autocomplete="off" style="padding:8px; min-width:180px; text-transform:uppercase;">
+                    <button type="button" id="omegaLexApplyBtn" class="secondary-btn" title="Apply LEX (hold 3 seconds for Advanced Lex)">Apply LEX</button>
                 </div>
             </div>
             <span id="omegaLexCompactLabel" style="font-size:12px;color:#444;">Lex: —</span>
@@ -6540,6 +6541,32 @@ function startOmega(callback) {
     };
 
     attachOmegaTap(omegaLexToggleBtn, () => setOmegaLexVisible(!omegaLexVisible));
+    const openOmegaAdvancedLexiconFakeGpt = () => {
+        const src = (omegaLexVisible ? omegaLexSourceWords : currentFilteredWords).slice();
+        let reqIdx = omegaLexLockedPosition >= 0 ? omegaLexLockedPosition : omegaLexPosition;
+        if (reqIdx < 0) {
+            const m = findPositionWithMostVarianceFrom(src, 3, 6);
+            reqIdx = m && Number.isInteger(m.position) ? m.position : -1;
+        }
+        openAdvancedLexiconFakeGptOverlay({
+            sourceWords: src,
+            lexiconLetterIndex: reqIdx,
+            onDismiss: () => {},
+            onClueSelected: (filtered, clue) => {
+                omegaTrace.push({
+                    action: 'LEX_CHATGPT_CLUE',
+                    clue,
+                    wordsOut: Array.isArray(filtered) ? filtered.length : 0
+                });
+                callback(filtered);
+                omegaLexSourceWords = Array.isArray(filtered) ? filtered.slice() : [];
+                refreshOmegaLexMeta();
+                void renderOmegaResultsByLexState(filtered).catch((e) => console.warn('OMEGA results render', e));
+            }
+        });
+    };
+    const omegaLexApplyBtn = document.getElementById('omegaLexApplyBtn');
+    attachLexApplyHoldOpensFakeGpt(omegaLexApplyBtn, () => applyOmegaLexFilterFromInput(), openOmegaAdvancedLexiconFakeGpt);
     const applyOmegaLexFilterFromInput = () => {
         const letters = parseUnifiedCustomAlphaLine((omegaLexInput && omegaLexInput.value) || '');
         if (!letters) {
@@ -7833,7 +7860,7 @@ function createUnifiedAlphaFeature(workflowKind) {
             </div>
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
                 <input type="text" id="alphaLexPeekInput" placeholder="Letter(s) or short word" maxlength="40" autocomplete="off" style="padding:8px; min-width:180px; text-transform:uppercase;">
-                <button type="button" id="alphaLexPeekApplyBtn" class="secondary-btn">Apply LEX</button>
+                <button type="button" id="alphaLexPeekApplyBtn" class="secondary-btn" title="Apply LEX (hold 3 seconds for Advanced Lex)">Apply LEX</button>
             </div>
         </div>
     `;
@@ -17110,7 +17137,34 @@ function setupFeatureListeners(feature, callback, options) {
             attachUnifiedAlphaTapBtn(alphaLexPeekToggleBtn, () => {
                 setAlphaLexPeekVisible(!alphaLexPeekVisible);
             });
-            attachUnifiedAlphaTapBtn(alphaLexPeekApplyBtn, () => applyAlphaLexPeekFilter());
+            const openAlphaAdvancedLexiconFakeGpt = () => {
+                const src = filterAlphaFromBase(alphaDirections).filtered.slice();
+                let reqIdx = alphaLexPeekLockedPosition >= 0 ? alphaLexPeekLockedPosition : alphaLexPeekPosition;
+                if (reqIdx < 0) {
+                    const m = findPositionWithMostVarianceFrom(src, 3, 6);
+                    reqIdx = m && Number.isInteger(m.position) ? m.position : -1;
+                }
+                openAdvancedLexiconFakeGptOverlay({
+                    sourceWords: src,
+                    lexiconLetterIndex: reqIdx,
+                    onDismiss: () => {},
+                    onClueSelected: (filtered, clue) => {
+                        alphaLexPeekSourceWords = Array.isArray(filtered) ? filtered.slice() : [];
+                        alphaLexPeekUsed = true;
+                        alphaLexPeekLastInput = clue;
+                        alphaLexPeekLockedPosition = -1;
+                        alphaBaseWords.length = 0;
+                        alphaBaseWords.push(...(Array.isArray(filtered) ? filtered : []));
+                        applyAlphaIncrementalFromCurrentDirections();
+                        refreshAlphaLexPeekPanelMeta();
+                    }
+                });
+            };
+            attachLexApplyHoldOpensFakeGpt(
+                alphaLexPeekApplyBtn,
+                () => applyAlphaLexPeekFilter(),
+                openAlphaAdvancedLexiconFakeGpt
+            );
             if (alphaLexPeekInput) {
                 alphaLexPeekInput.addEventListener('input', () => {
                     if (alphaLexPeekInput) {
@@ -19470,6 +19524,662 @@ function findPositionWithMostVarianceFrom(words, minIndex, maxPositions) {
         }
     });
     return { position: result, letters: resultLetters };
+}
+
+// --- Advanced Lexicon (Brown corpus mnemonic clues + fake ChatGPT UI for OMEGA / ALPHA LEX) ---
+
+let _brownCorpusWordsPromise = null;
+/** @returns {Promise<string[]>} */
+function loadBrownCorpusWords() {
+    if (!_brownCorpusWordsPromise) {
+        _brownCorpusWordsPromise = fetch('data/brown_corpus.txt')
+            .then((r) => {
+                if (!r.ok) throw new Error('brown_corpus ' + r.status);
+                return r.text();
+            })
+            .then((text) =>
+                text
+                    .split(/\r?\n/)
+                    .map((w) => String(w || '').trim().toUpperCase().replace(/[^A-Z]/g, ''))
+                    .filter(Boolean)
+            )
+            .catch((e) => {
+                console.warn('Brown corpus load failed', e);
+                _brownCorpusWordsPromise = null;
+                return [];
+            });
+    }
+    return _brownCorpusWordsPromise;
+}
+
+function sanitizeLexiconWordForAdvanced(w) {
+    const s = String(w || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    return s.replace(/\s+/g, '').toUpperCase();
+}
+
+const ADV_LEX_LTE_SENTINEL = 99;
+
+/**
+ * Best letter column for Advanced Lexicon; may return ADV_LEX_LTE_SENTINEL when the best column
+ * is the last letter of every word and max length &lt; 12 (matches LexiconEngine “LTE” rule).
+ */
+function findMostEffectiveLexiconIndexAdvanced(wordList) {
+    const sanitized = (wordList || []).map(sanitizeLexiconWordForAdvanced).filter((w) => w.length > 0);
+    if (!sanitized.length) return { letterIndex: -1, letters: [], rawIndex: -1 };
+    const maxLen = Math.max(...sanitized.map((w) => w.length), 0);
+    let bestIdx = -1;
+    let bestCount = -1;
+    let bestLetters = [];
+    for (let i = LEXICON_MIN_CHAR_INDEX; i < maxLen; i++) {
+        const set = new Set();
+        for (const w of sanitized) {
+            if (w.length > i) set.add(w[i]);
+        }
+        if (set.size > bestCount) {
+            bestCount = set.size;
+            bestIdx = i;
+            bestLetters = Array.from(set).sort();
+        }
+    }
+    if (bestIdx < 0) return { letterIndex: -1, letters: [], rawIndex: -1 };
+    let letterIndex = bestIdx;
+    if (maxLen < 12 && bestIdx === maxLen - 1) {
+        letterIndex = ADV_LEX_LTE_SENTINEL;
+        const lastSet = new Set();
+        for (const w of sanitized) {
+            if (w.length) lastSet.add(w[w.length - 1]);
+        }
+        bestLetters = Array.from(lastSet).sort();
+    }
+    return { letterIndex, letters: bestLetters, rawIndex: bestIdx };
+}
+
+function getLetterAtAdvancedLexIndex(wordUpper, letterIndex) {
+    const w = String(wordUpper || '').toUpperCase();
+    if (!w.length) return null;
+    if (letterIndex === ADV_LEX_LTE_SENTINEL) return w[w.length - 1] || null;
+    if (letterIndex < 0 || w.length <= letterIndex) return null;
+    return w[letterIndex];
+}
+
+function separateLettersIntoCategoriesAdvanced(wordList, letterIndex) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const used = new Set();
+    for (const raw of wordList || []) {
+        const sanitized = sanitizeLexiconWordForAdvanced(raw);
+        if (!sanitized.length) continue;
+        const ch = getLetterAtAdvancedLexIndex(sanitized, letterIndex);
+        if (ch && ch >= 'A' && ch <= 'Z') used.add(ch);
+    }
+    const unused = new Set();
+    for (let i = 0; i < alphabet.length; i++) {
+        const c = alphabet[i];
+        if (!used.has(c)) unused.add(c);
+    }
+    return { usedLetters: used, unusedLetters: unused };
+}
+
+function generateWordsForUsedLettersAdvanced(usedLetters, unusedLetters, brownCorpus) {
+    const corpus = Array.isArray(brownCorpus) ? brownCorpus : [];
+    const unusedSorted = Array.from(unusedLetters).sort();
+    const out = [];
+    for (const letter of Array.from(usedLetters).sort()) {
+        const allowedSet = new Set([letter, ...unusedSorted]);
+        const hit =
+            corpus.find((word) => {
+                const u = String(word || '').toUpperCase();
+                if (!u.includes(letter)) return false;
+                for (let i = 0; i < u.length; i++) {
+                    if (!allowedSet.has(u[i])) return false;
+                }
+                return true;
+            }) || `${letter}${unusedSorted.join('')}`;
+        out.push({ letter, word: hit.toUpperCase() });
+    }
+    return out;
+}
+
+function getClueWordsAdvanced(wordList, letterIndex, brownCorpus) {
+    if (!wordList || !wordList.length) return [];
+    const { usedLetters, unusedLetters } = separateLettersIntoCategoriesAdvanced(wordList, letterIndex);
+    return generateWordsForUsedLettersAdvanced(usedLetters, unusedLetters, brownCorpus);
+}
+
+/** Prefer UI LEX column (OMEGA/ALPHA) when valid; else Advanced Lexicon auto index (incl. LTE sentinel). */
+function pickLexiconLetterIndexForOverlay(sourceWords, autoLetterIndex, requestedIndex) {
+    if (!Number.isInteger(autoLetterIndex) || autoLetterIndex < 0) return autoLetterIndex;
+    if (requestedIndex === ADV_LEX_LTE_SENTINEL) return ADV_LEX_LTE_SENTINEL;
+    if (!Number.isInteger(requestedIndex) || requestedIndex < LEXICON_MIN_CHAR_INDEX) {
+        return autoLetterIndex;
+    }
+    for (const raw of sourceWords || []) {
+        const u = sanitizeLexiconWordForAdvanced(raw);
+        if (getLetterAtAdvancedLexIndex(u, requestedIndex)) return requestedIndex;
+    }
+    return autoLetterIndex;
+}
+
+/** Letter at lex column using same raw `toUpperCase` + index rules as OMEGA LEX (not NFD-sanitized). */
+function getLetterForLexFilter(raw, letterIndex) {
+    const up = String(raw || '')
+        .toUpperCase()
+        .replace(/\s+/g, '');
+    if (!up.length) return null;
+    if (letterIndex === ADV_LEX_LTE_SENTINEL) {
+        const ch = up[up.length - 1];
+        return ch >= 'A' && ch <= 'Z' ? ch : null;
+    }
+    if (!Number.isInteger(letterIndex) || letterIndex < 0 || up.length <= letterIndex) return null;
+    const ch = up[letterIndex];
+    return ch >= 'A' && ch <= 'Z' ? ch : null;
+}
+
+/**
+ * Same idea as LexiconEngine getEnigmaFromLexicon (letter at column contained in clue).
+ * If `keyLetter` is set (from UI row), match that letter exactly — includes every list word OMEGA would show at that column.
+ */
+function filterWordsByAdvancedLexiconClue(wordList, clueWord, letterIndex, keyLetter) {
+    const clue = String(clueWord || '').toUpperCase();
+    const k = String(keyLetter || '')
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '')
+        .charAt(0);
+    if (!clue && !k) return [];
+    return (wordList || []).filter((raw) => {
+        const ch = getLetterForLexFilter(raw, letterIndex);
+        if (!ch) return false;
+        if (k) return ch === k;
+        return clue.includes(ch);
+    });
+}
+
+const LEX_FAKEGPT_APPLY_HOLD_MS = 3000;
+
+/** Short press / click runs `onShortApply`. Hold `LEX_FAKEGPT_APPLY_HOLD_MS` opens fake ChatGPT (`onLongHoldOpenFakeGpt`). */
+function attachLexApplyHoldOpensFakeGpt(applyBtn, onShortApply, onLongHoldOpenFakeGpt) {
+    if (!applyBtn || typeof onShortApply !== 'function' || typeof onLongHoldOpenFakeGpt !== 'function') return;
+    let holdT = null;
+    let suppressClick = false;
+    const clearHold = () => {
+        if (holdT) {
+            clearTimeout(holdT);
+            holdT = null;
+        }
+    };
+    applyBtn.addEventListener('pointerdown', () => {
+        clearHold();
+        holdT = setTimeout(() => {
+            holdT = null;
+            suppressClick = true;
+            onLongHoldOpenFakeGpt();
+        }, LEX_FAKEGPT_APPLY_HOLD_MS);
+    });
+    applyBtn.addEventListener('pointerup', () => {
+        if (holdT) {
+            clearHold();
+            suppressClick = true;
+            onShortApply();
+        }
+    });
+    applyBtn.addEventListener('pointerleave', clearHold);
+    applyBtn.addEventListener('pointercancel', clearHold);
+    applyBtn.addEventListener('click', (e) => {
+        if (suppressClick) {
+            suppressClick = false;
+            e.preventDefault();
+            return;
+        }
+        onShortApply();
+    });
+}
+
+let _lexiconFakeGptSession = null;
+
+const LEXFAKEGPT_WELCOME_SUGGESTIONS = [
+    'Give me 10 random English words in a numbered list',
+    'Tell me a joke',
+    'Write a short story',
+    'What is the capital of Japan?'
+];
+
+function isLexiconFakeGptPwaDisplayMode() {
+    try {
+        return (
+            window.matchMedia('(display-mode: standalone)').matches ||
+            window.matchMedia('(display-mode: fullscreen)').matches ||
+            window.matchMedia('(display-mode: minimal-ui)').matches ||
+            window.navigator.standalone === true
+        );
+    } catch (e) {
+        return false;
+    }
+}
+
+function renderLexiconFakeGptEmptyStateHtml() {
+    const chips = LEXFAKEGPT_WELCOME_SUGGESTIONS.map((s) => {
+        const esc = escapeHtmlLexFakeGpt(s);
+        const attr = escapeAttrLexFakeGpt(s);
+        return `<button type="button" class="lexicon-fakegpt-suggestion-chip" data-lexgpt-suggestion="${attr}"><span class="lexicon-fakegpt-suggestion-text">${esc}</span></button>`;
+    }).join('');
+    return `<div class="lexicon-fakegpt-empty-state">
+    <div class="lexicon-fakegpt-logo-wrap">
+      <div class="lexicon-fakegpt-logo-circle" aria-hidden="true"><span class="lexicon-fakegpt-logo-glyph">\u2726</span></div>
+    </div>
+    <h2 class="lexicon-fakegpt-empty-title">How can I help you?</h2>
+    <div class="lexicon-fakegpt-suggestions-row">${chips}</div>
+  </div>`;
+}
+
+function lexiconFakeGptBuildAssistantParts(tenClues) {
+    const plainLines = [];
+    const htmlLines = [];
+    for (let i = 0; i < 10; i++) {
+        const entry = tenClues[i];
+        let letter = '';
+        let w = '';
+        if (entry && typeof entry === 'object' && entry.word != null) {
+            letter = String(entry.letter || '')
+                .toUpperCase()
+                .replace(/[^A-Z]/g, '')
+                .slice(0, 1);
+            w = String(entry.word || '');
+        } else {
+            w = entry ? String(entry) : '';
+        }
+        const disp = !w || w === '—' ? '—' : letter ? `${letter} — ${w}` : w;
+        plainLines.push(`${i + 1}. ${disp}`);
+        const esc = escapeHtmlLexFakeGpt(disp);
+        if (!w || w === '—') {
+            htmlLines.push(`<div class="lexicon-fakegpt-line">${i + 1}. ${esc}</div>`);
+        } else {
+            htmlLines.push(
+                `<div class="lexicon-fakegpt-line"><button type="button" class="lexicon-fakegpt-clue" data-lexicon-clue="${escapeAttrLexFakeGpt(
+                    w
+                )}" data-lexicon-letter="${escapeAttrLexFakeGpt(letter)}">${i + 1}. ${esc}</button></div>`
+            );
+        }
+    }
+    const numbered = `<div class="lexicon-fakegpt-numbered">${htmlLines.join('')}</div>`;
+    const actions = `<div class="lexicon-fakegpt-msg-actions" aria-hidden="true">
+    <span class="lexicon-fakegpt-msg-action"><span class="material-symbols-rounded">content_copy</span></span>
+    <span class="lexicon-fakegpt-msg-action"><span class="material-symbols-rounded">volume_up</span></span>
+    <span class="lexicon-fakegpt-msg-action"><span class="material-symbols-rounded">thumb_up</span></span>
+    <span class="lexicon-fakegpt-msg-action"><span class="material-symbols-rounded">thumb_down</span></span>
+    <span class="lexicon-fakegpt-msg-action"><span class="material-symbols-rounded">share</span></span>
+    <span class="lexicon-fakegpt-msg-action"><span class="material-symbols-rounded">more_horiz</span></span>
+  </div>`;
+    return { plainText: plainLines.join('\n'), numbered, actions };
+}
+
+function lexiconFakeGptRunTypingStream(el, fullText, onComplete, isActive) {
+    if (!el) {
+        if (typeof onComplete === 'function') onComplete();
+        return;
+    }
+    el.textContent = '';
+    const tokens = fullText.split(/(\s+)/);
+    let index = 0;
+    const wordCount = tokens.filter((t) => t.trim().length > 0).length;
+    const speed = wordCount > 80 ? 20 : wordCount > 40 ? 30 : 45;
+    const messagesEl = document.getElementById('lexiconFakeGptChatScroll');
+    const tick = () => {
+        if (typeof isActive === 'function' && !isActive()) return;
+        if (index < tokens.length) {
+            el.textContent += tokens[index];
+            index++;
+            if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+            setTimeout(tick, speed);
+        } else if (typeof onComplete === 'function') {
+            onComplete();
+        }
+    };
+    tick();
+}
+
+function lexiconFakeGptResetChatUi(messagesEl, inputEl, sendBtn, syncFn) {
+    if (!_lexiconFakeGptSession) return;
+    if (_lexiconFakeGptSession.thinkingTimer) {
+        clearTimeout(_lexiconFakeGptSession.thinkingTimer);
+        _lexiconFakeGptSession.thinkingTimer = null;
+    }
+    _lexiconFakeGptSession.streamGen = (_lexiconFakeGptSession.streamGen || 0) + 1;
+    _lexiconFakeGptSession.sent = false;
+    if (messagesEl) messagesEl.innerHTML = renderLexiconFakeGptEmptyStateHtml();
+    if (inputEl) {
+        inputEl.value = '';
+        inputEl.disabled = false;
+    }
+    if (sendBtn) sendBtn.disabled = false;
+    if (typeof syncFn === 'function') syncFn();
+    if (messagesEl) messagesEl.scrollTop = 0;
+}
+
+function closeAdvancedLexiconFakeGptOverlay() {
+    const root = document.getElementById('lexiconFakeGptOverlay');
+    if (root) {
+        root.style.display = 'none';
+        root.classList.remove('lexicon-fakegpt-overlay--pwa');
+    }
+    if (_lexiconFakeGptSession && _lexiconFakeGptSession.thinkingTimer) {
+        clearTimeout(_lexiconFakeGptSession.thinkingTimer);
+    }
+    _lexiconFakeGptSession = null;
+    const inp = document.getElementById('lexiconFakeGptInput');
+    if (inp) {
+        inp.value = '';
+        inp.disabled = true;
+    }
+}
+
+function ensureAdvancedLexiconFakeGptOverlay() {
+    if (document.getElementById('lexiconFakeGptOverlay')) return;
+    const root = document.createElement('div');
+    root.id = 'lexiconFakeGptOverlay';
+    root.className = 'lexicon-fakegpt-overlay';
+    root.setAttribute('aria-hidden', 'true');
+    root.innerHTML = `
+        <header class="lexicon-fakegpt-header" role="banner">
+            <button type="button" class="lexicon-fakegpt-header-iconbtn lexicon-fakegpt-header-menu" aria-label="Menu">
+                <span class="material-symbols-rounded" aria-hidden="true">menu</span>
+            </button>
+            <button type="button" class="lexicon-fakegpt-model-chip" aria-haspopup="listbox" aria-expanded="false">
+                ChatGPT<span class="material-symbols-rounded lexicon-fakegpt-chevron" aria-hidden="true">expand_more</span>
+            </button>
+            <div class="lexicon-fakegpt-header-trailing">
+                <button type="button" class="lexicon-fakegpt-header-iconbtn lexicon-fakegpt-new-chat" aria-label="New chat" tabindex="-1">
+                    <span class="material-symbols-rounded" aria-hidden="true">edit_square</span>
+                </button>
+                <button type="button" class="lexicon-fakegpt-header-iconbtn" aria-label="More" tabindex="-1">
+                    <span class="material-symbols-rounded" aria-hidden="true">more_horiz</span>
+                </button>
+            </div>
+        </header>
+        <div class="lexicon-fakegpt-dismiss-zone" title="Close" aria-label="Close without applying"></div>
+        <div class="lexicon-fakegpt-inner">
+            <div id="lexiconFakeGptChatScroll" class="chat-container" role="log" aria-live="polite"></div>
+            <div class="typing-container">
+                <div class="lexicon-fakegpt-composer-pill">
+                    <button type="button" class="lexicon-fakegpt-composer-sidebtn" aria-label="Add" tabindex="-1">
+                        <span class="material-symbols-rounded" aria-hidden="true">add</span>
+                    </button>
+                    <textarea id="lexiconFakeGptInput" class="lexicon-fakegpt-composer-input" placeholder="Ask ChatGPT" rows="1" disabled autocomplete="off" spellcheck="false"></textarea>
+                    <button type="button" id="lexiconFakeGptSend" class="lexicon-fakegpt-composer-sendfab" disabled aria-label="Send">
+                        <span class="material-symbols-rounded" aria-hidden="true">arrow_upward</span>
+                    </button>
+                    <div class="lexicon-fakegpt-composer-voice" aria-hidden="true">
+                        <span class="lexicon-fakegpt-voice-mic"><span class="material-symbols-rounded">mic</span></span>
+                        <span class="lexicon-fakegpt-voice-wave-wrap">
+                            <span class="lexicon-fakegpt-waveform" aria-hidden="true">
+                                <span class="lexicon-fakegpt-wave-bar" style="height:8px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:14px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:10px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:18px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:12px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:16px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:9px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:15px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:11px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:13px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:17px"></span>
+                                <span class="lexicon-fakegpt-wave-bar" style="height:10px"></span>
+                            </span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(root);
+
+    const dismissOverlay = () => {
+        if (_lexiconFakeGptSession && typeof _lexiconFakeGptSession.onDismiss === 'function') {
+            _lexiconFakeGptSession.onDismiss();
+        }
+        closeAdvancedLexiconFakeGptOverlay();
+    };
+    const menuBtn = root.querySelector('.lexicon-fakegpt-header-menu');
+    if (menuBtn) menuBtn.addEventListener('click', dismissOverlay);
+    const dismiss = root.querySelector('.lexicon-fakegpt-dismiss-zone');
+    if (dismiss) dismiss.addEventListener('click', dismissOverlay);
+    const messagesEl = document.getElementById('lexiconFakeGptChatScroll');
+    const sendBtn = document.getElementById('lexiconFakeGptSend');
+    const inputEl = document.getElementById('lexiconFakeGptInput');
+
+    function syncLexiconFakeGptComposerChrome() {
+        const voice = root.querySelector('.lexicon-fakegpt-composer-voice');
+        const has = !!(inputEl && inputEl.value.trim().length > 0 && !inputEl.disabled);
+        if (sendBtn) {
+            sendBtn.style.display = has ? 'flex' : 'none';
+            sendBtn.disabled = !has;
+        }
+        if (voice) voice.style.display = has ? 'none' : 'flex';
+    }
+    root.__lexgptSyncComposer = syncLexiconFakeGptComposerChrome;
+
+    if (messagesEl) {
+        let lexgptSuggestionTouchConsumed = false;
+        messagesEl.addEventListener(
+            'touchstart',
+            (e) => {
+                const sug = e.target.closest('[data-lexgpt-suggestion]');
+                if (!sug || !inputEl || !_lexiconFakeGptSession || !_lexiconFakeGptSession.ready || _lexiconFakeGptSession.sent) {
+                    return;
+                }
+                e.preventDefault();
+                lexgptSuggestionTouchConsumed = true;
+                const st = sug.getAttribute('data-lexgpt-suggestion') || '';
+                if (!st) return;
+                inputEl.value = st;
+                syncLexiconFakeGptComposerChrome();
+                doSend();
+            },
+            { passive: false }
+        );
+        messagesEl.addEventListener('click', (e) => {
+            const sug = e.target.closest('[data-lexgpt-suggestion]');
+            if (sug && inputEl && _lexiconFakeGptSession && !_lexiconFakeGptSession.sent && _lexiconFakeGptSession.ready) {
+                if (lexgptSuggestionTouchConsumed) {
+                    lexgptSuggestionTouchConsumed = false;
+                    return;
+                }
+                e.preventDefault();
+                const st = sug.getAttribute('data-lexgpt-suggestion') || '';
+                if (!st) return;
+                inputEl.value = st;
+                syncLexiconFakeGptComposerChrome();
+                doSend();
+                return;
+            }
+                       const t = e.target.closest('[data-lexicon-clue]');
+            if (!t || !_lexiconFakeGptSession) return;
+            const clue = t.getAttribute('data-lexicon-clue') || '';
+            if (!clue || clue === '—') return;
+            const keyLet = t.getAttribute('data-lexicon-letter') || '';
+            const filtered = filterWordsByAdvancedLexiconClue(
+                _lexiconFakeGptSession.sourceWords,
+                clue,
+                _lexiconFakeGptSession.letterIndex,
+                keyLet
+            );
+            if (typeof _lexiconFakeGptSession.onClueSelected === 'function') {
+                _lexiconFakeGptSession.onClueSelected(filtered, clue);
+            }
+            closeAdvancedLexiconFakeGptOverlay();
+        });
+    }
+
+    const newChatBtn = root.querySelector('.lexicon-fakegpt-new-chat');
+    if (newChatBtn) {
+        newChatBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!_lexiconFakeGptSession || !_lexiconFakeGptSession.ready) return;
+            lexiconFakeGptResetChatUi(messagesEl, inputEl, sendBtn, syncLexiconFakeGptComposerChrome);
+        });
+    }
+
+    const doSend = () => {
+        if (!_lexiconFakeGptSession || !_lexiconFakeGptSession.ready || _lexiconFakeGptSession.sent) return;
+        const raw = (inputEl && inputEl.value) || '';
+        const userText = raw.trim() || '…';
+        _lexiconFakeGptSession.sent = true;
+        if (_lexiconFakeGptSession.thinkingTimer) {
+            clearTimeout(_lexiconFakeGptSession.thinkingTimer);
+            _lexiconFakeGptSession.thinkingTimer = null;
+        }
+        _lexiconFakeGptSession.streamGen = (_lexiconFakeGptSession.streamGen || 0) + 1;
+        const myGen = _lexiconFakeGptSession.streamGen;
+        const isStreamActive = () =>
+            !!(_lexiconFakeGptSession && _lexiconFakeGptSession.streamGen === myGen);
+        if (sendBtn) sendBtn.disabled = true;
+        if (inputEl) inputEl.disabled = true;
+        if (!messagesEl) return;
+        const empty = messagesEl.querySelector('.lexicon-fakegpt-empty-state');
+        if (empty) empty.remove();
+        messagesEl.insertAdjacentHTML(
+            'beforeend',
+            `<div class="lexicon-fakegpt-msg-row lexicon-fakegpt-msg-row--user"><div class="lexicon-fakegpt-user-bubble">${escapeHtmlLexFakeGpt(
+                userText
+            )}</div></div>`
+        );
+        messagesEl.insertAdjacentHTML(
+            'beforeend',
+            `<div id="lexiconFakeGptThinkingRow" class="lexicon-fakegpt-msg-row lexicon-fakegpt-msg-row--assistant lexicon-fakegpt-thinking-row"><div class="lexicon-fakegpt-thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div></div>`
+        );
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        const thinkDelay = 600 + Math.random() * 400;
+        const sessionAtSend = _lexiconFakeGptSession;
+        _lexiconFakeGptSession.thinkingTimer = setTimeout(() => {
+            _lexiconFakeGptSession.thinkingTimer = null;
+            if (!sessionAtSend || _lexiconFakeGptSession !== sessionAtSend) return;
+            if (myGen !== _lexiconFakeGptSession.streamGen) return;
+            const think = document.getElementById('lexiconFakeGptThinkingRow');
+            if (think) think.remove();
+            const ten = sessionAtSend.tenClues;
+            const parts = lexiconFakeGptBuildAssistantParts(ten);
+            messagesEl.insertAdjacentHTML(
+                'beforeend',
+                `<div id="lexiconFakeGptAssistantRow" class="lexicon-fakegpt-msg-row lexicon-fakegpt-msg-row--assistant"><div class="lexicon-fakegpt-assistant-plain"><pre class="lexicon-fakegpt-stream"></pre></div></div>`
+            );
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+            const assistantRow = document.getElementById('lexiconFakeGptAssistantRow');
+            const streamEl = assistantRow && assistantRow.querySelector('.lexicon-fakegpt-stream');
+            lexiconFakeGptRunTypingStream(
+                streamEl,
+                parts.plainText,
+                () => {
+                    if (!sessionAtSend || _lexiconFakeGptSession !== sessionAtSend) return;
+                    if (myGen !== _lexiconFakeGptSession.streamGen) return;
+                    if (!assistantRow || !assistantRow.isConnected) return;
+                    assistantRow.removeAttribute('id');
+                    const plain = assistantRow.querySelector('.lexicon-fakegpt-assistant-plain');
+                    if (plain) plain.innerHTML = parts.numbered + parts.actions;
+                    messagesEl.scrollTop = messagesEl.scrollHeight;
+                },
+                isStreamActive
+            );
+        }, thinkDelay);
+        if (inputEl) inputEl.value = '';
+        syncLexiconFakeGptComposerChrome();
+    };
+
+    if (sendBtn) sendBtn.addEventListener('click', doSend);
+    if (inputEl) {
+        inputEl.addEventListener('input', syncLexiconFakeGptComposerChrome);
+        inputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                doSend();
+            }
+        });
+    }
+}
+
+function escapeHtmlLexFakeGpt(s) {
+    return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function escapeAttrLexFakeGpt(s) {
+    return escapeHtmlLexFakeGpt(s).replace(/'/g, '&#39;');
+}
+
+/**
+ * Full-screen ChatGPT-style shell: first Send shows a fixed numbered list of Advanced Lexicon clue words (tap to filter).
+ * Top-left 20%×20% tap closes without applying.
+ */
+function openAdvancedLexiconFakeGptOverlay(ctx) {
+    const sourceWords = Array.isArray(ctx.sourceWords) ? ctx.sourceWords.slice() : [];
+    const onClueSelected = ctx.onClueSelected;
+    const onDismiss = typeof ctx.onDismiss === 'function' ? ctx.onDismiss : () => {};
+
+    const meta = findMostEffectiveLexiconIndexAdvanced(sourceWords);
+    if (meta.letterIndex < 0) {
+        alert('No valid Advanced Lexicon column for this word list.');
+        return;
+    }
+    const requestedIdx = Number.isInteger(ctx.lexiconLetterIndex) ? ctx.lexiconLetterIndex : -1;
+    const letterIndex = pickLexiconLetterIndexForOverlay(sourceWords, meta.letterIndex, requestedIdx);
+
+    ensureAdvancedLexiconFakeGptOverlay();
+    const root = document.getElementById('lexiconFakeGptOverlay');
+    const messagesEl = document.getElementById('lexiconFakeGptChatScroll');
+    const inputEl = document.getElementById('lexiconFakeGptInput');
+    const sendBtn = document.getElementById('lexiconFakeGptSend');
+    if (!root || !messagesEl) return;
+
+    if (isLexiconFakeGptPwaDisplayMode()) root.classList.add('lexicon-fakegpt-overlay--pwa');
+    else root.classList.remove('lexicon-fakegpt-overlay--pwa');
+
+    root.style.display = 'flex';
+    root.style.flexDirection = 'column';
+    root.setAttribute('aria-hidden', 'false');
+    messagesEl.innerHTML =
+        '<div class="lexicon-fakegpt-msg-row lexicon-fakegpt-msg-row--assistant"><p class="lexicon-fakegpt-loading">Loading lexicon…</p></div>';
+    if (inputEl) {
+        inputEl.value = '';
+        inputEl.disabled = true;
+    }
+    if (sendBtn) sendBtn.disabled = true;
+    if (typeof root.__lexgptSyncComposer === 'function') root.__lexgptSyncComposer();
+
+    _lexiconFakeGptSession = {
+        sourceWords,
+        letterIndex,
+        tenClues: [],
+        ready: false,
+        sent: false,
+        streamGen: 0,
+        thinkingTimer: null,
+        onClueSelected,
+        onDismiss
+    };
+
+    loadBrownCorpusWords().then((brown) => {
+        if (!_lexiconFakeGptSession) return;
+        const clues = getClueWordsAdvanced(sourceWords, letterIndex, brown);
+        if (!clues.length) {
+            messagesEl.innerHTML =
+                '<div class="lexicon-fakegpt-msg-row lexicon-fakegpt-msg-row--assistant"><p class="lexicon-fakegpt-loading error">No clue words could be built from this list.</p></div>';
+            if (sendBtn) sendBtn.disabled = true;
+            if (typeof root.__lexgptSyncComposer === 'function') root.__lexgptSyncComposer();
+            return;
+        }
+        const ten = [];
+        for (let i = 0; i < 10; i++) ten.push(clues[i % clues.length]);
+        _lexiconFakeGptSession.tenClues = ten;
+        _lexiconFakeGptSession.ready = true;
+        messagesEl.innerHTML = renderLexiconFakeGptEmptyStateHtml();
+        if (inputEl) inputEl.disabled = false;
+        if (sendBtn) sendBtn.disabled = false;
+        const rootEl = document.getElementById('lexiconFakeGptOverlay');
+        if (rootEl && typeof rootEl.__lexgptSyncComposer === 'function') rootEl.__lexgptSyncComposer();
+        messagesEl.scrollTop = 0;
+    });
 }
 
 // Combined position score across two candidate sets (for MUTE DUO LEX peek).
@@ -22283,121 +22993,10 @@ function initSettingsUI() {
     }
 
     const confidenceLayerEnabledToggle = document.getElementById('confidenceLayerEnabledToggle');
-    const confidenceLayerFields = document.getElementById('confidenceLayerFields');
-    const confidenceTopCountInput = document.getElementById('confidenceTopCountInput');
-    const confidenceHighThresholdInput = document.getElementById('confidenceHighThresholdInput');
-    const confidenceMediumThresholdInput = document.getElementById('confidenceMediumThresholdInput');
-    const syncConfidenceFieldsVisibility = () => {
-        if (confidenceLayerFields) {
-            confidenceLayerFields.style.display = (appSettings && appSettings.confidenceLayerEnabled) ? '' : 'none';
-        }
-    };
     if (confidenceLayerEnabledToggle) {
         confidenceLayerEnabledToggle.checked = !!(appSettings && appSettings.confidenceLayerEnabled);
         confidenceLayerEnabledToggle.addEventListener('change', () => {
             appSettings.confidenceLayerEnabled = confidenceLayerEnabledToggle.checked;
-            syncConfidenceFieldsVisibility();
-            saveAppSettings();
-        });
-    }
-    if (confidenceTopCountInput) {
-        const n = parseInt((appSettings && appSettings.confidenceTopCount) || 5, 10);
-        confidenceTopCountInput.value = String(Math.max(1, Math.min(10, isNaN(n) ? 5 : n)));
-        confidenceTopCountInput.addEventListener('input', () => {
-            const next = parseInt(confidenceTopCountInput.value, 10);
-            if (!isNaN(next) && next >= 1 && next <= 10) {
-                appSettings.confidenceTopCount = next;
-                saveAppSettings();
-            }
-        });
-    }
-    if (confidenceHighThresholdInput) {
-        const n = Number((appSettings && appSettings.confidenceHighThreshold) ?? 0.75);
-        confidenceHighThresholdInput.value = String(clamp01(Number.isFinite(n) ? n : 0.75));
-        confidenceHighThresholdInput.addEventListener('input', () => {
-            const next = Number(confidenceHighThresholdInput.value);
-            if (Number.isFinite(next)) {
-                appSettings.confidenceHighThreshold = clamp01(next);
-                if (appSettings.confidenceMediumThreshold > appSettings.confidenceHighThreshold) {
-                    appSettings.confidenceMediumThreshold = appSettings.confidenceHighThreshold;
-                    if (confidenceMediumThresholdInput) {
-                        confidenceMediumThresholdInput.value = String(appSettings.confidenceMediumThreshold);
-                    }
-                }
-                saveAppSettings();
-            }
-        });
-    }
-    if (confidenceMediumThresholdInput) {
-        const n = Number((appSettings && appSettings.confidenceMediumThreshold) ?? 0.55);
-        confidenceMediumThresholdInput.value = String(clamp01(Number.isFinite(n) ? n : 0.55));
-        confidenceMediumThresholdInput.addEventListener('input', () => {
-            const next = Number(confidenceMediumThresholdInput.value);
-            if (Number.isFinite(next)) {
-                appSettings.confidenceMediumThreshold = clamp01(next);
-                if (appSettings.confidenceMediumThreshold > appSettings.confidenceHighThreshold) {
-                    appSettings.confidenceMediumThreshold = appSettings.confidenceHighThreshold;
-                    confidenceMediumThresholdInput.value = String(appSettings.confidenceMediumThreshold);
-                }
-                saveAppSettings();
-            }
-        });
-    }
-    const confidenceDatamuseToggle = document.getElementById('confidenceDatamuseToggle');
-    const confidenceOfflineZipfToggle = document.getElementById('confidenceOfflineZipfToggle');
-    const confidenceFrequencyBlendInput = document.getElementById('confidenceFrequencyBlendInput');
-    if (confidenceDatamuseToggle) {
-        confidenceDatamuseToggle.checked = !!(appSettings && appSettings.confidenceDatamuse !== false);
-        confidenceDatamuseToggle.addEventListener('change', () => {
-            appSettings.confidenceDatamuse = confidenceDatamuseToggle.checked;
-            saveAppSettings();
-        });
-    }
-    if (confidenceOfflineZipfToggle) {
-        confidenceOfflineZipfToggle.checked = !!(appSettings && appSettings.confidenceOfflineZipf !== false);
-        confidenceOfflineZipfToggle.addEventListener('change', () => {
-            appSettings.confidenceOfflineZipf = confidenceOfflineZipfToggle.checked;
-            saveAppSettings();
-        });
-    }
-    const confidenceOfflineCorpusSelect = document.getElementById('confidenceOfflineCorpusSelect');
-    if (confidenceOfflineCorpusSelect) {
-        const corp = String((appSettings && appSettings.confidenceOfflineCorpus) || 'subtlex').toLowerCase();
-        confidenceOfflineCorpusSelect.value =
-            corp === 'books' || corp === 'book' || corp === 'unigram' ? 'books' : 'subtlex';
-        confidenceOfflineCorpusSelect.addEventListener('change', () => {
-            appSettings.confidenceOfflineCorpus = confidenceOfflineCorpusSelect.value === 'books' ? 'books' : 'subtlex';
-            saveAppSettings();
-        });
-    }
-    const confidenceNounSuffixBiasToggle = document.getElementById('confidenceNounSuffixBiasToggle');
-    if (confidenceNounSuffixBiasToggle) {
-        confidenceNounSuffixBiasToggle.checked = !!(appSettings && appSettings.confidenceNounSuffixBias !== false);
-        confidenceNounSuffixBiasToggle.addEventListener('change', () => {
-            appSettings.confidenceNounSuffixBias = confidenceNounSuffixBiasToggle.checked;
-            saveAppSettings();
-        });
-    }
-    if (confidenceFrequencyBlendInput) {
-        const b = Number((appSettings && appSettings.confidenceFrequencyBlend) ?? 0);
-        confidenceFrequencyBlendInput.value = String(clamp01(Number.isFinite(b) ? b : 0));
-        confidenceFrequencyBlendInput.addEventListener('input', () => {
-            const next = Number(confidenceFrequencyBlendInput.value);
-            if (Number.isFinite(next)) {
-                appSettings.confidenceFrequencyBlend = clamp01(next);
-                saveAppSettings();
-            }
-        });
-    }
-    syncConfidenceFieldsVisibility();
-
-    const workflowDebugTargetWordInput = document.getElementById('workflowDebugTargetWordInput');
-    if (workflowDebugTargetWordInput) {
-        workflowDebugTargetWordInput.value = (appSettings && appSettings.workflowDebugTargetWord) || '';
-        workflowDebugTargetWordInput.addEventListener('input', () => {
-            const v = workflowDebugTargetWordInput.value.toUpperCase().replace(/[^A-Z]/g, '');
-            workflowDebugTargetWordInput.value = v;
-            appSettings.workflowDebugTargetWord = v;
             saveAppSettings();
         });
     }
