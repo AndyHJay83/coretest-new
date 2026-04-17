@@ -6848,8 +6848,11 @@ button.close-info-button.workflow-report-close {
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa {
-    --lexgpt-header-min-h: 52.8px;
-    --lexgpt-header-pad-y: 8.8px;
+    /* ~100% larger UI in standalone PWA; header stack for dismiss zone */
+    --lexgpt-header-min-h: 96px;
+    --lexgpt-header-pad-y: 16px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 .lexicon-fakegpt-overlay *,
@@ -7509,4 +7512,225 @@ button.close-info-button.workflow-report-close {
         padding: 8px 14px !important;
         font-size: 0.95rem !important;
     }
+}
+
+/* PWA standalone: ~2× ChatGPT-style overlay (text, icons, composer, chips) */
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-header {
+    grid-template-columns: 88px 1fr auto;
+    gap: 16px;
+    padding-left: 24px;
+    padding-right: 24px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-header-iconbtn .material-symbols-rounded {
+    font-size: 44px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa button.lexicon-fakegpt-header-iconbtn {
+    width: 80px !important;
+    height: 80px !important;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-header-trailing {
+    gap: 12px;
+    padding: 8px 12px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-header-trailing button.lexicon-fakegpt-header-iconbtn {
+    width: 72px !important;
+    height: 72px !important;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa button.lexicon-fakegpt-model-chip {
+    max-width: 400px;
+    gap: 8px !important;
+    padding: 16px 28px !important;
+    font-size: 1.9rem !important;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-model-chip .lexicon-fakegpt-chevron {
+    font-size: 40px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .chat-container {
+    padding: 16px 32px 200px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-msg-row--user {
+    margin: 28px 0;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-user-bubble {
+    padding: 24px 32px;
+    border-radius: 40px;
+    font-size: 2rem !important;
+    line-height: 1.45;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-msg-row--assistant {
+    margin: 36px 0 16px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-assistant-plain {
+    font-size: 2rem !important;
+    line-height: 1.55;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-loading {
+    font-size: 2rem;
+    margin: 24px 0;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-empty-state {
+    min-height: 42vh;
+    padding: 48px 0 40px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-logo-wrap {
+    margin-bottom: 40px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-logo-circle {
+    width: 112px;
+    height: 112px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-logo-glyph {
+    font-size: 56px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-empty-title {
+    margin: 0 0 40px;
+    font-size: 2.7rem;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-suggestions-row {
+    gap: 20px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa button.lexicon-fakegpt-suggestion-chip {
+    min-height: 96px !important;
+    padding: 24px 32px !important;
+    border-radius: 28px !important;
+    font-size: 1.9rem !important;
+    line-height: 1.35 !important;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-thinking-row {
+    margin: 24px 0 16px;
+    padding-left: 8px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-thinking-dots {
+    gap: 12px;
+    padding: 16px 0;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-thinking-dots span {
+    width: 14px;
+    height: 14px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-numbered .lexicon-fakegpt-line {
+    margin: 12px 0;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa button.lexicon-fakegpt-clue {
+    text-underline-offset: 6px !important;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-msg-actions {
+    gap: 8px;
+    margin-top: 28px;
+    padding-top: 8px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-msg-action {
+    width: 72px;
+    height: 72px;
+    border-radius: 16px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-msg-action .material-symbols-rounded {
+    font-size: 40px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .typing-container {
+    padding: 20px 24px 32px;
+    padding-bottom: max(32px, env(safe-area-inset-bottom));
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-composer-pill {
+    gap: 12px;
+    max-width: 720px;
+    padding: 12px 16px 12px 20px;
+    min-height: 112px;
+    border-radius: 56px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa button.lexicon-fakegpt-composer-sidebtn {
+    width: 80px !important;
+    height: 80px !important;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-composer-sidebtn .material-symbols-rounded {
+    font-size: 48px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-composer-input {
+    min-height: 80px;
+    max-height: 320px;
+    font-size: 2rem;
+    line-height: 1.4;
+    padding: 20px 12px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa button.lexicon-fakegpt-composer-sendfab {
+    width: 72px !important;
+    height: 72px !important;
+    min-width: 72px !important;
+    min-height: 72px !important;
+    margin-bottom: 6px !important;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-composer-sendfab .material-symbols-rounded {
+    font-size: 40px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-composer-voice {
+    gap: 8px;
+    padding-right: 8px;
+    margin-bottom: 8px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-voice-mic {
+    width: 72px;
+    height: 72px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-voice-mic .material-symbols-rounded {
+    font-size: 44px;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-voice-wave-wrap {
+    min-width: 88px;
+    min-height: 88px;
+    height: auto;
+    padding: 8px 16px;
+    border-radius: 36px;
+    overflow: visible;
+    align-items: flex-end;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-waveform {
+    gap: 6px;
+    height: 40px;
+    transform: scaleY(2);
+    transform-origin: bottom center;
+}
+
+.lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-wave-bar {
+    width: 6px;
+    min-height: 8px;
+    border-radius: 4px;
 }
