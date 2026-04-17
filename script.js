@@ -19775,7 +19775,7 @@ function lexiconFakeGptBuildAssistantParts(tenClues) {
         } else {
             w = entry ? String(entry) : '';
         }
-        const disp = !w || w === '—' ? '—' : letter ? `${letter} — ${w}` : w;
+        const disp = !w || w === '—' ? '—' : w;
         plainLines.push(`${i + 1}. ${disp}`);
         const esc = escapeHtmlLexFakeGpt(disp);
         if (!w || w === '—') {
