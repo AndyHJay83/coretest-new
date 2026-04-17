@@ -127,6 +127,20 @@ body {
 
 /* In standalone PWA mode: keep header hidden */
 @media (display-mode: standalone) {
+    html {
+        height: 100%;
+        height: -webkit-fill-available;
+    }
+    body {
+        min-height: 100%;
+        min-height: -webkit-fill-available;
+    }
+    .container {
+        min-height: 100%;
+        min-height: -webkit-fill-available;
+        max-height: 100dvh;
+        max-height: -webkit-fill-available;
+    }
     .header {
         display: none !important;
         height: 0 !important;
@@ -138,6 +152,26 @@ body {
     body.perform-view .pwa-header-spacer {
         min-height: calc(env(safe-area-inset-top) + 36px);
     }
+    .version-display {
+        display: none !important;
+    }
+}
+
+/* Lock page scroll while ChatGPT overlay is open (esp. iOS PWA rubber-band) */
+html:has(body.lexgpt-fakegpt-open) {
+    background-color: #000;
+    overflow: hidden;
+    height: 100%;
+}
+
+/* Overlay draws its own safe insets; drop body padding so nothing peeks through seams */
+body.lexgpt-fakegpt-open {
+    overflow: hidden;
+    touch-action: none;
+    background-color: #000;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-bottom: 0 !important;
 }
 
 .toggles-container {
@@ -6856,13 +6890,23 @@ button.close-info-button.workflow-report-close {
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa {
-    /* Slightly shorter header + full black to avoid gaps in standalone PWA */
+    /* Header row = status-bar band (safe top inset); composer = bottom + home indicator */
     --lexgpt-header-min-h: 72px;
     --lexgpt-header-pad-y: 12px;
-    /* Clear system status bar / notch so header controls stay tappable (standalone PWA) */
-    --lexgpt-pwa-top-spacer: 10vh;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    overscroll-behavior: none;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Stretch with top/bottom — avoids iOS PWA gap vs 100dvh / min-height fights */
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: auto;
+    min-height: 0;
+    max-height: none;
 }
 
 .lexicon-fakegpt-overlay *,
@@ -6996,9 +7040,7 @@ button.close-info-button.workflow-report-close {
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-dismiss-zone {
-    top: calc(
-        var(--lexgpt-pwa-top-spacer) + var(--lexgpt-header-min-h) + max(var(--lexgpt-header-pad-y), env(safe-area-inset-top))
-    );
+    left: env(safe-area-inset-left, 0px);
 }
 
 .lexicon-fakegpt-inner {
@@ -7418,7 +7460,6 @@ button.close-info-button.workflow-report-close {
 
 /* PWA standalone: ~2× ChatGPT-style overlay (text, icons, composer) */
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-header {
-    margin-top: var(--lexgpt-pwa-top-spacer);
     grid-template-columns: 88px 1fr auto;
     gap: 16px;
     padding-left: 24px;
@@ -7547,8 +7588,7 @@ button.close-info-button.workflow-report-close {
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .typing-container {
-    padding: 16px 24px 0;
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding: 16px 24px 12px;
 }
 
 .lexicon-fakegpt-overlay.lexicon-fakegpt-overlay--pwa .lexicon-fakegpt-composer-pill {

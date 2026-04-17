@@ -19844,6 +19844,7 @@ function lexiconFakeGptResetChatUi(messagesEl, inputEl, sendBtn, syncFn) {
 }
 
 function closeAdvancedLexiconFakeGptOverlay() {
+    document.body.classList.remove('lexgpt-fakegpt-open');
     const root = document.getElementById('lexiconFakeGptOverlay');
     if (root) {
         root.style.display = 'none';
@@ -20071,8 +20072,13 @@ function openAdvancedLexiconFakeGptOverlay(ctx) {
     const sendBtn = document.getElementById('lexiconFakeGptSend');
     if (!root || !messagesEl) return;
 
-    if (isLexiconFakeGptPwaDisplayMode()) root.classList.add('lexicon-fakegpt-overlay--pwa');
-    else root.classList.remove('lexicon-fakegpt-overlay--pwa');
+    if (isLexiconFakeGptPwaDisplayMode()) {
+        root.classList.add('lexicon-fakegpt-overlay--pwa');
+        document.body.classList.add('lexgpt-fakegpt-open');
+    } else {
+        root.classList.remove('lexicon-fakegpt-overlay--pwa');
+        document.body.classList.remove('lexgpt-fakegpt-open');
+    }
 
     root.style.display = 'flex';
     root.style.flexDirection = 'column';
