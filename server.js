@@ -1316,6 +1316,7 @@ Rules:
 - Include items like furniture, equipment, tools, clothing worn by staff, signage, containers, machines, decorations
 - DO NOT include too abstract concepts, procedures, conditions, or job roles
 - DO NOT include multi-word phrases — single words only (use "clipboard" not "clip board")
+- Use singular nouns only, not plurals (e.g. "candle" not "candles", "syringe" not "syringes"). Exception: words that are normally plural in English for one thing or place (e.g. "stairs", "pants", "scissors") may stay as usual.
 - Bad examples: "physical therapy", "pathology", "temperature", "treatment", "service"
 - Good examples: "syringe", "bed", "clipboard", "gown", "trolley", "curtain", "monitor"
 - Include things people may think of when they think of objects inside a ${location}. A hospital may have a reception, or a microphone. A school may have a whiteboard or a pencil, a corridor, or a playground. A car may have a seatbelt, a dashboard, a gearstick, an indicator, a pedal. Be specific and accurate.
