@@ -1311,15 +1311,14 @@ app.post('/api/location', async (req, res, next) => {
     }
 
     const prompt = `List approximately 200 physical objects you would find inside a ${location}.
-
 Rules:
 - Only include tangible, physical things you could literally see or touch
 - Include items like furniture, equipment, tools, clothing worn by staff, signage, containers, machines, decorations
-- DO NOT include abstract concepts, departments, procedures, conditions, or job roles
+- DO NOT include too abstract concepts, procedures, conditions, or job roles
 - DO NOT include multi-word phrases — single words only (use "clipboard" not "clip board")
 - Bad examples: "physical therapy", "pathology", "temperature", "treatment", "service"
 - Good examples: "syringe", "bed", "clipboard", "gown", "trolley", "curtain", "monitor"
-
+- Include things people may think of when they think of objects inside a ${location}. A hospital may have a reception, or a microphone. A school may have a whiteboard or a pencil, a corridor, or a playground. A car may have a seatbelt, a dashboard, a gearstick, an indicator, a pedal. Be specific and accurate.
 Output format (important):
 - Return ONLY words, separated by commas OR one word per line. Either format is fine.
 - Do not number the list, do not add bullets, do not add titles or sentences before or after the list.`;
