@@ -2406,6 +2406,8 @@ function getWordlistPathForEfficiency(value) {
         case '134k':
         case '134K':
             return { wordlistPath: 'words/134K.txt', gzippedPath: 'words/134K.txt.gz' };
+        case 'new_subtlex_74k': return { wordlistPath: 'words/NEW-SUBTLEX-74K.txt', gzippedPath: null };
+        case 'new_unigram_46k': return { wordlistPath: 'words/NEW-UNIGRAM-46K.txt', gzippedPath: null };
         case 'boysnames': return { wordlistPath: 'words/BoysNames.txt', gzippedPath: 'words/BoysNames.txt.gz' };
         case 'girlsnames': return { wordlistPath: 'words/GirlsNames.txt', gzippedPath: 'words/GirlsNames.txt.gz' };
         case 'allnames': return { wordlistPath: 'words/AllNames.txt', gzippedPath: 'words/AllNames.txt.gz' };
@@ -3849,6 +3851,12 @@ async function loadWordList() {
             case '134k':
                 wordlistPath = 'words/134K.txt';
                 gzippedPath = 'words/134K.txt.gz';
+                break;
+            case 'new_subtlex_74k':
+                wordlistPath = 'words/NEW-SUBTLEX-74K.txt';
+                break;
+            case 'new_unigram_46k':
+                wordlistPath = 'words/NEW-UNIGRAM-46K.txt';
                 break;
             case 'boysnames':
                 wordlistPath = 'words/BoysNames.txt';
