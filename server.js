@@ -1333,7 +1333,8 @@ Output format (important):
       body: JSON.stringify({
         model: 'llama-3.1-8b-instant',
         temperature: 0.3,
-        max_tokens: 8192,
+        // Keep modest: Groq on_demand TPM caps reject large prompt+max_tokens (e.g. 6000).
+        max_tokens: 2000,
         messages: [
           { role: 'user', content: prompt }
         ]
