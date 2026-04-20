@@ -1228,6 +1228,70 @@ The document describes thoroughness in the abstract. **For this HTTP request you
   }
 });
 
+/** Drop filler tokens when the model echoes instructions or common English function words. */
+const LOCATION_WORD_STOP = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'as', 'is', 'are', 'was', 'were', 'be', 'been',
+  'it', 'its', 'this', 'that', 'these', 'those', 'i', 'you', 'we', 'they', 'he', 'she', 'my', 'your', 'our', 'their',
+  'here', 'there', 'some', 'many', 'few', 'all', 'each', 'every', 'such', 'only', 'just', 'also', 'not', 'no', 'yes', 'so',
+  'if', 'when', 'where', 'how', 'what', 'who', 'which', 'why', 'with', 'from', 'into', 'by', 'about', 'than', 'then',
+  'list', 'lists', 'item', 'items', 'thing', 'things', 'object', 'objects', 'word', 'words', 'name', 'names',
+  'include', 'includes', 'including', 'following', 'follow', 'sure', 'like', 'eg', 'e', 'g', 'inside', 'within', 'outside',
+  'please', 'can', 'could', 'would', 'should', 'may', 'might', 'must', 'will', 'shall', 'other', 'any', 'both', 'either'
+]);
+
+/**
+ * Extract unique lowercase a-z words from model output.
+ * Accepts comma / newline / semicolon separated lists, bullets, and simple numbering.
+ */
+function parseLocationEngineObjectWords(rawContent) {
+  const seen = new Set();
+  const raw = String(rawContent || '').trim();
+  if (!raw) return [];
+
+  let text = raw.replace(/\r\n/g, '\n');
+  text = text.replace(/[,;]+/g, '\n');
+
+  const stripLineLeader = (line) => {
+    let t = line.trim();
+    t = t.replace(/^["'`[\(]+/, '');
+    t = t.replace(/["'`)\]]+$/, '');
+    t = t.trim();
+    t = t.replace(/^[-*•·]\s*/, '');
+    t = t.replace(/^\d{1,3}[\.\):\]]\s*/, '');
+    t = t.replace(/^\[\d{1,3}\]\s*/, '');
+    t = t.trim();
+    t = t.replace(/\.+$/, '');
+    return t.trim();
+  };
+
+  const pushWord = (w) => {
+    if (!w || w.length < 2 || w.length > 32) return;
+    if (!/^[a-z]+$/.test(w)) return;
+    if (LOCATION_WORD_STOP.has(w)) return;
+    seen.add(w);
+  };
+
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const cleaned = stripLineLeader(line);
+    if (!cleaned) continue;
+    const wc = cleaned.split(/\s+/).filter(Boolean).length;
+    if (cleaned.length > 160 && wc > 12) continue;
+
+    const chunks = cleaned.split(/\s*\/\s*/);
+    for (const chunk of chunks) {
+      const c = stripLineLeader(chunk);
+      if (!c) continue;
+      for (const rawTok of c.split(/\s+/)) {
+        const tok = rawTok.replace(/^[^a-z]+/i, '').replace(/[^a-z]+$/i, '').toLowerCase();
+        if (tok) pushWord(tok);
+      }
+    }
+  }
+
+  return Array.from(seen).sort((a, b) => a.localeCompare(b));
+}
+
 // --- LOCATION ENGINE route (Groq: location -> physical objects) ---
 app.post('/api/location', async (req, res, next) => {
   try {
@@ -1252,11 +1316,13 @@ Rules:
 - Only include tangible, physical things you could literally see or touch
 - Include items like furniture, equipment, tools, clothing worn by staff, signage, containers, machines, decorations
 - DO NOT include abstract concepts, departments, procedures, conditions, or job roles
-- DO NOT include multi-word phrases — single words only
+- DO NOT include multi-word phrases — single words only (use "clipboard" not "clip board")
 - Bad examples: "physical therapy", "pathology", "temperature", "treatment", "service"
 - Good examples: "syringe", "bed", "clipboard", "gown", "trolley", "curtain", "monitor"
 
-Return ONLY a comma-separated list of single words. No numbering, no explanations, no extra text.`;
+Output format (important):
+- Return ONLY words, separated by commas OR one word per line. Either format is fine.
+- Do not number the list, do not add bullets, do not add titles or sentences before or after the list.`;
 
     const groqResp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -1267,7 +1333,7 @@ Return ONLY a comma-separated list of single words. No numbering, no explanation
       body: JSON.stringify({
         model: 'llama-3.1-8b-instant',
         temperature: 0.3,
-        max_tokens: 1000,
+        max_tokens: 8192,
         messages: [
           { role: 'user', content: prompt }
         ]
@@ -1287,14 +1353,7 @@ Return ONLY a comma-separated list of single words. No numbering, no explanation
       throw err;
     }
 
-    const dedupedSorted = Array.from(new Set(
-      rawContent
-        .split(',')
-        .map(s => s.trim().toLowerCase())
-        .filter(Boolean)
-        .filter(s => !s.includes(' '))
-        .filter(s => /^[a-z]+$/.test(s))
-    )).sort((a, b) => a.localeCompare(b));
+    const dedupedSorted = parseLocationEngineObjectWords(rawContent);
 
     const results = dedupedSorted.slice(0, limit).map((w, idx) => ({
       word: w,
@@ -1306,14 +1365,15 @@ Return ONLY a comma-separated list of single words. No numbering, no explanation
 
     return res.json({
       input_word: location,
-      engine_version: 'engine-v3.1',
+      engine_version: 'engine-v3.2',
       mode: 'location_objects_groq',
       total_candidates: results.length,
       results,
       detected: {
         location_engine_llm: 'groq',
         location_engine_model: 'llama-3.1-8b-instant',
-        location_engine_limit: limit
+        location_engine_limit: limit,
+        location_engine_parsed_count: dedupedSorted.length
       }
     });
   } catch (e) {
