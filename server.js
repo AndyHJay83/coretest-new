@@ -1310,16 +1310,17 @@ app.post('/api/location', async (req, res, next) => {
       throw err;
     }
 
-    const prompt = `List approximately 200 physical objects you would find inside a ${location}.
+    const prompt = `List approximately 200 physical objects you might see or use if you visited a ${location}. Treat "${location}" as the whole place people mean by that name — not only underground, not only soil, and not only one small part of it (e.g. a garden includes paths, pots on paving, tools in a shed, etc., not only what is in the earth).
 Rules:
 - Only include tangible, physical things you could literally see or touch
 - Include items like furniture, equipment, tools, clothing worn by staff, signage, containers, machines, decorations
 - DO NOT include too abstract concepts, procedures, conditions, or job roles
-- DO NOT include multi-word phrases — single words only (use "clipboard" not "clip board")
+- Each list item must be ONE token: lowercase letters a–z only, no spaces, no hyphens. Example: "clipboard" not "clip board".
+- Many objects are usually written as two words in English — output them as ONE concatenated word (no space, no hyphen). Examples: flowerpot, flowerbed, windowsill, washingmachine, clothesline, lawnmower, wateringcan, birdbath, compostbin, gardenhose. Prefer the form people would still recognize as that object.
 - Use singular nouns only, not plurals (e.g. "candle" not "candles", "syringe" not "syringes"). Exception: words that are normally plural in English for one thing or place (e.g. "stairs", "pants", "scissors") may stay as usual.
 - Bad examples: "physical therapy", "pathology", "temperature", "treatment", "service"
 - Good examples: "syringe", "bed", "clipboard", "gown", "trolley", "curtain", "monitor"
-- Include things people may think of when they think of objects inside a ${location}. A hospital may have a reception, or a microphone. A school may have a whiteboard or a pencil, a corridor, or a playground. A car may have a seatbelt, a dashboard, a gearstick, an indicator, a pedal. Be specific and accurate.
+- Include things people may think of when they think of being at or in a ${location}. A hospital may have a reception, or a microphone. A school may have a whiteboard or a pencil, a corridor, or a playground. A car may have a seatbelt, a dashboard, a gearstick, an indicator, a pedal. Be specific and accurate.
 Output format (important):
 - Return ONLY words, separated by commas OR one word per line. Either format is fine.
 - Do not number the list, do not add bullets, do not add titles or sentences before or after the list.`;
@@ -1366,7 +1367,7 @@ Output format (important):
 
     return res.json({
       input_word: location,
-      engine_version: 'engine-v3.2',
+      engine_version: 'engine-v3.3',
       mode: 'location_objects_groq',
       total_candidates: results.length,
       results,
