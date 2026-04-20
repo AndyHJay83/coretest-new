@@ -1035,6 +1035,7 @@
                             <a href="#settings-section-lexicon">Lexicon</a>
                             <a href="#settings-section-love-letters">Love Letters</a>
                             <a href="#settings-section-name-engine">NAME ENGINE</a>
+                            <a href="#settings-section-engine-apis">ENGINE APIs</a>
                             <a href="#settings-section-new">NEW</a>
                             <a href="#settings-section-omega">OMEGA</a>
                             <a href="#settings-section-piano-forte">PIANO FORTE</a>
@@ -1091,6 +1092,17 @@
                             </label>
                             <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">1 Buffer</span>
                         </div>
+                    </div>
+                    <div class="settings-section" id="settings-section-engine-apis">
+                        <h3 class="settings-section-title">ENGINE API keys</h3>
+                        <p class="settings-section-subtitle">Optional. Stored only in this browser. Sent to your ENGINE server when you use NAME / WORD / LOCATION engines. If the server already has keys in its environment (e.g. Render), you can leave these blank.</p>
+                        <p class="settings-section-subtitle"><strong>GitHub Pages:</strong> the static site does not read a <code>.env</code> file — LOCATION ENGINE needs <strong>Groq</strong> either on the API host or in the field below.</p>
+                        <label for="settingsTmdbApiKeyInput">TMDB (NAME ENGINE)</label>
+                        <input type="password" id="settingsTmdbApiKeyInput" autocomplete="off" style="width: 100%; max-width: 28rem; box-sizing: border-box;">
+                        <label for="settingsAnthropicApiKeyInput" style="margin-top: 12px; display: block;">Anthropic (WORD / NAME)</label>
+                        <input type="password" id="settingsAnthropicApiKeyInput" autocomplete="off" style="width: 100%; max-width: 28rem; box-sizing: border-box;">
+                        <label for="settingsGroqApiKeyInput" style="margin-top: 12px; display: block;">Groq (LOCATION ENGINE)</label>
+                        <input type="password" id="settingsGroqApiKeyInput" autocomplete="off" style="width: 100%; max-width: 28rem; box-sizing: border-box;">
                     </div>
                     <div class="settings-section" id="settings-section-length">
                         <h3 class="settings-section-title">LENGTH</h3>

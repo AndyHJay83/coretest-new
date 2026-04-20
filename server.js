@@ -1233,9 +1233,15 @@ app.post('/api/location', async (req, res, next) => {
   try {
     const location = requireString(req.body?.input_word, 'input_word');
     const limit = clampInt(req.body?.limit, 1, 500, 200);
-    const groqApiKey = process.env.GROQ_API_KEY;
+    const groqFromBody = typeof req.body?.groq_api_key === 'string'
+      ? req.body.groq_api_key.trim()
+      : '';
+    const groqApiKey = groqFromBody || process.env.GROQ_API_KEY;
     if (!groqApiKey) {
-      const err = new Error('GROQ_API_KEY is not set (required for LOCATION ENGINE)');
+      const err = new Error(
+        'GROQ_API_KEY is not set (required for LOCATION ENGINE). ' +
+        'Set it on the API host (e.g. Render) or pass groq_api_key from the app Settings → ENGINE API keys.'
+      );
       err.status = 500;
       throw err;
     }

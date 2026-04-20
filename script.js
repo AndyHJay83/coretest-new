@@ -2136,6 +2136,8 @@ const DEFAULT_SETTINGS = {
     // TMDB / Anthropic keys (stored locally in this browser)
     tmdbApiKey: '',
     anthropicApiKey: '',
+    /** Optional; sent to /api/location when set (GitHub Pages cannot use server .env). */
+    groqApiKey: '',
     // NAME ENGINE: after loading filmography, optional step to filter by number of words in each title
     nameEngineWordCount: false,
     // NAME ENGINE Word Count: when ON, allow titles with (N-1)..(N+1) words like LENGTH 1 buffer
@@ -4247,6 +4249,7 @@ async function runEnginePrefilterStep(featureArea, resultsContainer, engineMode)
                             mode,
                             tmdb_api_key: (appSettings && appSettings.tmdbApiKey) || '',
                             anthropic_api_key: (appSettings && appSettings.anthropicApiKey) || '',
+                            groq_api_key: (appSettings && appSettings.groqApiKey) || '',
                             ...extraBody
                         })
                     });
@@ -22854,6 +22857,31 @@ function initSettingsUI() {
             appSettings.nameEngineWordCount = nameEngineWordCountToggle.checked;
             saveAppSettings();
             syncNameEngineWordCountBufferUI();
+        });
+    }
+
+    const settingsTmdbApiKeyInput = document.getElementById('settingsTmdbApiKeyInput');
+    const settingsAnthropicApiKeyInput = document.getElementById('settingsAnthropicApiKeyInput');
+    const settingsGroqApiKeyInput = document.getElementById('settingsGroqApiKeyInput');
+    if (settingsTmdbApiKeyInput) {
+        settingsTmdbApiKeyInput.value = (appSettings && appSettings.tmdbApiKey) || '';
+        settingsTmdbApiKeyInput.addEventListener('input', () => {
+            appSettings.tmdbApiKey = settingsTmdbApiKeyInput.value.trim();
+            saveAppSettings();
+        });
+    }
+    if (settingsAnthropicApiKeyInput) {
+        settingsAnthropicApiKeyInput.value = (appSettings && appSettings.anthropicApiKey) || '';
+        settingsAnthropicApiKeyInput.addEventListener('input', () => {
+            appSettings.anthropicApiKey = settingsAnthropicApiKeyInput.value.trim();
+            saveAppSettings();
+        });
+    }
+    if (settingsGroqApiKeyInput) {
+        settingsGroqApiKeyInput.value = (appSettings && appSettings.groqApiKey) || '';
+        settingsGroqApiKeyInput.addEventListener('input', () => {
+            appSettings.groqApiKey = settingsGroqApiKeyInput.value.trim();
+            saveAppSettings();
         });
     }
 
