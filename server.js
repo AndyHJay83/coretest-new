@@ -1265,7 +1265,7 @@ function parseLocationEngineObjectWords(rawContent) {
   };
 
   const pushWord = (w) => {
-    if (!w || w.length < 2 || w.length > 32) return;
+    if (!w || w.length < 2 || w.length > 48) return;
     if (!/^[a-z]+$/.test(w)) return;
     if (LOCATION_WORD_STOP.has(w)) return;
     seen.add(w);
@@ -1292,6 +1292,101 @@ function parseLocationEngineObjectWords(rawContent) {
   return Array.from(seen).sort((a, b) => a.localeCompare(b));
 }
 
+/** After prefix/suffix cleanup, reject tokens longer than this (discourages 3+ word mashups). */
+const LOCATION_MAX_TOKEN_LEN = 18;
+
+/** Model sometimes appends garbage syllables; trim longest match first. */
+const LOCATION_JUNK_SUFFIXES = [
+  'sketches', 'sketch', 'stuff', 'things', 'thing', 'items', 'item', 'objects', 'object',
+  'lists', 'list', 'words', 'word', 'junk'
+];
+
+/**
+ * Prefixes derived from the user's location phrase to strip from over-generated compounds
+ * (e.g. garden / gardening / gardens + "hose" -> hose).
+ */
+function buildLocationPrefixes(location) {
+  const parts = String(location || '')
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length >= 3);
+  const out = new Set();
+  const add = (s) => {
+    if (s.length < 3) return;
+    out.add(s);
+    if (s.length >= 4) out.add(`${s}s`);
+    if (s.length >= 5 && !s.endsWith('ing')) out.add(`${s}ing`);
+  };
+  for (const w of parts) add(w);
+  if (parts.length > 1) {
+    const joined = parts.join('');
+    if (joined.length >= 5) add(joined);
+  }
+  return Array.from(out).sort((a, b) => b.length - a.length);
+}
+
+function stripLeadingPrefixes(word, prefixes) {
+  let w = word;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const p of prefixes) {
+      if (w.startsWith(p) && w.length > p.length) {
+        const rest = w.slice(p.length);
+        if (/^[a-z]{2,}$/.test(rest)) {
+          w = rest;
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+  return w;
+}
+
+function trimTrailingJunk(word) {
+  let w = word;
+  let guard = 0;
+  let changed = true;
+  while (changed && guard++ < 10) {
+    changed = false;
+    for (const s of LOCATION_JUNK_SUFFIXES) {
+      if (w.length > s.length + 3 && w.endsWith(s)) {
+        const rest = w.slice(0, -s.length);
+        if (/^[a-z]+$/.test(rest) && rest.length >= 4) {
+          w = rest;
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+  return w;
+}
+
+/**
+ * Drop location-name prefixes, trim junk suffixes, enforce max length (≈ two short words merged).
+ */
+function sanitizeLocationEngineWords(words, location) {
+  const prefixes = buildLocationPrefixes(location);
+  const seen = new Set();
+  const out = [];
+  for (const raw of words) {
+    let w = stripLeadingPrefixes(raw, prefixes);
+    w = trimTrailingJunk(w);
+    w = stripLeadingPrefixes(w, prefixes);
+    if (w.length < 2 || w.length > LOCATION_MAX_TOKEN_LEN) continue;
+    if (!/^[a-z]+$/.test(w)) continue;
+    if (LOCATION_WORD_STOP.has(w)) continue;
+    if (seen.has(w)) continue;
+    seen.add(w);
+    out.push(w);
+  }
+  return out.sort((a, b) => a.localeCompare(b));
+}
+
 // --- LOCATION ENGINE route (Groq: location -> physical objects) ---
 app.post('/api/location', async (req, res, next) => {
   try {
@@ -1316,7 +1411,9 @@ Rules:
 - Include items like furniture, equipment, tools, clothing worn by staff, signage, containers, machines, decorations
 - DO NOT include too abstract concepts, procedures, conditions, or job roles
 - Each list item must be ONE token: lowercase letters a–z only, no spaces, no hyphens. Example: "clipboard" not "clip board".
-- Many objects are usually written as two words in English — output them as ONE concatenated word (no space, no hyphen). Examples: flowerpot, flowerbed, windowsill, washingmachine, clothesline, lawnmower, wateringcan, birdbath, compostbin, gardenhose. Prefer the form people would still recognize as that object.
+- Prefer a single simple noun when it is clear: hose, trowel, rake, shed, pot, tap, bench, spade, hoe, weedkiller, sink, seat, wheel, pedal (do not glue the place name onto the noun).
+- Never start a token with the place name or place+ing for this list (e.g. for "garden" use "hose" not "gardenhose", use "weedkiller" not "gardenweedkiller").
+- You may merge at most TWO well-known English words into ONE token when people always say them together (e.g. flowerpot, birdbath, washingmachine, windowsill, clothesline, lawnmower, wateringcan, compostbin). Never merge three or more words into one token. Never invent long nonsense compounds.
 - Use singular nouns only, not plurals (e.g. "candle" not "candles", "syringe" not "syringes"). Exception: words that are normally plural in English for one thing or place (e.g. "stairs", "pants", "scissors") may stay as usual.
 - Bad examples: "physical therapy", "pathology", "temperature", "treatment", "service"
 - Good examples: "syringe", "bed", "clipboard", "gown", "trolley", "curtain", "monitor"
@@ -1355,7 +1452,10 @@ Output format (important):
       throw err;
     }
 
-    const dedupedSorted = parseLocationEngineObjectWords(rawContent);
+    const dedupedSorted = sanitizeLocationEngineWords(
+      parseLocationEngineObjectWords(rawContent),
+      location
+    );
 
     const results = dedupedSorted.slice(0, limit).map((w, idx) => ({
       word: w,
@@ -1367,7 +1467,7 @@ Output format (important):
 
     return res.json({
       input_word: location,
-      engine_version: 'engine-v3.3',
+      engine_version: 'engine-v3.4',
       mode: 'location_objects_groq',
       total_candidates: results.length,
       results,
@@ -1375,7 +1475,8 @@ Output format (important):
         location_engine_llm: 'groq',
         location_engine_model: 'llama-3.1-8b-instant',
         location_engine_limit: limit,
-        location_engine_parsed_count: dedupedSorted.length
+        location_engine_parsed_count: dedupedSorted.length,
+        location_engine_max_token_len: LOCATION_MAX_TOKEN_LEN
       }
     });
   } catch (e) {
