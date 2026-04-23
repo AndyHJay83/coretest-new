@@ -11465,29 +11465,22 @@ function setupFeatureListeners(feature, callback, options) {
                 if (vowelPosLetterSpan) vowelPosLetterSpan.textContent = coreVowels[0];
             }
 
-            // Helper for vowel position sections (Beginning / Middle / End), adapted from VOWEL POS
+            // Helper for vowel position sections (Beginning / Middle / End).
+            // Rule:
+            // - Beginning = first half (floor)
+            // - End = last half (floor)
+            // - Middle = centered section sized ceil(wordLength / 2)
             function getCoreSectionPositions(wordLength) {
-                const beginEnd = Math.ceil(wordLength / 2);
-                
-                let midStart, midEnd;
-                if (wordLength <= 5) {
-                    midStart = 2;
-                    midEnd = wordLength - 1;
-                } else if (wordLength <= 8) {
-                    midStart = 2;
-                    midEnd = wordLength - 1;
-                } else if (wordLength <= 12) {
-                    midStart = 4;
-                    midEnd = wordLength - 1;
-                } else {
-                    midStart = 4;
-                    midEnd = wordLength - 1;
-                }
-                
+                const n = Math.max(0, parseInt(wordLength, 10) || 0);
+                const half = Math.floor(n / 2);
+                const middleLen = Math.ceil(n / 2);
+                const middleStart = Math.floor((n - middleLen) / 2);
+                const middleEnd = middleStart + middleLen;
+
                 return {
-                    begin: [0, beginEnd],
-                    mid: [midStart - 1, midEnd],
-                    end: [beginEnd, wordLength]
+                    begin: [0, half],
+                    mid: [middleStart, middleEnd],
+                    end: [n - half, n]
                 };
             }
 
