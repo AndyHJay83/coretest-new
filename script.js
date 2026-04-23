@@ -6595,7 +6595,7 @@ function startOmega(callback) {
         }
         const pos = omegaLexLockedPosition;
         if (pos < 0) {
-            alert('No valid LEX position (5+) found for current words.');
+            alert('No valid LEX position (4+) found for current words.');
             return false;
         }
         const letterSet = new Set(letters.split(''));
@@ -16955,7 +16955,7 @@ function setupFeatureListeners(feature, callback, options) {
                 }
                 alphaLexPeekPosition = alphaLexPeekLockedPosition;
                 if (alphaLexPeekPosition < 0) {
-                    if (!silent) alert('No valid LEX position (5+) found for current words.');
+                    if (!silent) alert('No valid LEX position (4+) found for current words.');
                     return;
                 }
                 const allowed = new Set(letters.split(''));
@@ -17969,7 +17969,7 @@ function setupFeatureListeners(feature, callback, options) {
                 const hasLocked = !!lexInput && newLexPeekLockedPosition >= 0;
                 const base = hasLocked
                     ? { position: newLexPeekLockedPosition, letters: newLexPeekLockedLetters || [] }
-                    : findPositionWithMostVarianceFrom(newLexPeekSourceWords, 4, 7);
+                    : findPositionWithMostVarianceFrom(newLexPeekSourceWords, 3, 6);
                 const { position, letters } = base;
                 newLexPeekPosition = position;
                 newLexPeekLetters = letters || [];
@@ -18272,13 +18272,13 @@ function setupFeatureListeners(feature, callback, options) {
                     return;
                 }
                 if (newLexPeekLockedPosition < 0) {
-                    const { position, letters: lexLetters } = findPositionWithMostVarianceFrom(newLexPeekSourceWords, 4, 7);
+                    const { position, letters: lexLetters } = findPositionWithMostVarianceFrom(newLexPeekSourceWords, 3, 6);
                     newLexPeekLockedPosition = position;
                     newLexPeekLockedLetters = lexLetters || [];
                 }
                 newLexPeekPosition = newLexPeekLockedPosition;
                 if (newLexPeekPosition < 0) {
-                    if (!silent) setMessage('No valid LEX position (5+) found for current words.', true);
+                    if (!silent) setMessage('No valid LEX position (4+) found for current words.', true);
                     return;
                 }
                 const allowed = new Set(letters.split(''));
