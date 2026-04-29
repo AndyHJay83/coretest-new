@@ -18210,7 +18210,7 @@ function setupFeatureListeners(feature, callback, options) {
                                 : 'anywhere';
                     if (forceCategoryModeOn && resolvedKind === 'first') {
                         // Force mode: first stop always resolves to the forced first letter only.
-                        scrollStops.push({ kind: 'first', batchStr: forceCategoryLetter, digit: null });
+                        scrollStops.push({ kind: 'first', batchStr: forceCategoryLetter, digit: null, lockedByForce: true });
                     } else {
                         scrollStops.push({ kind: resolvedKind, batchStr: currentBatchStr, digit: null });
                     }
@@ -18228,7 +18228,10 @@ function setupFeatureListeners(feature, callback, options) {
                 }
                 const unansweredIdxs = [];
                 for (let i = 0; i < scrollStops.length; i++) {
-                    if (scrollStops[i].digit === null || scrollStops[i].digit === undefined || Number.isNaN(scrollStops[i].digit)) {
+                    const stop = scrollStops[i] || {};
+                    const forceLockedFirst = !!(stop.lockedByForce || (forceCategoryModeOn && stop.kind === 'first' && stop.batchStr === forceCategoryLetter));
+                    if (forceLockedFirst) continue;
+                    if (stop.digit === null || stop.digit === undefined || Number.isNaN(stop.digit)) {
                         unansweredIdxs.push(i);
                     }
                 }
