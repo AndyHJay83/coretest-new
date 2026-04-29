@@ -8600,11 +8600,25 @@ function wordPassesScrollStop(word, stop, context) {
         return false;
     }
     if (stop.kind === 'anywhere') {
-        const unaccounted = scrollCountUnaccountedAnywhereOccurrences(w, batch, context);
-        if (!hasDigit) return unaccounted >= 1;
-        if (exactMode) return scrollObservedMatchesDigit(unaccounted, digit, digitBuffer);
-        const minRequired = Math.max(1, 1 + digit);
-        return unaccounted >= minRequired;
+        // Keep ANYWHERE aligned with first/second/third semantics:
+        // choose a focus letter from this batch, then count OTHER DISTINCT
+        // unaccounted letters from the same batch.
+        const positionCandidates = (context && context.positionCandidates) || new Map();
+        const unaccountedDistinct = new Set();
+        for (let i = 0; i < w.length; i++) {
+            const ch = w[i];
+            if (!letters.includes(ch)) continue;
+            const allowedSet = positionCandidates.get(i + 1);
+            if (allowedSet && allowedSet.has(ch)) continue;
+            unaccountedDistinct.add(ch);
+        }
+        if (!hasDigit) return unaccountedDistinct.size >= 1;
+        for (const focus of unaccountedDistinct) {
+            const others = Array.from(unaccountedDistinct).filter((ch) => ch !== focus).length;
+            const observed = exactMode ? (others + 1) : others;
+            if (scrollObservedMatchesDigit(observed, digit, digitBuffer)) return true;
+        }
+        return false;
     }
     return true;
 }
