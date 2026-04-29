@@ -1254,10 +1254,19 @@ function snapshotNewSettingsForReport(appSettingsRef) {
     const letterMode = 'mixed';
     const letterModeLabel = 'Mixed (2 consonants + 2 vowels per batch)';
     const isExact = a.newAnswerCountMode === 'exact';
+    const newForceCategoryMode = !!a.newForceCategoryMode;
+    const newForceCategory = (a.newForceCategory === 'colours') ? 'colours' : 'colours';
+    const newForceCategoryLetterRaw = String(a.newForceCategoryLetter || '').toUpperCase();
+    const newForceCategoryLetter = /^[A-Z]$/.test(newForceCategoryLetterRaw) ? newForceCategoryLetterRaw : 'W';
+    const newLexFirstLetterMode = !!a.newLexFirstLetterMode;
     return {
         letterMode,
         letterModeLabel,
         customPositionMode: !!a.newCustomMode,
+        forceCategoryMode: newForceCategoryMode,
+        forceCategory: newForceCategory,
+        forceCategoryLetter: newForceCategoryLetter,
+        lexFirstLetterMode: newLexFirstLetterMode,
         answerDigitBuffer: !!a.newAnswerDigitBuffer,
         answerCountMode: isExact ? 'exact' : 'more',
         answerCountModeLabel: isExact ? 'Exact count' : 'How many MORE',
@@ -1270,6 +1279,8 @@ function formatNewSettingsAtPerformanceHuman(ns) {
     return [
         `Letter batches: ${ns.letterModeLabel || ns.letterMode}`,
         `Custom position (1–6 / ANY): ${ns.customPositionMode ? 'on' : 'off'}`,
+        `Force first letter: ${ns.forceCategoryMode ? `on (${String(ns.forceCategory || '').toUpperCase()} · ${ns.forceCategoryLetter || '—'})` : 'off'}`,
+        `First Letter LEX (NEW only): ${ns.lexFirstLetterMode ? 'on' : 'off'}`,
         `+1 answer digit buffer (nominal or +1 only): ${ns.answerDigitBuffer ? 'on' : 'off'}`,
         `Answer count mode: ${ns.answerCountModeLabel || ns.answerCountMode}`,
         `Auto-stop: ${ns.autoStopSeconds}s`
@@ -2103,6 +2114,14 @@ const DEFAULT_SETTINGS = {
     newAutoStopSeconds: 10,
     /** NEW custom position mode toggle */
     newCustomMode: false,
+    /** NEW force mode: first stop uses one forced letter from selected category */
+    newForceCategoryMode: false,
+    /** NEW force mode category id */
+    newForceCategory: 'colours',
+    /** NEW force mode letter (must be in category set) */
+    newForceCategoryLetter: 'W',
+    /** NEW LEX behavior: use only first typed letter in NEW LEX panel */
+    newLexFirstLetterMode: false,
     /** NEW: when on, each answered count may match the digit or digit+1 (not digit−1) */
     newAnswerDigitBuffer: false,
     /** Optional: thought-of word (A–Z) recorded on each workflow run for REPORT target tracing when set before PERFORM */
@@ -8342,6 +8361,50 @@ function createEyeTestFeature() {
 const SCROLL_VOWELS_LIST = ['A', 'E', 'I', 'O', 'U'];
 const SCROLL_VOWELS_SET = new Set(SCROLL_VOWELS_LIST);
 const SCROLL_CONSONANTS_LIST = ALPHABET_LETTERS.filter((c) => !VOWEL_SET.has(c));
+const NEW_FORCE_CATEGORY_LETTERS = {
+    colours: new Set(['A', 'B', 'C', 'E', 'G', 'I', 'L', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'V', 'W', 'Y'])
+};
+
+function getNewForceCategorySet(categoryId) {
+    if (categoryId === 'colours') return NEW_FORCE_CATEGORY_LETTERS.colours;
+    return NEW_FORCE_CATEGORY_LETTERS.colours;
+}
+
+function normalizeNewForceCategoryLetter(letterRaw, categoryId) {
+    const set = getNewForceCategorySet(categoryId);
+    const letter = String(letterRaw || '').toUpperCase();
+    if (/^[A-Z]$/.test(letter) && set.has(letter)) return letter;
+    if (set.has('W')) return 'W';
+    const first = Array.from(set)[0];
+    return first || 'A';
+}
+
+function applyForcedFirstLetterBatch(baseBatch, forcedLetter, categoryId, k) {
+    const categorySet = getNewForceCategorySet(categoryId);
+    const allowedOthers = ALPHABET_LETTERS.filter((ch) => !categorySet.has(ch) && ch !== forcedLetter);
+    const allowedOtherSet = new Set(allowedOthers);
+    const uniqueBase = [];
+    (Array.isArray(baseBatch) ? baseBatch : []).forEach((ch) => {
+        const up = String(ch || '').toUpperCase();
+        if (!/^[A-Z]$/.test(up)) return;
+        if (up === forcedLetter) return;
+        if (!allowedOtherSet.has(up)) return;
+        if (!uniqueBase.includes(up)) uniqueBase.push(up);
+    });
+    const others = [];
+    [...uniqueBase, ...allowedOthers].forEach((ch) => {
+        if (ch !== forcedLetter && !others.includes(ch)) others.push(ch);
+    });
+    while (others.length < 3) {
+        const fallback = ALPHABET_LETTERS.find((ch) => ch !== forcedLetter && !others.includes(ch));
+        if (!fallback) break;
+        others.push(fallback);
+    }
+    const finalBatch = others.slice(0, 3);
+    const insertAt = Math.max(0, Math.min(3, ((k % 4) + 4) % 4));
+    finalBatch.splice(insertAt, 0, forcedLetter);
+    return finalBatch.slice(0, 4);
+}
 
 function countScrollLetterFrequencies(words) {
     const cons = {};
@@ -16951,7 +17014,8 @@ function setupFeatureListeners(feature, callback, options) {
                     if (!silent) alert('No valid LEX position (4+) found for current words.');
                     return;
                 }
-                const allowed = new Set(letters.split(''));
+                const lettersForFilter = newLexFirstLetterModeOn ? letters.slice(0, 1) : letters;
+                const allowed = new Set(lettersForFilter.split(''));
                 const baseWords = Array.isArray(alphaLexPeekSourceWords) ? alphaLexPeekSourceWords : [];
                 const filtered = (baseWords || []).filter((w) => {
                     const up = String(w || '').toUpperCase();
@@ -17889,6 +17953,13 @@ function setupFeatureListeners(feature, callback, options) {
             const newDigitBuffer = (appSettings && appSettings.newAnswerDigitBuffer) ? 1 : 0;
             const newAutoStopSeconds = Math.max(1, Math.min(60, parseInt((appSettings && appSettings.newAutoStopSeconds) ?? 10, 10) || 10));
             const customModeOn = !!(appSettings && appSettings.newCustomMode);
+            const forceCategoryModeOn = !customModeOn && !!(appSettings && appSettings.newForceCategoryMode);
+            const forceCategoryId = (appSettings && appSettings.newForceCategory === 'colours') ? 'colours' : 'colours';
+            const forceCategoryLetter = normalizeNewForceCategoryLetter(
+                appSettings && appSettings.newForceCategoryLetter,
+                forceCategoryId
+            );
+            const newLexFirstLetterModeOn = !!(appSettings && appSettings.newLexFirstLetterMode);
             const vowelShownSinceLastStop = { A: 0, E: 0, I: 0, O: 0, U: 0 };
             let forceConsonantsUntilStop = false;
 
@@ -18063,6 +18134,9 @@ function setupFeatureListeners(feature, callback, options) {
                     currentBatchType = 'mixed';
                     batch = buildScrollBatchAtK(consDesc, consAsc, vowDesc, vowAsc, scrollBatchIndex);
                 }
+                if (forceCategoryModeOn && scrollStops.length === 0) {
+                    batch = applyForcedFirstLetterBatch(batch, forceCategoryLetter, forceCategoryId, scrollBatchIndex);
+                }
                 currentBatchStr = batch.join('');
                 if (batchDisplay) {
                     batchDisplay.textContent = batch.length ? batch.join(' ') : '—';
@@ -18133,7 +18207,12 @@ function setupFeatureListeners(feature, callback, options) {
                             : scrollStops.length === 2
                                 ? 'third'
                                 : 'anywhere';
-                    scrollStops.push({ kind: resolvedKind, batchStr: currentBatchStr, digit: null });
+                    if (forceCategoryModeOn && resolvedKind === 'first') {
+                        // Force mode: first stop always resolves to the forced first letter only.
+                        scrollStops.push({ kind: 'first', batchStr: forceCategoryLetter, digit: null });
+                    } else {
+                        scrollStops.push({ kind: resolvedKind, batchStr: currentBatchStr, digit: null });
+                    }
                 }
                 resetVowelCoverageCycle();
                 updatePhaseLabel();
@@ -18345,6 +18424,8 @@ function setupFeatureListeners(feature, callback, options) {
             showBatch();
             if (customModeOn) {
                 setMessage(`Select 1-6 or ANY, then press SCROLL. ${(currentFilteredWords || []).length} words.`);
+            } else if (forceCategoryModeOn) {
+                setMessage(`Force first letter ON: ${String(forceCategoryId).toUpperCase()} · ${forceCategoryLetter}. ${(currentFilteredWords || []).length} words.`);
             } else {
                 setMessage(`${(currentFilteredWords || []).length} words.`);
             }
@@ -22106,6 +22187,61 @@ function initSettingsUI() {
         newCustomModeToggle.checked = !!(appSettings && appSettings.newCustomMode);
         newCustomModeToggle.addEventListener('change', () => {
             appSettings.newCustomMode = newCustomModeToggle.checked;
+            saveAppSettings();
+        });
+    }
+    const newForceCategoryModeToggle = document.getElementById('newForceCategoryModeToggle');
+    const newForceCategoryFields = document.getElementById('newForceCategoryFields');
+    const newForceCategorySelect = document.getElementById('newForceCategorySelect');
+    const newForceCategoryLetterSelect = document.getElementById('newForceCategoryLetterSelect');
+    const syncNewForceFields = () => {
+        if (newForceCategoryFields) {
+            newForceCategoryFields.style.display = (appSettings && appSettings.newForceCategoryMode) ? '' : 'none';
+        }
+    };
+    if (newForceCategorySelect) {
+        const category = (appSettings && appSettings.newForceCategory === 'colours') ? 'colours' : 'colours';
+        newForceCategorySelect.value = category;
+        appSettings.newForceCategory = category;
+        newForceCategorySelect.addEventListener('change', () => {
+            const next = newForceCategorySelect.value === 'colours' ? 'colours' : 'colours';
+            appSettings.newForceCategory = next;
+            const normalized = normalizeNewForceCategoryLetter(appSettings.newForceCategoryLetter, next);
+            appSettings.newForceCategoryLetter = normalized;
+            if (newForceCategoryLetterSelect) newForceCategoryLetterSelect.value = normalized;
+            saveAppSettings();
+        });
+    }
+    if (newForceCategoryLetterSelect) {
+        const category = (appSettings && appSettings.newForceCategory === 'colours') ? 'colours' : 'colours';
+        const normalized = normalizeNewForceCategoryLetter(appSettings && appSettings.newForceCategoryLetter, category);
+        newForceCategoryLetterSelect.value = normalized;
+        appSettings.newForceCategoryLetter = normalized;
+        newForceCategoryLetterSelect.addEventListener('change', () => {
+            const cat = (appSettings && appSettings.newForceCategory === 'colours') ? 'colours' : 'colours';
+            const next = normalizeNewForceCategoryLetter(newForceCategoryLetterSelect.value, cat);
+            appSettings.newForceCategoryLetter = next;
+            newForceCategoryLetterSelect.value = next;
+            saveAppSettings();
+        });
+    }
+    if (newForceCategoryModeToggle) {
+        newForceCategoryModeToggle.checked = !!(appSettings && appSettings.newForceCategoryMode);
+        appSettings.newForceCategoryMode = newForceCategoryModeToggle.checked;
+        syncNewForceFields();
+        newForceCategoryModeToggle.addEventListener('change', () => {
+            appSettings.newForceCategoryMode = newForceCategoryModeToggle.checked;
+            syncNewForceFields();
+            saveAppSettings();
+        });
+    } else {
+        syncNewForceFields();
+    }
+    const newLexFirstLetterModeToggle = document.getElementById('newLexFirstLetterModeToggle');
+    if (newLexFirstLetterModeToggle) {
+        newLexFirstLetterModeToggle.checked = !!(appSettings && appSettings.newLexFirstLetterMode);
+        newLexFirstLetterModeToggle.addEventListener('change', () => {
+            appSettings.newLexFirstLetterMode = newLexFirstLetterModeToggle.checked;
             saveAppSettings();
         });
     }

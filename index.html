@@ -1287,6 +1287,46 @@
                             <label for="newCustomModeToggle">CUSTOM MODE (choose position 1-6 or ANY each stop)</label>
                             <input type="checkbox" id="newCustomModeToggle">
                         </div>
+                        <div class="settings-toggle-row" style="margin-top: 10px;">
+                            <label for="newForceCategoryModeToggle">FORCE first letter from category</label>
+                            <input type="checkbox" id="newForceCategoryModeToggle">
+                        </div>
+                        <div id="newForceCategoryFields" style="display:none; margin-top:8px;">
+                            <label for="newForceCategorySelect">Category:</label>
+                            <select id="newForceCategorySelect" style="max-width: 100%; margin-bottom: 6px;">
+                                <option value="colours">COLOURS</option>
+                            </select>
+                            <label for="newForceCategoryLetterSelect">Forced letter:</label>
+                            <select id="newForceCategoryLetterSelect" style="max-width: 100%; margin-bottom: 6px;">
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                                <option value="C">C</option>
+                                <option value="E">E</option>
+                                <option value="G">G</option>
+                                <option value="I">I</option>
+                                <option value="L">L</option>
+                                <option value="M">M</option>
+                                <option value="N">N</option>
+                                <option value="O">O</option>
+                                <option value="P">P</option>
+                                <option value="R">R</option>
+                                <option value="S">S</option>
+                                <option value="T">T</option>
+                                <option value="V">V</option>
+                                <option value="W">W</option>
+                                <option value="Y">Y</option>
+                            </select>
+                            <p class="settings-field-help" style="margin-top:4px;">
+                                First NEW stop only: every scroll includes this letter, and the other 3 letters are outside the selected category set.
+                            </p>
+                        </div>
+                        <div class="settings-toggle-row" style="margin-top: 10px;">
+                            <label for="newLexFirstLetterModeToggle">First Letter LEX (NEW only)</label>
+                            <input type="checkbox" id="newLexFirstLetterModeToggle">
+                        </div>
+                        <p class="settings-field-help" style="margin-top:4px;">
+                            When ON, NEW LEX uses only the first letter you type (e.g. PILL -> P).
+                        </p>
                         <p class="settings-section-subtitle" style="margin-top: 12px;">1 Buffer (answer digit matches N or N+1)</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="newAnswerDigitBufferToggle">
