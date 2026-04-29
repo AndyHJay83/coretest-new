@@ -18898,6 +18898,74 @@ function updateWordCount(count) {
     }
     
     wordCountDisplay.textContent = count;
+    updateMatchingShapePositionsDisplay(currentFilteredWords);
+}
+
+let matchingShapePositionsPrev = { Curved: [], Mixed: [], Straight: [] };
+
+function getMatchingShapePositionsData(words) {
+    const arr = Array.isArray(words) ? words : [];
+    if (!arr.length) return { Curved: [], Mixed: [], Straight: [] };
+    const uppers = arr.map((w) => String(w || '').toUpperCase());
+    const minLen = uppers.reduce((m, w) => Math.min(m, w.length), Number.MAX_SAFE_INTEGER);
+    if (!Number.isFinite(minLen) || minLen < 1) return { Curved: [], Mixed: [], Straight: [] };
+    const groups = { Curved: [], Mixed: [], Straight: [] };
+    const shapeOf = (ch) => {
+        if (alphaLetterInShapeGroup(ch, 'curved')) return 'Curved';
+        if (alphaLetterInShapeGroup(ch, 'mixed')) return 'Mixed';
+        if (alphaLetterInShapeGroup(ch, 'straight')) return 'Straight';
+        return null;
+    };
+    for (let i = 0; i < minLen; i++) {
+        const firstShape = shapeOf(uppers[0][i]);
+        if (!firstShape) continue;
+        let allMatch = true;
+        for (let j = 1; j < uppers.length; j++) {
+            if (shapeOf(uppers[j][i]) !== firstShape) {
+                allMatch = false;
+                break;
+            }
+        }
+        if (allMatch) groups[firstShape].push(i + 1);
+    }
+    return groups;
+}
+
+function getMatchingShapePositionsHtml(words) {
+    const groups = getMatchingShapePositionsData(words);
+    const order = ['Curved', 'Mixed', 'Straight'];
+    const hasAny = order.some((shape) => (groups[shape] || []).length > 0);
+    if (!hasAny) {
+        matchingShapePositionsPrev = { Curved: [], Mixed: [], Straight: [] };
+        return 'Matching Shape Positions: —';
+    }
+    const htmlLines = [];
+    order.forEach((shape) => {
+        const positions = groups[shape] || [];
+        if (!positions.length) return;
+        const prevSet = new Set((matchingShapePositionsPrev[shape] || []).map((n) => Number(n)));
+        const posHtml = positions
+            .map((n) => (prevSet.has(Number(n)) ? String(n) : `<span class="matching-shape-new-pos">${n}</span>`))
+            .join(', ');
+        htmlLines.push(`${shape} - ${posHtml}`);
+    });
+    matchingShapePositionsPrev = {
+        Curved: (groups.Curved || []).slice(),
+        Mixed: (groups.Mixed || []).slice(),
+        Straight: (groups.Straight || []).slice()
+    };
+    return `Matching Shape Positions: ${htmlLines.join(' · ')}`;
+}
+
+function updateMatchingShapePositionsDisplay(words) {
+    let el = document.getElementById('matchingShapePositionsDisplay');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'matchingShapePositionsDisplay';
+        el.className = 'matching-shape-positions-display';
+        document.body.appendChild(el);
+    }
+    el.innerHTML = getMatchingShapePositionsHtml(words);
 }
 
 // Add CSS for word count display
@@ -18917,6 +18985,26 @@ style.textContent = `
         z-index: 1000;
         min-width: 40px;
         text-align: center;
+    }
+    .matching-shape-positions-display {
+        position: fixed;
+        bottom: 68px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: rgba(0, 0, 0, 0.72);
+        color: #fff;
+        padding: 6px 12px;
+        border-radius: 10px;
+        font-size: 12px;
+        z-index: 999;
+        max-width: min(92vw, 900px);
+        line-height: 1.35;
+        text-align: center;
+        word-break: break-word;
+    }
+    .matching-shape-new-pos {
+        color: #6CFF70;
+        font-weight: 700;
     }
 `;
 document.head.appendChild(style);
