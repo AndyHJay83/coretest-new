@@ -17952,8 +17952,9 @@ function setupFeatureListeners(feature, callback, options) {
             }
             const newDigitBuffer = (appSettings && appSettings.newAnswerDigitBuffer) ? 1 : 0;
             const newAutoStopSeconds = Math.max(1, Math.min(60, parseInt((appSettings && appSettings.newAutoStopSeconds) ?? 10, 10) || 10));
-            const customModeOn = !!(appSettings && appSettings.newCustomMode);
-            const forceCategoryModeOn = !customModeOn && !!(appSettings && appSettings.newForceCategoryMode);
+            const forceCategoryModeOn = !!(appSettings && appSettings.newForceCategoryMode);
+            // Force mode owns the first stop behavior; when ON, custom target mode is suppressed.
+            const customModeOn = !forceCategoryModeOn && !!(appSettings && appSettings.newCustomMode);
             const forceCategoryId = (appSettings && appSettings.newForceCategory === 'colours') ? 'colours' : 'colours';
             const forceCategoryLetter = normalizeNewForceCategoryLetter(
                 appSettings && appSettings.newForceCategoryLetter,
@@ -22183,6 +22184,19 @@ function initSettingsUI() {
         });
     }
     const newCustomModeToggle = document.getElementById('newCustomModeToggle');
+    const syncNewCustomModeAgainstForce = () => {
+        if (!newCustomModeToggle) return;
+        const forceOn = !!(appSettings && appSettings.newForceCategoryMode);
+        if (forceOn) {
+            newCustomModeToggle.checked = false;
+            newCustomModeToggle.disabled = true;
+            appSettings.newCustomMode = false;
+            newCustomModeToggle.title = 'Disabled while FORCE first letter is ON.';
+        } else {
+            newCustomModeToggle.disabled = false;
+            newCustomModeToggle.title = '';
+        }
+    };
     if (newCustomModeToggle) {
         newCustomModeToggle.checked = !!(appSettings && appSettings.newCustomMode);
         newCustomModeToggle.addEventListener('change', () => {
@@ -22229,13 +22243,16 @@ function initSettingsUI() {
         newForceCategoryModeToggle.checked = !!(appSettings && appSettings.newForceCategoryMode);
         appSettings.newForceCategoryMode = newForceCategoryModeToggle.checked;
         syncNewForceFields();
+        syncNewCustomModeAgainstForce();
         newForceCategoryModeToggle.addEventListener('change', () => {
             appSettings.newForceCategoryMode = newForceCategoryModeToggle.checked;
+            syncNewCustomModeAgainstForce();
             syncNewForceFields();
             saveAppSettings();
         });
     } else {
         syncNewForceFields();
+        syncNewCustomModeAgainstForce();
     }
     const newLexFirstLetterModeToggle = document.getElementById('newLexFirstLetterModeToggle');
     if (newLexFirstLetterModeToggle) {
