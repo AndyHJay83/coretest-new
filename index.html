@@ -1078,14 +1078,14 @@
                     </div>
                     <div class="settings-section" id="settings-section-name-engine">
                         <h3 class="settings-section-title">NAME ENGINE</h3>
-                        <p class="settings-section-subtitle">Word Count — after you enter a name and filmography loads, ask for a number and keep only titles with that many words (punctuation-only tokens don’t count).</p>
+                        <p class="settings-section-subtitle">Optional word-count pass after filmography loads.</p>
                         <label class="toggle-switch" style="margin-top: 8px;">
                             <input type="checkbox" id="nameEngineWordCountToggle">
                             <span class="toggle-slider"></span>
                         </label>
                         <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Word Count</span>
                         <div id="nameEngineWordCountBufferFields" style="margin-top: 12px; display: none;">
-                            <p class="settings-section-subtitle" style="margin-bottom: 6px;">1 Buffer (same idea as LENGTH): when filtering by word count, keep titles with (N−1) through (N+1) words.</p>
+                            <p class="settings-section-subtitle" style="margin-bottom: 6px;">1 Buffer: accept N, N-1, or N+1 words.</p>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="nameEngineWordCountBuffer1Toggle">
                                 <span class="toggle-slider"></span>
@@ -1095,8 +1095,8 @@
                     </div>
                     <div class="settings-section" id="settings-section-engine-apis">
                         <h3 class="settings-section-title">API key</h3>
-                        <p class="settings-section-subtitle">Optional. Stored only in this browser and sent to your ENGINE server for LOCATION ENGINE. If the server already has a key in its environment (e.g. Render), you can leave this blank.</p>
-                        <p class="settings-section-subtitle"><strong>GitHub Pages:</strong> the static site does not read a <code>.env</code> file — set a key here if the hosted API does not supply one.</p>
+                        <p class="settings-section-subtitle">Optional. Stored in this browser and sent to your ENGINE server for LOCATION ENGINE.</p>
+                        <p class="settings-section-subtitle"><strong>GitHub Pages:</strong> if your hosted API has no key, set it here.</p>
                         <div id="settingsEngineApiKeysLegacy" style="display: none;" aria-hidden="true">
                             <label for="settingsTmdbApiKeyInput">TMDB (NAME ENGINE)</label>
                             <input type="password" id="settingsTmdbApiKeyInput" autocomplete="off" style="width: 100%; max-width: 28rem; box-sizing: border-box;">
@@ -1108,7 +1108,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-length">
                         <h3 class="settings-section-title">LENGTH</h3>
-                        <p class="settings-section-subtitle">1 Buffer</p>
+                        <p class="settings-section-subtitle">1 Buffer: accept N or N+1.</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="lengthBuffer1Toggle">
                             <span class="toggle-slider"></span>
@@ -1116,7 +1116,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-t9-length">
                         <h3 class="settings-section-title">T9 LENGTH</h3>
-                        <p class="settings-section-subtitle">1 Buffer</p>
+                        <p class="settings-section-subtitle">1 Buffer: accept N or N+1.</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="t9LengthBuffer1Toggle">
                             <span class="toggle-slider"></span>
@@ -1124,7 +1124,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-e21">
                         <h3 class="settings-section-title">E21</h3>
-                        <p class="settings-section-subtitle">E in the word?</p>
+                        <p class="settings-section-subtitle">If OFF, require E in position 2 only.</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="e21AnywhereToggle">
                             <span class="toggle-slider"></span>
@@ -1132,7 +1132,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-connective">
                         <h3 class="settings-section-title">CONNECTIVE</h3>
-                        <p class="settings-section-subtitle">Is Y a vowel?</p>
+                        <p class="settings-section-subtitle">Toggle whether Y counts as a vowel.</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="connectiveYIsVowelToggle">
                             <span class="toggle-slider"></span>
@@ -1144,7 +1144,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-scrabble">
                         <h3 class="settings-section-title">SCRABBLE</h3>
-                        <p class="settings-section-subtitle">1 Buffer (score ±1, like SCRABBLE1)</p>
+                        <p class="settings-section-subtitle">1 Buffer: accept score N or N+1.</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="scrabbleBuffer1Toggle">
                             <span class="toggle-slider"></span>
@@ -1152,7 +1152,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-decode">
                         <h3 class="settings-section-title">DECODE</h3>
-                        <p class="settings-section-subtitle">Position: which character in the string is the correct one (1-based)</p>
+                        <p class="settings-section-subtitle">Optional fixed truth position (1-based).</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="decodePositionToggle">
                             <span class="toggle-slider"></span>
@@ -1164,7 +1164,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-sologram">
                         <h3 class="settings-section-title">SOLOGRAM</h3>
-                        <p class="settings-section-subtitle">Which word list to use for the SOLOGRAM step</p>
+                        <p class="settings-section-subtitle">Choose the word source for SOLOGRAM.</p>
                         <label for="sologramBookSelect">Book:</label>
                         <select id="sologramBookSelect">
                             <option value="all">ALL</option>
@@ -1178,7 +1178,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-piano-forte">
                         <h3 class="settings-section-title">PIANO FORTE</h3>
-                        <p class="settings-section-subtitle">Default is A–G. Use custom range to set start and end letter (order = button order).</p>
+                        <p class="settings-section-subtitle">Default A-G; optional custom start/end range.</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="pianoForteUseCustomRangeToggle">
                             <span class="toggle-slider"></span>
@@ -1193,7 +1193,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-calculus">
                         <h3 class="settings-section-title">CALCULUS</h3>
-                        <p class="settings-section-subtitle">Input mode</p>
+                        <p class="settings-section-subtitle">Choose digit or C/S input mode.</p>
                         <label for="calculusModeSelect">Mode:</label>
                         <select id="calculusModeSelect">
                             <option value="abstract">ABSTRACT (digits 0–9)</option>
@@ -1202,7 +1202,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-lexicon">
                         <h3 class="settings-section-title">Lexicon</h3>
-                        <p class="settings-section-subtitle">Lexicon OVERRIDE: when the workflow drops to ≤ N words, show Lexicon next.</p>
+                        <p class="settings-section-subtitle">When words left <= N, insert Lexicon next.</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="lexiconOverrideToggle">
                             <span class="toggle-slider"></span>
@@ -1219,7 +1219,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-eye-test">
                         <h3 class="settings-section-title">EYE TEST</h3>
-                        <p class="settings-section-subtitle">Default = E</p>
+                        <p class="settings-section-subtitle">Set default first-line letter and chart.</p>
                         <label for="eyeTestFirstLetterInput">First line letter:</label>
                         <input type="text" id="eyeTestFirstLetterInput" placeholder="E" maxlength="1" autocomplete="off" style="width: 3em; text-transform: uppercase;">
                         <div class="settings-toggle-row" style="margin-top: 10px;">
@@ -1266,7 +1266,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-new">
                         <h3 class="settings-section-title">NEW</h3>
-                        <p class="settings-section-subtitle">4-letter batch generation for the NEW filter (fixed: 2 consonants + 2 vowels per batch)</p>
+                        <p class="settings-section-subtitle">NEW scrolling behavior and answer rules.</p>
                         <!-- Letter mode UI hidden: performance always uses mixed; alternating / altConsMixed remain in script for possible future use. -->
                         <div id="newLetterModeSettingsWrap" style="display: none;" aria-hidden="true">
                             <label for="newLetterModeSelect">Letter mode:</label>
@@ -1284,12 +1284,18 @@
                         <label for="newAutoStopSecondsInput">Auto-stop seconds:</label>
                         <input type="number" id="newAutoStopSecondsInput" min="1" max="60" value="10" style="width: 5em; margin-bottom: 6px;">
                         <div class="settings-toggle-row" style="margin-top: 6px;">
-                            <label for="newCustomModeToggle">CUSTOM MODE (choose position 1-6 or ANY each stop)</label>
-                            <input type="checkbox" id="newCustomModeToggle">
+                            <label for="newCustomModeToggle">Enable custom target mode (1-6 or ANY per stop)</label>
+                            <label class="toggle-switch" for="newCustomModeToggle">
+                                <input type="checkbox" id="newCustomModeToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
                         <div class="settings-toggle-row" style="margin-top: 10px;">
-                            <label for="newForceCategoryModeToggle">FORCE first letter from category</label>
-                            <input type="checkbox" id="newForceCategoryModeToggle">
+                            <label for="newForceCategoryModeToggle">Enable forced first letter from category</label>
+                            <label class="toggle-switch" for="newForceCategoryModeToggle">
+                                <input type="checkbox" id="newForceCategoryModeToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
                         <div id="newForceCategoryFields" style="display:none; margin-top:8px;">
                             <label for="newForceCategorySelect">Category:</label>
@@ -1321,13 +1327,16 @@
                             </p>
                         </div>
                         <div class="settings-toggle-row" style="margin-top: 10px;">
-                            <label for="newLexFirstLetterModeToggle">First Letter LEX (NEW only)</label>
-                            <input type="checkbox" id="newLexFirstLetterModeToggle">
+                            <label for="newLexFirstLetterModeToggle">Use first letter only for NEW LEX</label>
+                            <label class="toggle-switch" for="newLexFirstLetterModeToggle">
+                                <input type="checkbox" id="newLexFirstLetterModeToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
                         <p class="settings-field-help" style="margin-top:4px;">
                             When ON, NEW LEX uses only the first letter you type (e.g. PILL -> P).
                         </p>
-                        <p class="settings-section-subtitle" style="margin-top: 12px;">1 Buffer (answer digit matches N or N+1)</p>
+                        <p class="settings-section-subtitle" style="margin-top: 12px;">1 Buffer: accept answer digit N or N+1.</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="newAnswerDigitBufferToggle">
                             <span class="toggle-slider"></span>
@@ -1335,7 +1344,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-omega">
                         <h3 class="settings-section-title">OMEGA</h3>
-                        <p class="settings-section-subtitle">Which shape/object set to use for the OMEGA filter</p>
+                        <p class="settings-section-subtitle">Choose active shape/object set for OMEGA.</p>
                         <label for="omegaShapesCountInput">Number of shapes (0 = until SUBMIT):</label>
                         <input type="number" id="omegaShapesCountInput" min="0" max="99" value="0" style="width: 4em;">
                         <label for="omegaWordOrderSelect">Word order in OMEGA results:</label>
@@ -1356,8 +1365,8 @@
                             <input type="checkbox" id="omegaVoiceInputToggle">
                             <span class="toggle-slider"></span>
                         </label>
-                        <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Speak up to 5 objects (mix ESP / Pocket / Restaurant / Straight–Curved / custom); end trigger stops listening</span>
-                        <p class="settings-field-help" style="margin-top: 8px;">Trigger words: use OMEGA fields below, or leave them empty to use ALPHA’s Start / End trigger words. Say object names between triggers; buttons rebuild in spoken order (partial lists OK; repeat object = last mention wins).</p>
+                        <span class="settings-toggle-label" style="margin-left: 8px; vertical-align: middle;">Speak up to 5 objects; end trigger stops listening.</span>
+                        <p class="settings-field-help" style="margin-top: 8px;">Leave OMEGA triggers empty to reuse ALPHA triggers. Spoken objects rebuild buttons in order.</p>
                         <label for="omegaSpeechStartPhraseInput" style="display:block;margin-top:10px;">OMEGA start trigger (optional)</label>
                         <input type="text" id="omegaSpeechStartPhraseInput" autocomplete="off" placeholder="Empty = use ALPHA start trigger" style="width:100%;max-width:520px;padding:6px;">
                         <label for="omegaSpeechEndPhraseInput" style="display:block;margin-top:8px;">OMEGA end trigger (optional)</label>
@@ -1373,17 +1382,17 @@
                     </div>
                     <div class="settings-section" id="settings-section-alpha">
                         <h3 class="settings-section-title">ALPHA</h3>
-                        <label for="alphaDirectionsCountInput">Number of directions (0 = until SUBMIT):</label>
+                        <label for="alphaDirectionsCountInput">Direction count (0 = until SUBMIT):</label>
                         <input type="number" id="alphaDirectionsCountInput" min="0" max="99" value="0" style="width: 4em;">
                         <p id="alphaEfficiencySubtitle" class="alpha-efficiency-subtitle" aria-live="polite"></p>
                         <div class="settings-toggle-row" style="margin-top: 10px;">
-                            <label for="alphaSwapPovToggle">Swap POV (Left = toward Z, Right = toward A):</label>
+                            <label for="alphaSwapPovToggle">Swap POV (Left -> Z, Right -> A)</label>
                             <input type="checkbox" id="alphaSwapPovToggle">
                         </div>
                         <div id="alphaEfficiencyCustomLineSettingsWrap" style="display:none;" aria-hidden="true">
                             <label for="alphaEfficiencyCustomLineInput" style="display:block;margin-top:14px;">Efficiency custom line (optional):</label>
                             <textarea id="alphaEfficiencyCustomLineInput" rows="2" autocomplete="off" placeholder="Sentence; 10+ letters A–Z after strip. Uses unified line in efficiency; includes N/A in search when some A–Z are missing." style="width:100%;max-width:520px;padding:8px;font-family:inherit;resize:vertical;"></textarea>
-                            <p class="settings-field-help" style="margin-top:6px;">Leave empty for standard A–Z efficiency (Left / Right / Repeat only).</p>
+                            <p class="settings-field-help" style="margin-top:6px;">Leave empty for standard A-Z efficiency.</p>
                         </div>
                         <p class="settings-field-group-label" style="margin-top: 14px;">Trigger Words</p>
                         <label for="alphaSpeechStartPhraseInput">Start Trigger Word</label>
@@ -1416,7 +1425,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-atlas">
                         <h3 class="settings-section-title">ATLAS letters</h3>
-                        <p class="settings-section-subtitle">Which letters count in ATLAS (COLOUR3 always uses Colours)</p>
+                        <p class="settings-section-subtitle">Set ATLAS letter source (COLOUR3 always uses Colours).</p>
                         <label for="atlasLetterSourceSelect">Source:</label>
                         <select id="atlasLetterSourceSelect">
                             <option value="default">Default (Colours)</option>
@@ -1433,7 +1442,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-letter-lying">
                         <h3 class="settings-section-title">Letter Lying</h3>
-                        <p class="settings-section-subtitle">Multi-part filter: ask if each letter is in the word (YES/NO)</p>
+                        <p class="settings-section-subtitle">Step through letters and answer YES/NO for each.</p>
                         <label for="letterLyingModeSelect">Mode:</label>
                         <select id="letterLyingModeSelect">
                             <option value="static">Static</option>
@@ -1479,7 +1488,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-zero-curves">
                         <h3 class="settings-section-title">ZERO CURVES</h3>
-                        <p class="settings-section-subtitle">APPROX: do not assume non-entered positions are straight</p>
+                        <p class="settings-section-subtitle">APPROX mode: unknown positions stay unassigned.</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="zeroCurvesApproxToggle">
                             <span class="toggle-slider"></span>
@@ -1487,7 +1496,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-adv-lex">
                         <h3 class="settings-section-title">ADV-LEX</h3>
-                        <p class="settings-section-subtitle">Ignore Position 1: do not suggest Position 1 as best; use the next best position instead.</p>
+                        <p class="settings-section-subtitle">Skip Position 1 when choosing best suggestion.</p>
                         <label class="toggle-switch">
                             <input type="checkbox" id="advLexIgnorePosition1Toggle">
                             <span class="toggle-slider"></span>
@@ -1496,7 +1505,7 @@
                     </div>
                     <div class="settings-section" id="settings-section-love-letters">
                         <h3 class="settings-section-title">Love Letters</h3>
-                        <p class="settings-section-subtitle">Letter groups per row (1–5 rows). Spectator counts how many distinct letters from each row appear in the word.</p>
+                        <p class="settings-section-subtitle">Define 1-5 letter rows used by Love Letters.</p>
                         <label for="loveLettersRowCountSelect">Number of rows:</label>
                         <select id="loveLettersRowCountSelect">
                             <option value="1">1</option>
