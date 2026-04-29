@@ -23097,6 +23097,71 @@ function initSettingsUI() {
             saveAppSettings();
         });
     }
+
+    initSettingsSectionAccordion();
+}
+
+function initSettingsSectionAccordion() {
+    const settingsPage = document.getElementById('settingsPage');
+    if (!settingsPage || settingsPage.dataset.settingsAccordionInit === '1') return;
+    settingsPage.dataset.settingsAccordionInit = '1';
+
+    const DEFAULT_OPEN_SECTION_IDS = new Set([
+        'settings-section-new',
+        'settings-section-omega',
+        'settings-section-alpha',
+        'settings-section-engine-apis'
+    ]);
+
+    const sections = Array.from(settingsPage.querySelectorAll('.settings-section'));
+    sections.forEach((section) => {
+        const titleEl = section.querySelector(':scope > .settings-section-title');
+        if (!titleEl) return;
+        const subtitleEl = section.querySelector(':scope > .settings-section-subtitle');
+        const titleText = (titleEl.textContent || '').trim();
+        const subtitleText = subtitleEl ? (subtitleEl.textContent || '').trim() : '';
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'settings-section-toggle';
+        toggleBtn.innerHTML =
+            `<span class="settings-section-toggle-title">${titleText}</span>` +
+            `<span class="settings-section-toggle-summary">${subtitleText || 'Tap to expand settings'}</span>` +
+            `<span class="settings-section-toggle-chevron" aria-hidden="true">▾</span>`;
+
+        const body = document.createElement('div');
+        body.className = 'settings-section-body';
+        while (section.firstChild) {
+            body.appendChild(section.firstChild);
+        }
+        section.appendChild(toggleBtn);
+        section.appendChild(body);
+
+        const setExpanded = (expanded) => {
+            section.classList.toggle('settings-section-collapsed', !expanded);
+            toggleBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        };
+
+        const openByDefault = DEFAULT_OPEN_SECTION_IDS.has(section.id);
+        setExpanded(openByDefault);
+        toggleBtn.addEventListener('click', () => {
+            const isExpanded = toggleBtn.getAttribute('aria-expanded') === 'true';
+            setExpanded(!isExpanded);
+        });
+    });
+
+    const jumpLinks = settingsPage.querySelectorAll('.settings-jump-links a[href^="#settings-section-"]');
+    jumpLinks.forEach((link) => {
+        link.addEventListener('click', () => {
+            const id = (link.getAttribute('href') || '').slice(1);
+            if (!id) return;
+            const target = document.getElementById(id);
+            if (!target) return;
+            target.classList.remove('settings-section-collapsed');
+            const btn = target.querySelector(':scope > .settings-section-toggle');
+            if (btn) btn.setAttribute('aria-expanded', 'true');
+        });
+    });
 }
 
 // Scrabble letter values
