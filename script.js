@@ -17988,8 +17988,16 @@ function setupFeatureListeners(feature, callback, options) {
                 forceCategoryId
             );
             const newLexFirstLetterModeOn = !!(appSettings && appSettings.newLexFirstLetterMode);
+            let forcePrefilterApplied = false;
             const vowelShownSinceLastStop = { A: 0, E: 0, I: 0, O: 0, U: 0 };
             let forceConsonantsUntilStop = false;
+            if (forceCategoryModeOn) {
+                const baseWords = Array.isArray(currentFilteredWords) ? currentFilteredWords : [];
+                const prefiltered = baseWords.filter((w) => String(w || '').toUpperCase().startsWith(forceCategoryLetter));
+                forcePrefilterApplied = true;
+                callback(prefiltered);
+                newLexPeekSourceWords = prefiltered.slice();
+            }
 
             const getPhaseLabel = () => {
                 if (customModeOn) {
@@ -18235,7 +18243,7 @@ function setupFeatureListeners(feature, callback, options) {
                             : scrollStops.length === 2
                                 ? 'third'
                                 : 'anywhere';
-                    if (forceCategoryModeOn && resolvedKind === 'first') {
+                    if (forceCategoryModeOn && !forcePrefilterApplied && resolvedKind === 'first') {
                         // Force mode: first stop always resolves to the forced first letter only.
                         scrollStops.push({
                             kind: 'first',
@@ -18482,7 +18490,8 @@ function setupFeatureListeners(feature, callback, options) {
             if (customModeOn) {
                 setMessage(`Select 1-6 or ANY, then press SCROLL. ${(currentFilteredWords || []).length} words.`);
             } else if (forceCategoryModeOn) {
-                setMessage(`Force first letter ON: ${String(forceCategoryId).toUpperCase()} · ${forceCategoryLetter}. ${(currentFilteredWords || []).length} words.`);
+                const shownCount = Array.isArray(newLexPeekSourceWords) ? newLexPeekSourceWords.length : (currentFilteredWords || []).length;
+                setMessage(`Force first letter ON: ${String(forceCategoryId).toUpperCase()} · ${forceCategoryLetter}. Prefiltered to ${shownCount} words.`);
             } else {
                 setMessage(`${(currentFilteredWords || []).length} words.`);
             }
