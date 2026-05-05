@@ -8555,6 +8555,19 @@ function wordPassesScrollStop(word, stop, context) {
     const digitBuffer = context && context.digitBuffer > 0 ? 1 : 0;
     if (stop.kind === 'first') {
         if (w.length < 1) return false;
+        const forceLockedFirst = !!stop.lockedByForce;
+        if (forceLockedFirst) {
+            const forced = String(stop.batchStr || '').toUpperCase().slice(0, 1);
+            if (!forced || w[0] !== forced) return false;
+            // Optional first-stop digit in force mode should count against the
+            // full displayed first batch (e.g. TUDF), while still locking first
+            // letter to the forced value.
+            const forceBatch = String(stop.forceBatchStr || stop.batchStr || '').toUpperCase();
+            const others = scrollCountOthersInWord(w, forceBatch, forced, [0]);
+            if (!hasDigit) return true;
+            const observed = exactMode ? (others + 1) : others;
+            return scrollObservedMatchesDigit(observed, digit, digitBuffer);
+        }
         for (const L of letters) {
             if (w[0] !== L) continue;
             const others = scrollCountOthersInWord(w, batch, L, [0]);
@@ -18224,7 +18237,14 @@ function setupFeatureListeners(feature, callback, options) {
                                 : 'anywhere';
                     if (forceCategoryModeOn && resolvedKind === 'first') {
                         // Force mode: first stop always resolves to the forced first letter only.
-                        scrollStops.push({ kind: 'first', batchStr: forceCategoryLetter, digit: null, lockedByForce: true });
+                        scrollStops.push({
+                            kind: 'first',
+                            batchStr: forceCategoryLetter,
+                            // Keep original displayed first batch for optional first-stop digit counting.
+                            forceBatchStr: currentBatchStr,
+                            digit: null,
+                            lockedByForce: true
+                        });
                     } else {
                         scrollStops.push({ kind: resolvedKind, batchStr: currentBatchStr, digit: null });
                     }
