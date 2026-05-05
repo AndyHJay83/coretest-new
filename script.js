@@ -181,6 +181,8 @@ const WORKFLOW_DEBUG_SNAPSHOT_MAX_WORDS = 1500;
 let pendingWorkflowStepPayload = null;
 /** Latest ranking/confidence snapshot from display layer (for REPORT payload merge). */
 let latestConfidenceSnapshot = null;
+/** Monotonic token to prevent stale async displayResults() from overwriting newer renders. */
+let displayResultsRenderVersion = 0;
 
 /** Optional per-word manual boosts/overrides for confidence ranking (uppercase key). */
 const CONFIDENCE_WORD_SCORE_OVERRIDES = {};
@@ -18645,6 +18647,7 @@ function setupFeatureListeners(feature, callback, options) {
 
 // Function to display results
 async function displayResults(words, displayOpts) {
+    const renderVersion = ++displayResultsRenderVersion;
     const opts = displayOpts && typeof displayOpts === 'object' ? displayOpts : {};
     const resultsContainer = document.getElementById('results');
     if (!resultsContainer) {
@@ -18654,15 +18657,15 @@ async function displayResults(words, displayOpts) {
     
     console.log('Displaying results in container:', resultsContainer);
     
-    // Clear the results container
-    resultsContainer.innerHTML = '';
-    
     // Capture SCRABBLE1 exact-match set for highlighting (used in list build and load-more)
     const exactHighlightSet = new Set(scrabble1ExactMatchSet);
     const getDisplayWord = (word) => (engineDisplayMap && engineDisplayMap.get(word)) || word;
     const confidenceView = await buildConfidenceView(words, {
         secondaryCompare: opts.confidenceSecondaryCompare
     });
+    if (renderVersion !== displayResultsRenderVersion) return;
+    // Clear only after async confidence work so stale renders can't blank newer output.
+    resultsContainer.innerHTML = '';
     words = confidenceView.rankedWords;
     
     if (words.length === 0) {
