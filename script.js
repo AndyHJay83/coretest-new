@@ -18240,11 +18240,15 @@ function setupFeatureListeners(feature, callback, options) {
                     setMessage('Enter at least one digit for unanswered stops.', true);
                     return;
                 }
+                // Optional first-stop count in force mode:
+                // allow assigning a digit to the locked forced first stop only while
+                // that first stop is the current stage (before additional stops exist).
+                const allowForceFirstDigitNow = forceCategoryModeOn && scrollStops.length === 1;
                 const unansweredIdxs = [];
                 for (let i = 0; i < scrollStops.length; i++) {
                     const stop = scrollStops[i] || {};
                     const forceLockedFirst = !!(stop.lockedByForce || (forceCategoryModeOn && stop.kind === 'first' && stop.batchStr === forceCategoryLetter));
-                    if (forceLockedFirst) continue;
+                    if (forceLockedFirst && !allowForceFirstDigitNow) continue;
                     if (stop.digit === null || stop.digit === undefined || Number.isNaN(stop.digit)) {
                         unansweredIdxs.push(i);
                     }
