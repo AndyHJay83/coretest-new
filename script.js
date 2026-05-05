@@ -18283,6 +18283,10 @@ function setupFeatureListeners(feature, callback, options) {
                     const d = parseInt(raw[i], 10);
                     scrollStops[stopIdx].digit = Number.isNaN(d) ? null : d;
                 }
+                if (allowForceFirstDigitNow && scrollStops[0] && scrollStops[0].kind === 'first' && !!scrollStops[0].lockedByForce && scrollStops[0].digit != null && !Number.isNaN(scrollStops[0].digit)) {
+                    const dbgBatch = String(scrollStops[0].forceBatchStr || scrollStops[0].batchStr || '').toUpperCase();
+                    setMessage(`Force first digit applied at batch ${dbgBatch}: ${scrollStops[0].digit}`);
+                }
                 if (answerInput) answerInput.value = '';
                 applyScrollFilter();
             };
@@ -18340,13 +18344,24 @@ function setupFeatureListeners(feature, callback, options) {
                     const stopsSnapshot = scrollStops.map((s) => {
                         const o = { kind: s.kind, batchStr: s.batchStr, digit: s.digit == null || Number.isNaN(s.digit) ? null : s.digit };
                         if (s.kind === 'position' && s.position != null) o.position = s.position;
+                        if (s.lockedByForce) o.lockedByForce = true;
+                        if (typeof s.forceBatchStr === 'string' && s.forceBatchStr) o.forceBatchStr = s.forceBatchStr;
                         return o;
                     });
+                    const forceFirstStopDebug = scrollStops.find((s) => s && s.kind === 'first' && (s.lockedByForce || (forceCategoryModeOn && s.batchStr === forceCategoryLetter)));
                     pendingWorkflowStepPayload = {
                         feature: 'new',
                         answerCountMode: newAnswerCountMode,
                         digitBuffer: !!newDigitBuffer,
                         stops: stopsSnapshot,
+                        forceFirstStopDebug: forceFirstStopDebug
+                            ? {
+                                forcedLetter: String(forceFirstStopDebug.batchStr || '').toUpperCase().slice(0, 1) || null,
+                                forceBatchStr: String(forceFirstStopDebug.forceBatchStr || forceFirstStopDebug.batchStr || '').toUpperCase() || null,
+                                digit: forceFirstStopDebug.digit == null || Number.isNaN(forceFirstStopDebug.digit) ? null : forceFirstStopDebug.digit,
+                                lockedByForce: !!forceFirstStopDebug.lockedByForce
+                            }
+                            : null,
                         newLexPeekUsed,
                         newLexPeekPosition: newLexPeekUsed ? (newLexPeekPosition >= 0 ? newLexPeekPosition + 1 : null) : null,
                         newLexPeekInput: newLexPeekUsed ? newLexPeekLastInput : '',
