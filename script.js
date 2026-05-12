@@ -1259,7 +1259,8 @@ function snapshotNewSettingsForReport(appSettingsRef) {
     const newForceCategoryMode = !!a.newForceCategoryMode;
     const newForceCategory = (a.newForceCategory === 'colours') ? 'colours' : 'colours';
     const newForceCategoryLetterRaw = String(a.newForceCategoryLetter || '').toUpperCase();
-    const newForceCategoryLetter = /^[A-Z]$/.test(newForceCategoryLetterRaw) ? newForceCategoryLetterRaw : 'W';
+    const newForceCategoryLetter = newForceCategoryLetterRaw === 'ANY' ? 'ANY'
+        : /^[A-Z]$/.test(newForceCategoryLetterRaw) ? newForceCategoryLetterRaw : 'W';
     const newLexFirstLetterMode = !!a.newLexFirstLetterMode;
     return {
         letterMode,
@@ -8375,6 +8376,7 @@ function getNewForceCategorySet(categoryId) {
 function normalizeNewForceCategoryLetter(letterRaw, categoryId) {
     const set = getNewForceCategorySet(categoryId);
     const letter = String(letterRaw || '').toUpperCase();
+    if (letter === 'ANY') return 'ANY';
     if (/^[A-Z]$/.test(letter) && set.has(letter)) return letter;
     if (set.has('W')) return 'W';
     const first = Array.from(set)[0];
@@ -8383,28 +8385,31 @@ function normalizeNewForceCategoryLetter(letterRaw, categoryId) {
 
 function applyForcedFirstLetterBatch(baseBatch, forcedLetter, categoryId, k) {
     const categorySet = getNewForceCategorySet(categoryId);
-    const allowedOthers = ALPHABET_LETTERS.filter((ch) => !categorySet.has(ch) && ch !== forcedLetter);
+    const actualForced = forcedLetter === 'ANY'
+        ? Array.from(categorySet)[((k % categorySet.size) + categorySet.size) % categorySet.size]
+        : forcedLetter;
+    const allowedOthers = ALPHABET_LETTERS.filter((ch) => !categorySet.has(ch) && ch !== actualForced);
     const allowedOtherSet = new Set(allowedOthers);
     const uniqueBase = [];
     (Array.isArray(baseBatch) ? baseBatch : []).forEach((ch) => {
         const up = String(ch || '').toUpperCase();
         if (!/^[A-Z]$/.test(up)) return;
-        if (up === forcedLetter) return;
+        if (up === actualForced) return;
         if (!allowedOtherSet.has(up)) return;
         if (!uniqueBase.includes(up)) uniqueBase.push(up);
     });
     const others = [];
     [...uniqueBase, ...allowedOthers].forEach((ch) => {
-        if (ch !== forcedLetter && !others.includes(ch)) others.push(ch);
+        if (ch !== actualForced && !others.includes(ch)) others.push(ch);
     });
     while (others.length < 3) {
-        const fallback = ALPHABET_LETTERS.find((ch) => ch !== forcedLetter && !others.includes(ch));
+        const fallback = ALPHABET_LETTERS.find((ch) => ch !== actualForced && !others.includes(ch));
         if (!fallback) break;
         others.push(fallback);
     }
     const finalBatch = others.slice(0, 3);
     const insertAt = Math.max(0, Math.min(3, ((k % 4) + 4) % 4));
-    finalBatch.splice(insertAt, 0, forcedLetter);
+    finalBatch.splice(insertAt, 0, actualForced);
     return finalBatch.slice(0, 4);
 }
 
@@ -17990,10 +17995,12 @@ function setupFeatureListeners(feature, callback, options) {
                 forceCategoryId
             );
             const newLexFirstLetterModeOn = !!(appSettings && appSettings.newLexFirstLetterMode);
+            const forceIsAnyMode = forceCategoryModeOn && forceCategoryLetter === 'ANY';
+            let forceResolvedLetter = forceIsAnyMode ? null : forceCategoryLetter;
             let forcePrefilterApplied = false;
             const vowelShownSinceLastStop = { A: 0, E: 0, I: 0, O: 0, U: 0 };
             let forceConsonantsUntilStop = false;
-            if (forceCategoryModeOn) {
+            if (forceCategoryModeOn && !forceIsAnyMode) {
                 const baseWords = Array.isArray(currentFilteredWords) ? currentFilteredWords : [];
                 const prefiltered = baseWords.filter((w) => String(w || '').toUpperCase().startsWith(forceCategoryLetter));
                 forcePrefilterApplied = true;
@@ -18245,12 +18252,22 @@ function setupFeatureListeners(feature, callback, options) {
                             : scrollStops.length === 2
                                 ? 'third'
                                 : 'anywhere';
-                    if (forceCategoryModeOn && !forcePrefilterApplied && resolvedKind === 'first') {
-                        // Force mode: first stop always resolves to the forced first letter only.
+                    if (forceCategoryModeOn && resolvedKind === 'first' && (forceIsAnyMode || !forcePrefilterApplied)) {
+                        let resolvedForceLetter = forceResolvedLetter;
+                        if (forceIsAnyMode) {
+                            const catSet = getNewForceCategorySet(forceCategoryId);
+                            const batchLetters = String(currentBatchStr || '').toUpperCase().split('');
+                            resolvedForceLetter = batchLetters.find((ch) => catSet.has(ch)) || batchLetters[0] || 'A';
+                            forceResolvedLetter = resolvedForceLetter;
+                            const baseWords = Array.isArray(currentFilteredWords) ? currentFilteredWords : [];
+                            const prefiltered = baseWords.filter((w) => String(w || '').toUpperCase().startsWith(resolvedForceLetter));
+                            forcePrefilterApplied = true;
+                            callback(prefiltered);
+                            newLexPeekSourceWords = prefiltered.slice();
+                        }
                         scrollStops.push({
                             kind: 'first',
-                            batchStr: forceCategoryLetter,
-                            // Keep original displayed first batch for optional first-stop digit counting.
+                            batchStr: resolvedForceLetter,
                             forceBatchStr: currentBatchStr,
                             digit: null,
                             lockedByForce: true
@@ -18369,7 +18386,8 @@ function setupFeatureListeners(feature, callback, options) {
                                 forcedLetter: String(forceFirstStopDebug.batchStr || '').toUpperCase().slice(0, 1) || null,
                                 forceBatchStr: String(forceFirstStopDebug.forceBatchStr || forceFirstStopDebug.batchStr || '').toUpperCase() || null,
                                 digit: forceFirstStopDebug.digit == null || Number.isNaN(forceFirstStopDebug.digit) ? null : forceFirstStopDebug.digit,
-                                lockedByForce: !!forceFirstStopDebug.lockedByForce
+                                lockedByForce: !!forceFirstStopDebug.lockedByForce,
+                                anyMode: !!forceIsAnyMode
                             }
                             : null,
                         newLexPeekUsed,
@@ -18493,7 +18511,9 @@ function setupFeatureListeners(feature, callback, options) {
                 setMessage(`Select 1-6 or ANY, then press SCROLL. ${(currentFilteredWords || []).length} words.`);
             } else if (forceCategoryModeOn) {
                 const shownCount = Array.isArray(newLexPeekSourceWords) ? newLexPeekSourceWords.length : (currentFilteredWords || []).length;
-                setMessage(`Force first letter ON: ${String(forceCategoryId).toUpperCase()} · ${forceCategoryLetter}. Prefiltered to ${shownCount} words.`);
+                setMessage(forceIsAnyMode
+                    ? `Force first letter ON: ${String(forceCategoryId).toUpperCase()} · ANY (cycles through category). ${shownCount} words.`
+                    : `Force first letter ON: ${String(forceCategoryId).toUpperCase()} · ${forceCategoryLetter}. Prefiltered to ${shownCount} words.`);
             } else {
                 setMessage(`${(currentFilteredWords || []).length} words.`);
             }
