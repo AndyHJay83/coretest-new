@@ -5715,6 +5715,39 @@ button.close-info-button.workflow-report-close {
     }
 }
 
+.piano-forte-mic-block {
+    margin: 16px auto 0;
+    padding: 12px 14px;
+    max-width: 440px;
+    border: 1px solid #c8d4c8;
+    border-radius: 10px;
+    background: #fafcfa;
+}
+
+.piano-forte-mic-help {
+    font-size: 12px;
+    color: #444;
+    text-align: center;
+    margin: 0 0 10px;
+    line-height: 1.45;
+}
+
+.piano-forte-mic-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 6px;
+}
+
+.piano-forte-mic-status {
+    font-size: 13px;
+    text-align: center;
+    margin: 10px 0 0;
+    min-height: 1.3em;
+    color: #333;
+}
+
 .piano-piano-row {
     display: flex;
     justify-content: center;

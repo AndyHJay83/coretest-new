@@ -17,13 +17,14 @@
     <meta http-equiv="Expires" content="0">
     <title>The Core</title>
     <link rel="manifest" href="manifest.json?v=2">
-    <link rel="stylesheet" href="styles.css?v=38">
+    <link rel="stylesheet" href="styles.css?v=39">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script src="piano-forte-mic.js?v=1"></script>
 </head>
 <body>
     <div class="container">
@@ -785,6 +786,19 @@
                     </div>
                     <div id="pianoForteStringDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20; letter-spacing: 8px;">
                         <span id="pianoForteString">-</span>
+                    </div>
+                    <div class="piano-forte-mic-block">
+                        <p class="piano-forte-mic-help">Optional: microphone. Play any <strong>2+ note chord</strong> to start, then separate notes (A–G in your range), then another chord to <strong>submit</strong>. Or use test buttons if you have no piano.</p>
+                        <div class="piano-forte-mic-row">
+                            <button type="button" id="pianoForteMicEnableBtn" class="secondary-btn">Enable microphone</button>
+                            <button type="button" id="pianoForteMicDisableBtn" class="secondary-btn" style="display:none;">Disable microphone</button>
+                            <button type="button" id="pianoForteMicResetStringBtn" class="secondary-btn">Reset string</button>
+                        </div>
+                        <div class="piano-forte-mic-row">
+                            <button type="button" id="pianoForteMicTestStartBtn" class="secondary-btn" title="Skip start chord">Test: begin capture</button>
+                            <button type="button" id="pianoForteMicTestEndBtn" class="secondary-btn" title="Submit as end chord">Test: end &amp; submit</button>
+                        </div>
+                        <p id="pianoForteMicStatus" class="piano-forte-mic-status" aria-live="polite">&nbsp;</p>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
                         <button id="pianoForteSubmitButton">SUBMIT</button>
@@ -1857,7 +1871,7 @@
         <div id="pianoForteInfo" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>PIANO FORTE</h3>
-                <p><strong>Piano Forte</strong><br>Select letters A-G that MUST be in the word. Selected letters must be present, and unselected letters must NOT be present. Click SUBMIT to filter, or NONE if none of the letters A-G are in the word.</p>
+                <p><strong>Piano Forte</strong><br>Select letters (in your Settings range) that MUST appear in the word, in order, with no extra letters from that range in between. Unselected letters in the range must NOT appear. SUBMIT filters; NONE excludes all range letters if none appear in the word.<br><br><strong>Microphone (optional):</strong> Enable the mic, play any <strong>two-or-more-note chord</strong> to start, then clearly separated single notes, then another chord to submit the string. <strong>Reset string</strong> clears the sequence without leaving capture. <strong>Test: begin capture</strong> skips the start chord for quiet testing; <strong>Test: end &amp; submit</strong> submits like a closing chord. Requires HTTPS or localhost and microphone permission.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>
@@ -2076,7 +2090,7 @@
     </div>
 
     <script src="muteBinaryFilter.js?v=1"></script>
-    <script src="script.js?v=32"></script>
+    <script src="script.js?v=33"></script>
     <div id="eyeTestChartOverlay" class="eye-test-chart-overlay" style="display:none;">
         <canvas id="eyeTestChartCanvas" width="600" height="820"></canvas>
         <div class="eye-test-chart-hint">Triple tap anywhere to close</div>

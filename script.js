@@ -7277,6 +7277,19 @@ function createPianoForteFeature() {
         <div id="pianoForteStringDisplay" style="display: flex; justify-content: center; align-items: center; min-height: 50px; margin-top: 20px; padding: 10px; font-size: 24px; font-weight: bold; color: #1B5E20; letter-spacing: 8px;">
             <span id="pianoForteString">-</span>
         </div>
+        <div class="piano-forte-mic-block">
+            <p class="piano-forte-mic-help">Optional: microphone. Play any <strong>2+ note chord</strong> to start, then separate notes (A–G in your range), then another chord to <strong>submit</strong>. Or use test buttons if you have no piano.</p>
+            <div class="piano-forte-mic-row">
+                <button type="button" id="pianoForteMicEnableBtn" class="secondary-btn">Enable microphone</button>
+                <button type="button" id="pianoForteMicDisableBtn" class="secondary-btn" style="display:none;">Disable microphone</button>
+                <button type="button" id="pianoForteMicResetStringBtn" class="secondary-btn">Reset string</button>
+            </div>
+            <div class="piano-forte-mic-row">
+                <button type="button" id="pianoForteMicTestStartBtn" class="secondary-btn" title="Skip start chord">Test: begin capture</button>
+                <button type="button" id="pianoForteMicTestEndBtn" class="secondary-btn" title="Submit as end chord">Test: end &amp; submit</button>
+            </div>
+            <p id="pianoForteMicStatus" class="piano-forte-mic-status" aria-live="polite">&nbsp;</p>
+        </div>
         <div style="display: flex; flex-direction: column; align-items: center; margin-top: 20px; gap: 10px;">
             <button id="pianoForteSubmitButton">SUBMIT</button>
             <button id="pianoForteNoneButton" class="none-button">NONE</button>
@@ -14327,32 +14340,65 @@ function setupFeatureListeners(feature, callback, options) {
             const skipBtn = document.getElementById('pianoForteSkipButton');
             const noneBtn = document.getElementById('pianoForteNoneButton');
             const stringDisplay = document.getElementById('pianoForteString');
-            let letterSequence = []; // Array to store the chronological sequence
+            let letterSequence = [];
+            let micHandle = null;
 
-            // Initialize display
-            if (stringDisplay) {
-                stringDisplay.textContent = '-';
+            function detachPianoForteMic() {
+                if (micHandle) {
+                    micHandle.detach();
+                    micHandle = null;
+                }
             }
+
+            function syncPianoForteDisplay() {
+                if (stringDisplay) {
+                    stringDisplay.textContent = letterSequence.length ? letterSequence.join('') : '-';
+                }
+            }
+
+            function performPianoForteSubmit() {
+                if (letterSequence.length === 0) {
+                    alert('Please select at least one letter');
+                    return;
+                }
+                detachPianoForteMic();
+                workflowState.pianoForteSelection = letterSequence;
+                const pianoForteLetters = getPianoForteLetters();
+                const pressedLetters = new Set(letterSequence);
+                const unpressedLetters = pianoForteLetters.filter(
+                    letter => !pressedLetters.has(letter)
+                );
+                pressedLetters.forEach(letter => {
+                    workflowState.confirmedLetters.add(letter);
+                });
+                unpressedLetters.forEach(letter => {
+                    workflowState.excludedLetters.add(letter);
+                });
+                console.log(`Piano Forte feature completed. Sequence: ${letterSequence.join('')}`);
+                logWorkflowState();
+                const filteredWords = filterWordsByPianoForte(currentFilteredWords, letterSequence);
+                callback(filteredWords);
+                const featureDiv = document.getElementById('pianoForteFeature');
+                featureDiv.classList.add('completed');
+                dispatchWorkflowFeatureComplete(featureDiv, 'pianoForte', {
+                    userInputSummary: `Step completed (pianoForte)`,
+                    userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
+                });
+            }
+
+            syncPianoForteDisplay();
 
             yesBtns.forEach(btn => {
                 btn.classList.remove('active');
                 btn.onclick = () => {
                     const letter = btn.dataset.letter;
-                    // Add letter to sequence (can be pressed multiple times)
                     letterSequence.push(letter);
-                    
-                    // Update display
-                    if (stringDisplay) {
-                        stringDisplay.textContent = letterSequence.join('');
-                    }
-                    
-                    // Visual feedback - briefly highlight the button
+                    syncPianoForteDisplay();
                     btn.classList.add('active');
                     setTimeout(() => {
                         btn.classList.remove('active');
                     }, 200);
                 };
-                // Touch event for mobile
                 btn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
                     btn.onclick();
@@ -14361,68 +14407,29 @@ function setupFeatureListeners(feature, callback, options) {
 
             if (submitBtn) {
                 submitBtn.onclick = () => {
-                    if (letterSequence.length === 0) {
-                        alert('Please select at least one letter');
-                        return;
-                    }
-                    
-                    // Update workflow state with Piano Forte selections
-                    workflowState.pianoForteSelection = letterSequence;
-                    
-                    // Get unique pressed letters and unpressed letters in the range
-                    const pianoForteLetters = getPianoForteLetters();
-                    const pressedLetters = new Set(letterSequence);
-                    const unpressedLetters = pianoForteLetters.filter(
-                        letter => !pressedLetters.has(letter)
-                    );
-                    
-                    // Add pressed letters to confirmed letters
-                    pressedLetters.forEach(letter => {
-                        workflowState.confirmedLetters.add(letter);
-                    });
-                    
-                    // Add unpressed letters to excluded letters
-                    unpressedLetters.forEach(letter => {
-                        workflowState.excludedLetters.add(letter);
-                    });
-                    
-                    console.log(`Piano Forte feature completed. Sequence: ${letterSequence.join('')}`);
-                    logWorkflowState();
-                    
-                    const filteredWords = filterWordsByPianoForte(currentFilteredWords, letterSequence);
-                    callback(filteredWords);
-                    const featureDiv = document.getElementById('pianoForteFeature');
-                    featureDiv.classList.add('completed');
-                    dispatchWorkflowFeatureComplete(featureDiv, 'pianoForte', {
-                        userInputSummary: `Step completed (pianoForte)`,
-                        userInput: { note: 'Add field-level detail in setupFeatureListeners if needed' }
-                    });
+                    performPianoForteSubmit();
                 };
                 submitBtn.addEventListener('touchstart', function(e) {
                     e.preventDefault();
                     submitBtn.onclick();
                 }, { passive: false });
             }
-            
+
             if (noneBtn) {
                 noneBtn.onclick = () => {
-                    // Update workflow state - exclude all Piano Forte letters in the range
+                    detachPianoForteMic();
                     workflowState.pianoForteSelection = [];
                     const pianoForteLetters = getPianoForteLetters();
                     pianoForteLetters.forEach(letter => {
                         workflowState.excludedLetters.add(letter);
                     });
-                    
                     console.log(`Piano Forte feature completed. NONE selected - all letters excluded`);
                     logWorkflowState();
-                    
-                    // Filter out words containing any letter in the range
                     const filteredWords = currentFilteredWords.filter(word => {
-                        return !pianoForteLetters.some(letter => 
+                        return !pianoForteLetters.some(letter =>
                             word.toUpperCase().includes(letter)
                         );
                     });
-                    
                     callback(filteredWords);
                     const featureDiv = document.getElementById('pianoForteFeature');
                     featureDiv.classList.add('completed');
@@ -14436,9 +14443,10 @@ function setupFeatureListeners(feature, callback, options) {
                     noneBtn.onclick();
                 }, { passive: false });
             }
-            
+
             if (skipBtn) {
                 skipBtn.onclick = () => {
+                    detachPianoForteMic();
                     callback(currentFilteredWords);
                     const featureDiv = document.getElementById('pianoForteFeature');
                     featureDiv.classList.add('completed');
@@ -14451,6 +14459,25 @@ function setupFeatureListeners(feature, callback, options) {
                     e.preventDefault();
                     skipBtn.onclick();
                 }, { passive: false });
+            }
+
+            if (typeof PianoForteMic !== 'undefined' && PianoForteMic.attach) {
+                micHandle = PianoForteMic.attach({
+                    allowedLetters: getPianoForteLetters(),
+                    statusEl: document.getElementById('pianoForteMicStatus'),
+                    enableBtn: document.getElementById('pianoForteMicEnableBtn'),
+                    disableBtn: document.getElementById('pianoForteMicDisableBtn'),
+                    resetStringBtn: document.getElementById('pianoForteMicResetStringBtn'),
+                    testStartBtn: document.getElementById('pianoForteMicTestStartBtn'),
+                    testEndBtn: document.getElementById('pianoForteMicTestEndBtn'),
+                    getSequence: () => letterSequence,
+                    setSequence: (arr) => {
+                        letterSequence = arr.slice();
+                    },
+                    updateDisplay: syncPianoForteDisplay,
+                    onEndChordSubmit: performPianoForteSubmit,
+                    onError: (msg) => alert(msg)
+                });
             }
             break;
         }
