@@ -194,7 +194,7 @@
       "name": "PRESENT",
       "displayName": "PRESENT",
       "requiresParam": true,
-      "analyzeFunction": \"return [{ param: 'Requires letters input (all must be present)', wordsLeft: wordlist.length, percentFiltered: 0 }];\"
+      "analyzeFunction": "return [{ param: 'Requires letters input (all must be present)', wordsLeft: wordlist.length, percentFiltered: 0 }];"
     },
     {
       "id": "abcde",
