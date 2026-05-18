@@ -2130,6 +2130,8 @@ const DEFAULT_SETTINGS = {
     newAnswerDigitBuffer: false,
     /** Optional: thought-of word (A–Z) recorded on each workflow run for REPORT target tracing when set before PERFORM */
     workflowDebugTargetWord: '',
+    /** CLICK SYSTEM: 'reduction' = green most % removed; 'likelihood' = swap green/red (green most likely). */
+    clickSystemHighlightMode: 'reduction',
     // Confidence layer: rank remaining words by thinkability score to surface likely thought-of options.
     confidenceLayerEnabled: true,
     confidenceHighThreshold: 0.75,
@@ -7954,7 +7956,14 @@ function createClickSystemFeature() {
     div.id = 'clickSystemFeature';
     div.className = 'feature-section';
     div.innerHTML = `
-        <h2 class="feature-title">CLICK SYSTEM</h2>
+        <div class="click-system-header">
+            <button type="button" id="clickSystemEffLegend" class="click-system-eff-legend" aria-pressed="false">
+                <span class="click-system-eff-legend-mode">% reduction</span>
+                <span class="click-system-eff-legend-line"><span class="click-system-eff-legend-green">GREEN</span> <em>most</em> <span class="click-system-eff-legend-verb">reduced</span></span>
+                <span class="click-system-eff-legend-line"><span class="click-system-eff-legend-red">RED</span> <em>least</em> <span class="click-system-eff-legend-verb">reduced</span></span>
+            </button>
+            <h2 class="feature-title click-system-feature-title">CLICK SYSTEM</h2>
+        </div>
         <div id="clickSystemPart1" class="click-system-part">
             <p class="click-system-prompt">Length of word</p>
             <div class="click-system-choice-grid">
@@ -10345,9 +10354,24 @@ function clickSystemPercentRemovedExact(words, predicate) {
     return { exact, left, total: list.length };
 }
 
-/** Numeric % removed (for comparisons). */
+/** Numeric % removed (for comparisons and tier ranking). */
 function clickSystemPercentRemoved(words, predicate) {
     return clickSystemPercentRemovedExact(words, predicate).exact;
+}
+
+/** % of current list that would remain if this choice is taken (100 − % removed). */
+function clickSystemPercentLikelihood(words, predicate) {
+    const { exact, total } = clickSystemPercentRemovedExact(words, predicate);
+    if (total === 0) return 0;
+    return 100 - exact;
+}
+
+function clickSystemFormatPctDisplay(value, options) {
+    const allowHundred = !!(options && options.allowHundred);
+    if (allowHundred && value >= 99.95) return '100%';
+    if (!allowHundred && value >= 99.95) return '99.9%';
+    if (value >= 98) return `${(Math.round(value * 10) / 10).toFixed(1)}%`;
+    return `${Math.round(value)}%`;
 }
 
 /** Whether this choice would remove every word from the current list. */
@@ -10363,20 +10387,129 @@ function clickSystemChoiceEmptiesList(words, predicate) {
 function clickSystemFormatPctRemoved(words, predicate) {
     const { exact, total } = clickSystemPercentRemovedExact(words, predicate);
     if (total === 0) return '0%';
-    if (exact >= 99.95) return '99.9%';
-    if (exact >= 98) return `${(Math.round(exact * 10) / 10).toFixed(1)}%`;
-    return `${Math.round(exact)}%`;
+    return clickSystemFormatPctDisplay(exact, { allowHundred: false });
+}
+
+function clickSystemFormatPctLikelihood(words, predicate) {
+    const { exact, total } = clickSystemPercentRemovedExact(words, predicate);
+    if (total === 0) return '0%';
+    const likelihood = 100 - exact;
+    return clickSystemFormatPctDisplay(likelihood, { allowHundred: true });
 }
 
 function clickSystemFormatPct(words, predicate) {
+    if (clickSystemIsLikelihoodMode()) return clickSystemFormatPctLikelihood(words, predicate);
     return clickSystemFormatPctRemoved(words, predicate);
 }
 
-function clickSystemSetChoicePercents(root, words, buttonSelector, getPredicate) {
+const CLICK_SYSTEM_EFFICIENCY_CLASSES = [
+    'click-system-eff--best',
+    'click-system-eff--mid',
+    'click-system-eff--worst',
+    'click-system-eff--white'
+];
+
+function clickSystemClearEfficiencyClass(btn) {
+    if (!btn) return;
+    CLICK_SYSTEM_EFFICIENCY_CLASSES.forEach((c) => btn.classList.remove(c));
+}
+
+function clickSystemIsLikelihoodMode() {
+    return !!(appSettings && appSettings.clickSystemHighlightMode === 'likelihood');
+}
+
+/** Maps logical tier to CSS class; swaps best/worst when in likelihood mode. */
+function clickSystemEffTierClass(tier) {
+    if (tier === 'best') {
+        return clickSystemIsLikelihoodMode() ? 'click-system-eff--worst' : 'click-system-eff--best';
+    }
+    if (tier === 'worst') {
+        return clickSystemIsLikelihoodMode() ? 'click-system-eff--best' : 'click-system-eff--worst';
+    }
+    if (tier === 'mid') return 'click-system-eff--mid';
+    return '';
+}
+
+function clickSystemUpdateEffLegend(el) {
+    if (!el) return;
+    const likelihood = clickSystemIsLikelihoodMode();
+    const modeEl = el.querySelector('.click-system-eff-legend-mode');
+    const verbEls = el.querySelectorAll('.click-system-eff-legend-verb');
+    if (modeEl) modeEl.textContent = likelihood ? '% likelihood' : '% reduction';
+    verbEls.forEach((v) => {
+        v.textContent = likelihood ? 'likely' : 'reduced';
+    });
+    el.setAttribute('aria-pressed', likelihood ? 'true' : 'false');
+    el.setAttribute(
+        'aria-label',
+        likelihood
+            ? 'Likelihood mode. Tap to switch to percent reduction.'
+            : 'Percent reduction mode. Tap to switch to likelihood.'
+    );
+}
+
+function clickSystemToggleHighlightMode() {
+    appSettings.clickSystemHighlightMode = clickSystemIsLikelihoodMode() ? 'reduction' : 'likelihood';
+    saveAppSettings();
+}
+
+/**
+ * @param {{ btn: HTMLElement, exact: number }[]} entries — active choices only
+ * @param {'three-way'|'four-way'|'letters-ranked'} scheme
+ */
+function clickSystemApplyEfficiencyTiers(entries, scheme) {
+    const active = entries.filter((e) => e.btn && !e.btn.disabled);
+    if (active.length === 0) return;
+
+    const max = Math.max(...active.map((e) => e.exact));
+    const min = Math.min(...active.map((e) => e.exact));
+
+    if (scheme === 'three-way' || scheme === 'four-way') {
+        if (max === min) {
+            const tieTier = clickSystemIsLikelihoodMode() ? 'worst' : 'best';
+            active.forEach((e) => e.btn.classList.add(clickSystemEffTierClass(tieTier)));
+            return;
+        }
+        active.forEach((e) => {
+            if (e.exact === max) e.btn.classList.add(clickSystemEffTierClass('best'));
+            else if (e.exact === min) e.btn.classList.add(clickSystemEffTierClass('worst'));
+            else e.btn.classList.add(clickSystemEffTierClass('mid'));
+        });
+        return;
+    }
+
+    if (scheme === 'letters-ranked') {
+        const sorted = [...active].sort((a, b) => b.exact - a.exact);
+        const n = sorted.length;
+        if (n === 1) {
+            sorted[0].btn.classList.add(clickSystemEffTierClass('best'));
+            return;
+        }
+        const topThreshold = sorted[Math.min(2, n - 1)].exact;
+        const bottomThreshold = sorted[Math.max(0, n - 3)].exact;
+        if (topThreshold === bottomThreshold) {
+            const tieTier = clickSystemIsLikelihoodMode() ? 'worst' : 'best';
+            active.forEach((e) => e.btn.classList.add(clickSystemEffTierClass(tieTier)));
+            return;
+        }
+        active.forEach((e) => {
+            const isTop = e.exact >= topThreshold;
+            const isBottom = e.exact <= bottomThreshold;
+            if (isTop && isBottom) e.btn.classList.add(clickSystemEffTierClass('mid'));
+            else if (isTop) e.btn.classList.add(clickSystemEffTierClass('best'));
+            else if (isBottom) e.btn.classList.add(clickSystemEffTierClass('worst'));
+            else e.btn.classList.add(clickSystemEffTierClass('mid'));
+        });
+    }
+}
+
+function clickSystemSetChoicePercents(root, words, buttonSelector, getPredicate, efficiencyScheme) {
     if (!root) return;
     const buttons = root.querySelectorAll(buttonSelector);
+    const tierEntries = [];
     buttons.forEach((btn) => {
         const pctEl = btn.querySelector('.click-system-pct');
+        clickSystemClearEfficiencyClass(btn);
         btn.disabled = false;
         btn.classList.remove('click-system-choice-btn--disabled');
         const pred = getPredicate(btn);
@@ -10391,7 +10524,9 @@ function clickSystemSetChoicePercents(root, words, buttonSelector, getPredicate)
             return;
         }
         if (pctEl) pctEl.textContent = clickSystemFormatPct(words, pred);
+        tierEntries.push({ btn, exact: clickSystemPercentRemoved(words, pred) });
     });
+    if (efficiencyScheme) clickSystemApplyEfficiencyTiers(tierEntries, efficiencyScheme);
 }
 
 // --- S/M/L (Length) Filter Logic ---
@@ -17598,6 +17733,7 @@ function setupFeatureListeners(feature, callback, options) {
             const part3 = document.getElementById('clickSystemPart3');
             const part3Letters = document.getElementById('clickSystemPart3Letters');
             let lengthTier = null;
+            let clickSystemCurrentPart = 1;
             const snapshotWords = (list) => [...(Array.isArray(list) ? list : [])];
             let wordsBeforeClickSystem = snapshotWords(currentFilteredWords);
             let wordsAfterLength = snapshotWords(currentFilteredWords);
@@ -17609,15 +17745,20 @@ function setupFeatureListeners(feature, callback, options) {
                 el.addEventListener('touchstart', (e) => { e.preventDefault(); fn(); }, { passive: false });
             };
 
-            const showPart = (n) => {
-                if (part1) part1.style.display = n === 1 ? 'block' : 'none';
-                if (part2) part2.style.display = n === 2 ? 'block' : 'none';
-                if (part3) part3.style.display = n === 3 ? 'block' : 'none';
-                if (part3Letters) part3Letters.style.display = n === 4 ? 'block' : 'none';
+            const refreshClickSystemPercentsForPart = (n) => {
                 if (n === 1) refreshLengthPercents();
                 else if (n === 2) refreshPositionPercents();
                 else if (n === 3) refreshShapePercents();
                 else if (n === 4) refreshLetterPercents();
+            };
+
+            const showPart = (n) => {
+                clickSystemCurrentPart = n;
+                if (part1) part1.style.display = n === 1 ? 'block' : 'none';
+                if (part2) part2.style.display = n === 2 ? 'block' : 'none';
+                if (part3) part3.style.display = n === 3 ? 'block' : 'none';
+                if (part3Letters) part3Letters.style.display = n === 4 ? 'block' : 'none';
+                refreshClickSystemPercentsForPart(n);
             };
 
             const complete = (summary, userInput) => {
@@ -17641,7 +17782,7 @@ function setupFeatureListeners(feature, callback, options) {
                 clickSystemSetChoicePercents(part1, words, '[data-length]', (btn) => {
                     const tier = btn.getAttribute('data-length');
                     return (w) => clickSystemLengthInTier(clickSystemWordLength(w), tier);
-                });
+                }, 'three-way');
             };
 
             const refreshPositionPercents = () => {
@@ -17650,7 +17791,7 @@ function setupFeatureListeners(feature, callback, options) {
                 clickSystemSetChoicePercents(part2, words, '[data-position]', (btn) => {
                     const posKey = btn.getAttribute('data-position');
                     return (w) => clickSystemWordMatchesPosition(w, lengthTier, posKey);
-                });
+                }, 'four-way');
             };
 
             const refreshShapePercents = () => {
@@ -17659,21 +17800,27 @@ function setupFeatureListeners(feature, callback, options) {
                 clickSystemSetChoicePercents(part3, words, '[data-shape]:not([data-shape="az"])', (btn) => {
                     const shape = btn.getAttribute('data-shape');
                     return (w) => clickSystemLetterMatchesShapeCategory(clickSystemLetterAtClick(w), shape);
-                });
+                }, 'three-way');
                 const azBtn = part3.querySelector('[data-shape="az"]');
+                if (azBtn) {
+                    clickSystemClearEfficiencyClass(azBtn);
+                    azBtn.classList.add('click-system-eff--white');
+                }
                 const azPct = azBtn && azBtn.querySelector('.click-system-pct');
                 if (azPct) {
-                    let bestExact = -1;
+                    let bestScore = -1;
                     let bestLabel = '0%';
                     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                    const likelihood = clickSystemIsLikelihoodMode();
                     for (let i = 0; i < letters.length; i++) {
                         const L = letters[i];
                         const pred = (w) => clickSystemLetterAtClick(w) === L;
                         if (clickSystemChoiceEmptiesList(words, pred)) continue;
-                        const exact = clickSystemPercentRemoved(words, pred);
-                        if (exact > bestExact) {
-                            bestExact = exact;
-                            bestLabel = clickSystemFormatPctRemoved(words, pred);
+                        const removed = clickSystemPercentRemoved(words, pred);
+                        const score = likelihood ? 100 - removed : removed;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestLabel = clickSystemFormatPct(words, pred);
                         }
                     }
                     azPct.textContent = bestLabel;
@@ -17686,7 +17833,7 @@ function setupFeatureListeners(feature, callback, options) {
                 clickSystemSetChoicePercents(part3Letters, words, '[data-letter]', (btn) => {
                     const letter = btn.getAttribute('data-letter');
                     return (w) => clickSystemLetterAtClick(w) === String(letter || '').toUpperCase();
-                });
+                }, 'letters-ranked');
             };
 
             const commitLengthStep = () => {
@@ -17723,8 +17870,18 @@ function setupFeatureListeners(feature, callback, options) {
                 complete(summary, userInput);
             };
 
+            const effLegend = document.getElementById('clickSystemEffLegend');
+            if (effLegend) {
+                clickSystemUpdateEffLegend(effLegend);
+                bindClickSystemTap(effLegend, () => {
+                    clickSystemToggleHighlightMode();
+                    clickSystemUpdateEffLegend(effLegend);
+                    refreshClickSystemPercentsForPart(clickSystemCurrentPart);
+                });
+            }
+
             showPart(1);
-            requestAnimationFrame(() => refreshLengthPercents());
+            requestAnimationFrame(() => refreshClickSystemPercentsForPart(1));
 
             if (part1) {
                 part1.querySelectorAll('[data-length]').forEach((btn) => {

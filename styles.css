@@ -5748,6 +5748,81 @@ button.close-info-button.workflow-report-close {
     color: #333;
 }
 
+.click-system-header {
+    position: relative;
+    margin-bottom: 16px;
+    padding-top: 3.25em;
+}
+
+#clickSystemFeature .click-system-feature-title {
+    margin-bottom: 0;
+    width: 100%;
+    text-align: center;
+}
+
+#clickSystemFeature .click-system-eff-legend {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 2;
+    margin: 0;
+    padding: 4px 6px;
+    font-size: 0.72em;
+    line-height: 1.35;
+    color: #111 !important;
+    text-align: right;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 6px;
+    box-shadow: none !important;
+    cursor: pointer;
+    font-weight: 500;
+    text-transform: none;
+    min-width: 0;
+    max-width: min(11rem, 42vw);
+    -webkit-tap-highlight-color: transparent;
+}
+
+#clickSystemFeature .click-system-eff-legend:hover {
+    background: rgba(0, 0, 0, 0.05) !important;
+    transform: none;
+}
+
+#clickSystemFeature .click-system-eff-legend:active {
+    background: rgba(0, 0, 0, 0.08) !important;
+}
+
+.click-system-eff-legend-mode {
+    display: block;
+}
+
+.click-system-eff-legend-line {
+    display: block;
+}
+
+#clickSystemFeature .click-system-eff-legend-mode,
+#clickSystemFeature .click-system-eff-legend-verb,
+#clickSystemFeature .click-system-eff-legend em {
+    color: #111 !important;
+}
+
+.click-system-eff-legend em {
+    font-style: italic;
+    font-weight: 500;
+}
+
+#clickSystemFeature .click-system-eff-legend-green {
+    color: #1B5E20 !important;
+    font-weight: 700;
+    font-style: normal;
+}
+
+#clickSystemFeature .click-system-eff-legend-red {
+    color: #c62828 !important;
+    font-weight: 700;
+    font-style: normal;
+}
+
 .click-system-hint {
     text-align: center;
     font-size: 13px;
@@ -5829,6 +5904,49 @@ button.close-info-button.workflow-report-close {
 #clickSystemFeature .click-system-choice-btn:disabled .click-system-pct {
     color: #fff !important;
     opacity: 0.9;
+}
+
+#clickSystemFeature .click-system-choice-btn.click-system-eff--best:not(:disabled) {
+    background-color: #1B5E20 !important;
+    border: 2px solid #0d3d10 !important;
+}
+
+#clickSystemFeature .click-system-choice-btn.click-system-eff--mid:not(:disabled) {
+    background-color: #ef6c00 !important;
+    border: 2px solid #e65100 !important;
+}
+
+#clickSystemFeature .click-system-choice-btn.click-system-eff--worst:not(:disabled) {
+    background-color: #c62828 !important;
+    border: 2px solid #b71c1c !important;
+}
+
+#clickSystemFeature .click-system-choice-btn.click-system-eff--white:not(:disabled) {
+    background-color: #fff !important;
+    color: #1B5E20 !important;
+    border: 2px solid #1B5E20 !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+#clickSystemFeature .click-system-choice-btn.click-system-eff--white:not(:disabled) .click-system-label,
+#clickSystemFeature .click-system-choice-btn.click-system-eff--white:not(:disabled) .click-system-pct {
+    color: #1B5E20 !important;
+}
+
+#clickSystemFeature .click-system-choice-btn.click-system-eff--best:not(:disabled):hover {
+    background-color: #2E7D32 !important;
+}
+
+#clickSystemFeature .click-system-choice-btn.click-system-eff--mid:not(:disabled):hover {
+    background-color: #f57c00 !important;
+}
+
+#clickSystemFeature .click-system-choice-btn.click-system-eff--worst:not(:disabled):hover {
+    background-color: #d32f2f !important;
+}
+
+#clickSystemFeature .click-system-choice-btn.click-system-eff--white:not(:disabled):hover {
+    background-color: #f5f9f5 !important;
 }
 
 #clickSystemFeature .click-system-label {
