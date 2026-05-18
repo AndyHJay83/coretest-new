@@ -7978,9 +7978,9 @@ function createClickSystemFeature() {
         </div>
         <div id="clickSystemPart2" class="click-system-part" style="display: none;">
             <p class="click-system-prompt">Where have 13 clicks landed you?</p>
-            <div class="click-system-choice-grid">
+            <div class="click-system-choice-grid click-system-position-grid">
                 <button type="button" class="click-system-choice-btn" data-position="first"><span class="click-system-label">FIRST</span><span class="click-system-pct">0%</span></button>
-                <button type="button" class="click-system-choice-btn click-system-nb-btn" data-position="nearBeginning"><span class="click-system-label">NEAR BEGINNING</span><span class="click-system-pct">0%</span></button>
+                <button type="button" class="click-system-choice-btn click-system-nb-btn" data-position="nearBeginning"><span class="click-system-label">NEAR START</span><span class="click-system-pct">0%</span></button>
                 <button type="button" class="click-system-choice-btn" data-position="middle"><span class="click-system-label">MIDDLE</span><span class="click-system-pct">0%</span></button>
                 <button type="button" class="click-system-choice-btn" data-position="end"><span class="click-system-label">END</span><span class="click-system-pct">0%</span></button>
             </div>
@@ -10291,7 +10291,7 @@ function filterWordsByClickSystemLength(words, tier) {
 
 /**
  * Whether click 13 landed in a position band (1-based).
- * First = letter 1; Near Beginning = 2 through 50% of length;
+ * First = letter 1; Near Start = 2 through 50% of length;
  * Middle = centered middle 50%; End = last 50%.
  */
 function clickSystemPositionInZone(position, length, zoneKey) {

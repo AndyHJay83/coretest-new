@@ -5845,6 +5845,35 @@ button.close-info-button.workflow-report-close {
     margin-bottom: 14px;
 }
 
+/* Position step: keep First / Near Start / Middle / End on one row on phones */
+#clickSystemFeature .click-system-position-grid {
+    flex-wrap: nowrap;
+    gap: 6px;
+    width: 100%;
+    max-width: 100%;
+    padding: 0 2px;
+    box-sizing: border-box;
+}
+
+#clickSystemFeature .click-system-position-grid .click-system-choice-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 3px;
+    min-height: 52px;
+}
+
+#clickSystemFeature .click-system-position-grid .click-system-label {
+    font-size: clamp(0.58em, 2.6vw, 0.82em);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    hyphens: auto;
+}
+
+#clickSystemFeature .click-system-position-grid .click-system-pct {
+    font-size: clamp(0.72em, 2.4vw, 0.85em);
+    margin-top: 3px;
+}
+
 .click-system-letter-grid {
     max-width: 360px;
     margin-left: auto;
@@ -5972,24 +6001,37 @@ button.close-info-button.workflow-report-close {
 .click-system-nav {
     display: flex;
     flex-direction: row;
-    justify-content: center;
-    align-items: center;
-    gap: 12px;
-    margin: 12px auto 0;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    margin: 12px 0 0;
+    box-sizing: border-box;
 }
 
 .click-system-nav--no-back .click-system-step-back {
     display: none;
 }
 
-.click-system-nav--letters {
-    justify-content: center;
+#clickSystemFeature .click-system-nav .click-system-step-back,
+#clickSystemFeature .click-system-nav .skip-button {
+    flex: 1 1 calc(50% - 4px);
+    width: calc(50% - 4px);
+    max-width: calc(50% - 4px);
+    min-width: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+#clickSystemFeature .click-system-nav--no-back .skip-button {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
 }
 
 #clickSystemFeature .click-system-nav .click-system-step-back {
-    min-width: 100px;
-    padding: 10px 16px;
+    padding: 10px 12px;
     font-size: 14px;
     background-color: #f0f0f0 !important;
     color: #333 !important;
@@ -5998,16 +6040,20 @@ button.close-info-button.workflow-report-close {
     box-shadow: none;
     text-transform: uppercase;
     font-weight: 600;
-    margin: 0;
 }
 
 #clickSystemFeature .click-system-nav .click-system-step-back:hover {
     background-color: #e0e0e0 !important;
+    transform: none;
 }
 
 #clickSystemFeature .click-system-nav .skip-button {
-    margin: 0;
-    min-width: 100px;
+    padding: 10px 12px;
+    font-size: 14px;
+}
+
+#clickSystemFeature .click-system-nav .skip-button:hover {
+    transform: none;
 }
 
 .piano-piano-row {
