@@ -456,6 +456,13 @@
       "analyzeFunction": "const small = wordlist.filter(w => w.length >= 1 && w.length <= 6); const medium = wordlist.filter(w => w.length >= 5 && w.length <= 9); const long = wordlist.filter(w => w.length >= 7); return [{ param: 'Small (1-6)', wordsLeft: small.length, percentFiltered: 100 * (1 - small.length / totalWords) }, { param: 'Medium (5-9)', wordsLeft: medium.length, percentFiltered: 100 * (1 - medium.length / totalWords) }, { param: 'Long (7+)', wordsLeft: long.length, percentFiltered: 100 * (1 - long.length / totalWords) }];"
     },
     {
+      "id": "clickSystem",
+      "name": "CLICK SYSTEM",
+      "displayName": "CLICK SYSTEM",
+      "requiresParam": false,
+      "analyzeFunction": "return [{ param: '3-step: length (S/M/L) then click-13 position then shape or A–Z', wordsLeft: wordlist.length, percentFiltered: 0 }];"
+    },
+    {
       "id": "calculus",
       "name": "CALCULUS",
       "displayName": "CALCULUS",

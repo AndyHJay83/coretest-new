@@ -5748,6 +5748,150 @@ button.close-info-button.workflow-report-close {
     color: #333;
 }
 
+.click-system-hint {
+    text-align: center;
+    font-size: 13px;
+    color: #555;
+    margin: 0 0 12px;
+}
+
+.click-system-prompt {
+    text-align: center;
+    font-weight: 600;
+    margin: 0 0 12px;
+    color: #1B5E20;
+}
+
+.click-system-choice-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+
+.click-system-letter-grid {
+    max-width: 360px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* CLICK SYSTEM choice buttons: standard app green; % in white under label */
+#clickSystemFeature .click-system-choice-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 100px;
+    min-height: 56px;
+    padding: 8px 12px;
+    border: none !important;
+    border-radius: 8px;
+    background-color: #1B5E20 !important;
+    color: #fff !important;
+    cursor: pointer;
+    font-weight: bold;
+    text-transform: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease;
+}
+
+#clickSystemFeature .click-system-letter-btn {
+    min-width: 44px;
+    min-height: 48px;
+    padding: 4px 6px;
+}
+
+#clickSystemFeature .click-system-choice-btn:hover:not(:disabled) {
+    background-color: #2E7D32 !important;
+    color: #fff !important;
+    opacity: 0.95;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+#clickSystemFeature .click-system-choice-btn:active:not(:disabled) {
+    transform: translateY(0);
+    background-color: #1B5E20 !important;
+}
+
+#clickSystemFeature .click-system-choice-btn--disabled,
+#clickSystemFeature .click-system-choice-btn:disabled {
+    background-color: #9e9e9e !important;
+    color: #fff !important;
+    opacity: 0.85;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+#clickSystemFeature .click-system-choice-btn:disabled .click-system-label,
+#clickSystemFeature .click-system-choice-btn:disabled .click-system-pct {
+    color: #fff !important;
+    opacity: 0.9;
+}
+
+#clickSystemFeature .click-system-label {
+    font-size: 0.95em;
+    line-height: 1.2;
+    color: #fff !important;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+#clickSystemFeature .click-system-pct {
+    display: block;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: #fff !important;
+    margin-top: 4px;
+    min-height: 1.1em;
+    line-height: 1.2;
+    opacity: 0.95;
+    text-transform: none;
+}
+
+.click-system-nav {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin: 12px auto 0;
+    flex-wrap: wrap;
+}
+
+.click-system-nav--no-back .click-system-step-back {
+    display: none;
+}
+
+.click-system-nav--letters {
+    justify-content: center;
+}
+
+#clickSystemFeature .click-system-nav .click-system-step-back {
+    min-width: 100px;
+    padding: 10px 16px;
+    font-size: 14px;
+    background-color: #f0f0f0 !important;
+    color: #333 !important;
+    border: 1px solid #ddd !important;
+    border-radius: 6px;
+    box-shadow: none;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin: 0;
+}
+
+#clickSystemFeature .click-system-nav .click-system-step-back:hover {
+    background-color: #e0e0e0 !important;
+}
+
+#clickSystemFeature .click-system-nav .skip-button {
+    margin: 0;
+    min-width: 100px;
+}
+
 .piano-piano-row {
     display: flex;
     justify-content: center;

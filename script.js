@@ -1356,6 +1356,7 @@ const WORKFLOW_FEATURE_LABELS = {
     alphaRepeat: 'ALPHA-REPEAT',
     repeatQuestion: 'REPEAT?',
     smlLength: 'LENGTH (S/M/L)',
+    clickSystem: 'CLICK SYSTEM',
     calculus: 'CALCULUS',
     letterShapes: 'Letter shapes',
     connective: 'CONNECTIVE',
@@ -5312,6 +5313,9 @@ async function executeWorkflow(steps) {
                 case 'smlLength':
                     featureElement = createSmlLengthFeature();
                     break;
+                case 'clickSystem':
+                    featureElement = createClickSystemFeature();
+                    break;
                 case 'theCore':
                     featureElement = createTheCoreFeature();
                     break;
@@ -7937,6 +7941,69 @@ function createRepeatQuestionFeature() {
     return div;
 }
 
+// --- CLICK SYSTEM Feature UI ---
+function createClickSystemFeature() {
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    const letterButtons = letters
+        .map(
+            (l) =>
+                `<button type="button" class="click-system-choice-btn click-system-letter-btn" data-letter="${l}"><span class="click-system-label">${l}</span><span class="click-system-pct">0%</span></button>`
+        )
+        .join('\n');
+    const div = document.createElement('div');
+    div.id = 'clickSystemFeature';
+    div.className = 'feature-section';
+    div.innerHTML = `
+        <h2 class="feature-title">CLICK SYSTEM</h2>
+        <div id="clickSystemPart1" class="click-system-part">
+            <p class="click-system-prompt">Length of word</p>
+            <div class="click-system-choice-grid">
+                <button type="button" class="click-system-choice-btn" data-length="short"><span class="click-system-label">SHORT</span><span class="click-system-pct">0%</span></button>
+                <button type="button" class="click-system-choice-btn" data-length="medium"><span class="click-system-label">MEDIUM</span><span class="click-system-pct">0%</span></button>
+                <button type="button" class="click-system-choice-btn" data-length="long"><span class="click-system-label">LONG</span><span class="click-system-pct">0%</span></button>
+            </div>
+            <div class="click-system-nav click-system-nav--no-back">
+                <button type="button" class="secondary-btn click-system-step-back" id="clickSystemBackLength" hidden>BACK</button>
+                <button type="button" id="clickSystemSkipLength" class="skip-button">SKIP</button>
+            </div>
+        </div>
+        <div id="clickSystemPart2" class="click-system-part" style="display: none;">
+            <p class="click-system-prompt">Where have 13 clicks landed you?</p>
+            <div class="click-system-choice-grid">
+                <button type="button" class="click-system-choice-btn" data-position="first"><span class="click-system-label">FIRST</span><span class="click-system-pct">0%</span></button>
+                <button type="button" class="click-system-choice-btn click-system-nb-btn" data-position="nearBeginning"><span class="click-system-label">NEAR BEGINNING</span><span class="click-system-pct">0%</span></button>
+                <button type="button" class="click-system-choice-btn" data-position="middle"><span class="click-system-label">MIDDLE</span><span class="click-system-pct">0%</span></button>
+                <button type="button" class="click-system-choice-btn" data-position="end"><span class="click-system-label">END</span><span class="click-system-pct">0%</span></button>
+            </div>
+            <div class="click-system-nav">
+                <button type="button" class="secondary-btn click-system-step-back" id="clickSystemBackPosition">BACK</button>
+                <button type="button" id="clickSystemSkipPosition" class="skip-button">SKIP</button>
+            </div>
+        </div>
+        <div id="clickSystemPart3" class="click-system-part" style="display: none;">
+            <p class="click-system-prompt">Shape of that letter</p>
+            <div class="click-system-choice-grid">
+                <button type="button" class="click-system-choice-btn" data-shape="straight"><span class="click-system-label">STRAIGHT</span><span class="click-system-pct">0%</span></button>
+                <button type="button" class="click-system-choice-btn" data-shape="mixed"><span class="click-system-label">MIXED</span><span class="click-system-pct">0%</span></button>
+                <button type="button" class="click-system-choice-btn" data-shape="curved"><span class="click-system-label">CURVED</span><span class="click-system-pct">0%</span></button>
+                <button type="button" class="click-system-choice-btn click-system-az-btn" data-shape="az"><span class="click-system-label">A–Z</span><span class="click-system-pct">0%</span></button>
+            </div>
+            <div class="click-system-nav">
+                <button type="button" class="secondary-btn click-system-step-back" id="clickSystemBackShape">BACK</button>
+                <button type="button" id="clickSystemSkipShape" class="skip-button">SKIP</button>
+            </div>
+        </div>
+        <div id="clickSystemPart3Letters" class="click-system-part" style="display: none;">
+            <p class="click-system-prompt">Exact letter at click 13</p>
+            <div class="click-system-choice-grid click-system-letter-grid">${letterButtons}</div>
+            <div class="click-system-nav click-system-nav--letters">
+                <button type="button" class="secondary-btn click-system-step-back" id="clickSystemBackFromLetters">BACK</button>
+            </div>
+        </div>
+    `;
+    return div;
+}
+
 // --- S/M/L (Length) Feature Logic ---
 function createSmlLengthFeature() {
     const div = document.createElement('div');
@@ -10174,6 +10241,156 @@ function filterWordsByMiddle(words, twoLetters) {
         if (w.length < 3) return false;
         const middle = w.slice(1, -1);
         return middle.includes(a) && middle.includes(b);
+    });
+}
+
+// --- CLICK SYSTEM ---
+const CLICK_SYSTEM_CLICK_COUNT = 13;
+
+/** 1-based letter position after N cyclical clicks. */
+function clickSystemClickPosition(word, clickCount = CLICK_SYSTEM_CLICK_COUNT) {
+    const w = String(word || '').replace(/[^a-zA-Z]/g, '');
+    const len = w.length;
+    if (len < 1) return 0;
+    return ((clickCount - 1) % len) + 1;
+}
+
+function clickSystemLetterAtClick(word, clickCount = CLICK_SYSTEM_CLICK_COUNT) {
+    const w = String(word || '').replace(/[^a-zA-Z]/g, '');
+    const len = w.length;
+    if (len < 1) return '';
+    const idx = (clickCount - 1) % len;
+    return w.charAt(idx).toUpperCase();
+}
+
+/** Letter-only length (ignores spaces, punctuation). */
+function clickSystemWordLength(word) {
+    return String(word || '').replace(/[^a-zA-Z]/g, '').length;
+}
+
+function clickSystemLengthInTier(length, tier) {
+    const L = length;
+    if (tier === 'short') return L >= 3 && L <= 7;
+    if (tier === 'medium') return L >= 5 && L <= 8;
+    if (tier === 'long') return L >= 6;
+    return false;
+}
+
+function filterWordsByClickSystemLength(words, tier) {
+    return words.filter((w) => clickSystemLengthInTier(clickSystemWordLength(w), tier));
+}
+
+/**
+ * Whether click 13 landed in a position band (1-based).
+ * First = letter 1; Near Beginning = 2 through 50% of length;
+ * Middle = centered middle 50%; End = last 50%.
+ */
+function clickSystemPositionInZone(position, length, zoneKey) {
+    if (position < 1 || length < 1) return false;
+    const L = length;
+    const pos = position;
+    if (zoneKey === 'first') return pos === 1;
+    if (zoneKey === 'nearBeginning') {
+        const throughHalf = Math.floor(L * 0.5);
+        return pos >= 2 && pos <= throughHalf;
+    }
+    if (zoneKey === 'middle') {
+        const halfLen = Math.ceil(L / 2);
+        const start = Math.floor((L - halfLen) / 2) + 1;
+        const end = start + halfLen - 1;
+        return pos >= start && pos <= end;
+    }
+    if (zoneKey === 'end') {
+        const start = Math.floor(L / 2) + 1;
+        return pos >= start && pos <= L;
+    }
+    return false;
+}
+
+function clickSystemWordMatchesPosition(word, lengthTier, positionKey) {
+    const len = clickSystemWordLength(word);
+    const pos = clickSystemClickPosition(word);
+    if (len < 1 || pos < 1) return false;
+    if (lengthTier && !clickSystemLengthInTier(len, lengthTier)) return false;
+    return clickSystemPositionInZone(pos, len, positionKey);
+}
+
+function filterWordsByClickSystemPosition(words, lengthTier, positionKey) {
+    return words.filter((w) => clickSystemWordMatchesPosition(w, lengthTier, positionKey));
+}
+
+function clickSystemLetterMatchesShapeCategory(letterUpper, category) {
+    const set = letterShapesPrefilterSets[category];
+    return !!(set && letterUpper && set.has(letterUpper));
+}
+
+function filterWordsByClickSystemShape(words, category) {
+    return words.filter((w) => {
+        const ch = clickSystemLetterAtClick(w);
+        return clickSystemLetterMatchesShapeCategory(ch, category);
+    });
+}
+
+function filterWordsByClickSystemExactLetter(words, letter) {
+    const L = String(letter || '').toUpperCase();
+    if (!L) return words;
+    return words.filter((w) => clickSystemLetterAtClick(w) === L);
+}
+
+function clickSystemPercentRemovedExact(words, predicate) {
+    const list = Array.isArray(words) ? words : [];
+    if (list.length === 0) return { exact: 0, left: 0, total: 0 };
+    const left = list.filter(predicate).length;
+    const exact = 100 * (1 - left / list.length);
+    return { exact, left, total: list.length };
+}
+
+/** Numeric % removed (for comparisons). */
+function clickSystemPercentRemoved(words, predicate) {
+    return clickSystemPercentRemovedExact(words, predicate).exact;
+}
+
+/** Whether this choice would remove every word from the current list. */
+function clickSystemChoiceEmptiesList(words, predicate) {
+    const { left, total } = clickSystemPercentRemovedExact(words, predicate);
+    return total > 0 && left === 0;
+}
+
+/**
+ * Display % removed. One decimal from 98% upward so 98.x and 99.x stay distinguishable.
+ * Choices that empty the list are greyed out instead of showing 100%.
+ */
+function clickSystemFormatPctRemoved(words, predicate) {
+    const { exact, total } = clickSystemPercentRemovedExact(words, predicate);
+    if (total === 0) return '0%';
+    if (exact >= 99.95) return '99.9%';
+    if (exact >= 98) return `${(Math.round(exact * 10) / 10).toFixed(1)}%`;
+    return `${Math.round(exact)}%`;
+}
+
+function clickSystemFormatPct(words, predicate) {
+    return clickSystemFormatPctRemoved(words, predicate);
+}
+
+function clickSystemSetChoicePercents(root, words, buttonSelector, getPredicate) {
+    if (!root) return;
+    const buttons = root.querySelectorAll(buttonSelector);
+    buttons.forEach((btn) => {
+        const pctEl = btn.querySelector('.click-system-pct');
+        btn.disabled = false;
+        btn.classList.remove('click-system-choice-btn--disabled');
+        const pred = getPredicate(btn);
+        if (typeof pred !== 'function') {
+            if (pctEl) pctEl.textContent = '0%';
+            return;
+        }
+        if (clickSystemChoiceEmptiesList(words, pred)) {
+            btn.disabled = true;
+            btn.classList.add('click-system-choice-btn--disabled');
+            if (pctEl) pctEl.textContent = '—';
+            return;
+        }
+        if (pctEl) pctEl.textContent = clickSystemFormatPct(words, pred);
     });
 }
 
@@ -17374,6 +17591,222 @@ function setupFeatureListeners(feature, callback, options) {
             break;
         }
 
+        case 'clickSystem': {
+            const root = document.getElementById('clickSystemFeature');
+            const part1 = document.getElementById('clickSystemPart1');
+            const part2 = document.getElementById('clickSystemPart2');
+            const part3 = document.getElementById('clickSystemPart3');
+            const part3Letters = document.getElementById('clickSystemPart3Letters');
+            let lengthTier = null;
+            const snapshotWords = (list) => [...(Array.isArray(list) ? list : [])];
+            let wordsBeforeClickSystem = snapshotWords(currentFilteredWords);
+            let wordsAfterLength = snapshotWords(currentFilteredWords);
+            let wordsAfterPosition = snapshotWords(currentFilteredWords);
+
+            const bindClickSystemTap = (el, fn) => {
+                if (!el) return;
+                el.onclick = fn;
+                el.addEventListener('touchstart', (e) => { e.preventDefault(); fn(); }, { passive: false });
+            };
+
+            const showPart = (n) => {
+                if (part1) part1.style.display = n === 1 ? 'block' : 'none';
+                if (part2) part2.style.display = n === 2 ? 'block' : 'none';
+                if (part3) part3.style.display = n === 3 ? 'block' : 'none';
+                if (part3Letters) part3Letters.style.display = n === 4 ? 'block' : 'none';
+                if (n === 1) refreshLengthPercents();
+                else if (n === 2) refreshPositionPercents();
+                else if (n === 3) refreshShapePercents();
+                else if (n === 4) refreshLetterPercents();
+            };
+
+            const complete = (summary, userInput) => {
+                if (root) {
+                    root.classList.add('completed');
+                    dispatchWorkflowFeatureComplete(root, 'clickSystem', {
+                        userInputSummary: summary,
+                        userInput: userInput || {}
+                    });
+                }
+            };
+
+            const applyFilter = (filtered) => {
+                currentFilteredWords = filtered;
+                displayResults(currentFilteredWords);
+            };
+
+            const refreshLengthPercents = () => {
+                if (!part1) return;
+                const words = Array.isArray(currentFilteredWords) ? currentFilteredWords : [];
+                clickSystemSetChoicePercents(part1, words, '[data-length]', (btn) => {
+                    const tier = btn.getAttribute('data-length');
+                    return (w) => clickSystemLengthInTier(clickSystemWordLength(w), tier);
+                });
+            };
+
+            const refreshPositionPercents = () => {
+                if (!part2) return;
+                const words = Array.isArray(currentFilteredWords) ? currentFilteredWords : [];
+                clickSystemSetChoicePercents(part2, words, '[data-position]', (btn) => {
+                    const posKey = btn.getAttribute('data-position');
+                    return (w) => clickSystemWordMatchesPosition(w, lengthTier, posKey);
+                });
+            };
+
+            const refreshShapePercents = () => {
+                if (!part3) return;
+                const words = Array.isArray(currentFilteredWords) ? currentFilteredWords : [];
+                clickSystemSetChoicePercents(part3, words, '[data-shape]:not([data-shape="az"])', (btn) => {
+                    const shape = btn.getAttribute('data-shape');
+                    return (w) => clickSystemLetterMatchesShapeCategory(clickSystemLetterAtClick(w), shape);
+                });
+                const azBtn = part3.querySelector('[data-shape="az"]');
+                const azPct = azBtn && azBtn.querySelector('.click-system-pct');
+                if (azPct) {
+                    let bestExact = -1;
+                    let bestLabel = '0%';
+                    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                    for (let i = 0; i < letters.length; i++) {
+                        const L = letters[i];
+                        const pred = (w) => clickSystemLetterAtClick(w) === L;
+                        if (clickSystemChoiceEmptiesList(words, pred)) continue;
+                        const exact = clickSystemPercentRemoved(words, pred);
+                        if (exact > bestExact) {
+                            bestExact = exact;
+                            bestLabel = clickSystemFormatPctRemoved(words, pred);
+                        }
+                    }
+                    azPct.textContent = bestLabel;
+                }
+            };
+
+            const refreshLetterPercents = () => {
+                if (!part3Letters) return;
+                const words = Array.isArray(currentFilteredWords) ? currentFilteredWords : [];
+                clickSystemSetChoicePercents(part3Letters, words, '[data-letter]', (btn) => {
+                    const letter = btn.getAttribute('data-letter');
+                    return (w) => clickSystemLetterAtClick(w) === String(letter || '').toUpperCase();
+                });
+            };
+
+            const commitLengthStep = () => {
+                wordsAfterLength = snapshotWords(currentFilteredWords);
+            };
+
+            const commitPositionStep = () => {
+                wordsAfterPosition = snapshotWords(currentFilteredWords);
+            };
+
+            const goToShape = () => {
+                showPart(3);
+            };
+
+            const backFromPosition = () => {
+                lengthTier = null;
+                applyFilter(snapshotWords(wordsBeforeClickSystem));
+                showPart(1);
+            };
+
+            const backFromShape = () => {
+                applyFilter(snapshotWords(wordsAfterLength));
+                showPart(2);
+            };
+
+            const backFromLetters = () => {
+                showPart(3);
+            };
+
+            const finishShape = (filtered, summary, userInput) => {
+                currentFilteredWords = filtered;
+                displayResults(currentFilteredWords);
+                callback(filtered);
+                complete(summary, userInput);
+            };
+
+            showPart(1);
+            requestAnimationFrame(() => refreshLengthPercents());
+
+            if (part1) {
+                part1.querySelectorAll('[data-length]').forEach((btn) => {
+                    const onPick = () => {
+                        if (btn.disabled) return;
+                        lengthTier = btn.getAttribute('data-length');
+                        const filtered = filterWordsByClickSystemLength(currentFilteredWords, lengthTier);
+                        applyFilter(filtered);
+                        commitLengthStep();
+                        showPart(2);
+                    };
+                    btn.addEventListener('click', onPick);
+                    btn.addEventListener('touchstart', (e) => { e.preventDefault(); onPick(); }, { passive: false });
+                });
+            }
+
+            bindClickSystemTap(document.getElementById('clickSystemSkipLength'), () => {
+                lengthTier = null;
+                commitLengthStep();
+                showPart(2);
+            });
+            bindClickSystemTap(document.getElementById('clickSystemBackPosition'), backFromPosition);
+
+            if (part2) {
+                part2.querySelectorAll('[data-position]').forEach((btn) => {
+                    const onPick = () => {
+                        if (btn.disabled) return;
+                        const posKey = btn.getAttribute('data-position');
+                        const filtered = filterWordsByClickSystemPosition(currentFilteredWords, lengthTier, posKey);
+                        applyFilter(filtered);
+                        commitPositionStep();
+                        goToShape();
+                    };
+                    btn.addEventListener('click', onPick);
+                    btn.addEventListener('touchstart', (e) => { e.preventDefault(); onPick(); }, { passive: false });
+                });
+            }
+
+            bindClickSystemTap(document.getElementById('clickSystemSkipPosition'), () => {
+                commitPositionStep();
+                goToShape();
+            });
+            bindClickSystemTap(document.getElementById('clickSystemBackShape'), backFromShape);
+
+            if (part3) {
+                part3.querySelectorAll('[data-shape]').forEach((btn) => {
+                    const onPick = () => {
+                        if (btn.disabled) return;
+                        const shape = btn.getAttribute('data-shape');
+                        if (shape === 'az') {
+                            showPart(4);
+                            return;
+                        }
+                        const filtered = filterWordsByClickSystemShape(currentFilteredWords, shape);
+                        finishShape(filtered, `Shape: ${shape}`, { lengthTier, shape });
+                    };
+                    btn.addEventListener('click', onPick);
+                    btn.addEventListener('touchstart', (e) => { e.preventDefault(); onPick(); }, { passive: false });
+                });
+            }
+
+            bindClickSystemTap(document.getElementById('clickSystemSkipShape'), () => {
+                callback(currentFilteredWords);
+                complete('SKIP shape — list unchanged after length/position', { lengthTier, skippedShape: true });
+            });
+            bindClickSystemTap(document.getElementById('clickSystemBackFromLetters'), backFromLetters);
+
+            if (part3Letters) {
+                part3Letters.querySelectorAll('[data-letter]').forEach((btn) => {
+                    const onPick = () => {
+                        if (btn.disabled) return;
+                        const letter = btn.getAttribute('data-letter');
+                        const filtered = filterWordsByClickSystemExactLetter(currentFilteredWords, letter);
+                        finishShape(filtered, `Letter at click 13: ${letter}`, { lengthTier, letter });
+                    };
+                    btn.addEventListener('click', onPick);
+                    btn.addEventListener('touchstart', (e) => { e.preventDefault(); onPick(); }, { passive: false });
+                });
+            }
+            break;
+        }
+
         case 'smlLength': {
             const categoryBtns = document.querySelectorAll('#smlLengthFeature .section-btn');
             const smlLengthSkipButton = document.getElementById('smlLengthSkipButton');
@@ -21546,6 +21979,10 @@ function initializeModeButtons() {
                 <div class="feature-group">
                     <button class="feature-button" data-feature="letterShapes" draggable="true">LETTER SHAPES</button>
                     <button class="info-button" data-feature="letterShapes"><i class="fas fa-info-circle"></i></button>
+                </div>
+                <div class="feature-group">
+                    <button class="feature-button" data-feature="clickSystem" draggable="true">CLICK SYSTEM</button>
+                    <button class="info-button" data-feature="clickSystem"><i class="fas fa-info-circle"></i></button>
                 </div>
                 <div class="feature-group">
                     <button class="feature-button" data-feature="vowel2" draggable="true">VOWEL2</button>
