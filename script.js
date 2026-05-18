@@ -10281,7 +10281,7 @@ function clickSystemLengthInTier(length, tier) {
     const L = length;
     if (tier === 'short') return L >= 3 && L <= 7;
     if (tier === 'medium') return L >= 5 && L <= 8;
-    if (tier === 'long') return L >= 6;
+    if (tier === 'long') return L >= 7;
     return false;
 }
 
