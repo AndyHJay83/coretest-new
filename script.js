@@ -7284,15 +7284,14 @@ function createPianoForteFeature() {
             <span id="pianoForteString">-</span>
         </div>
         <div class="piano-forte-mic-block">
-            <p class="piano-forte-mic-help">Optional: microphone. Play any <strong>2+ note chord</strong> to start, then separate notes (A–G in your range), then another chord to <strong>submit</strong>. Or use test buttons if you have no piano.</p>
+            <p class="piano-forte-mic-help">Optional: microphone. Play <strong>G – B – A</strong> to start, then your notes (in Settings range), then <strong>STOP</strong>. Tap <strong>SUBMIT</strong> to filter. Or tap letters manually.</p>
             <div class="piano-forte-mic-row">
                 <button type="button" id="pianoForteMicEnableBtn" class="secondary-btn">Enable microphone</button>
                 <button type="button" id="pianoForteMicDisableBtn" class="secondary-btn" style="display:none;">Disable microphone</button>
-                <button type="button" id="pianoForteMicResetStringBtn" class="secondary-btn">Reset string</button>
+                <button type="button" id="pianoForteMicStopBtn" class="secondary-btn" style="display:none;">STOP</button>
             </div>
             <div class="piano-forte-mic-row">
-                <button type="button" id="pianoForteMicTestStartBtn" class="secondary-btn" title="Skip start chord">Test: begin capture</button>
-                <button type="button" id="pianoForteMicTestEndBtn" class="secondary-btn" title="Submit as end chord">Test: end &amp; submit</button>
+                <button type="button" id="pianoForteMicResetStringBtn" class="secondary-btn">Reset string</button>
             </div>
             <p id="pianoForteMicStatus" class="piano-forte-mic-status" aria-live="polite">&nbsp;</p>
         </div>
@@ -14819,15 +14818,13 @@ function setupFeatureListeners(feature, callback, options) {
                     statusEl: document.getElementById('pianoForteMicStatus'),
                     enableBtn: document.getElementById('pianoForteMicEnableBtn'),
                     disableBtn: document.getElementById('pianoForteMicDisableBtn'),
+                    stopBtn: document.getElementById('pianoForteMicStopBtn'),
                     resetStringBtn: document.getElementById('pianoForteMicResetStringBtn'),
-                    testStartBtn: document.getElementById('pianoForteMicTestStartBtn'),
-                    testEndBtn: document.getElementById('pianoForteMicTestEndBtn'),
                     getSequence: () => letterSequence,
                     setSequence: (arr) => {
                         letterSequence = arr.slice();
                     },
                     updateDisplay: syncPianoForteDisplay,
-                    onEndChordSubmit: performPianoForteSubmit,
                     onError: (msg) => alert(msg)
                 });
             }

@@ -1,18 +1,18 @@
 /**
- * Piano Forte microphone capture: dyad+ chord starts and ends capture;
- * monophonic A–G (within allowed set) appends to the sequence.
- * Exposes window.PianoForteMic.attach(options) -> { detach }.
+ * Piano Forte microphone: G → B → A arms capture; subsequent notes build the string.
+ * STOP ends capture (mic stays on); SUBMIT filters in the main feature.
+ * Exposes window.PianoForteMic.attach(options) -> { detach, stopCapture }.
  */
 (function (global) {
     'use strict';
 
     const LETTER_TO_PC = { A: 9, B: 11, C: 0, D: 2, E: 4, F: 5, G: 7 };
+    const START_PHRASE = ['G', 'B', 'A'];
 
-    const CHORD_HOLD_MS = 100;
-    const POST_CHORD_SILENCE_MS = 200;
     const SAME_NOTE_GAP_MS = 220;
-    const YIN_THRESHOLD = 0.12;
-    const MIN_RMS = 0.012;
+    const POST_PHRASE_ARM_MS = 150;
+    const YIN_THRESHOLD = 0.14;
+    const MIN_RMS = 0.008;
 
     function rms(buf) {
         let s = 0;
@@ -73,7 +73,7 @@
         return 12 * Math.log2(hz / 440) + 69;
     }
 
-    function nearestAllowedLetter(midi, allowedUpper) {
+    function nearestLetter(midi, allowedUpper) {
         const pc = Math.round(midi) % 12;
         const pcNorm = (pc + 12) % 12;
         let best = null;
@@ -93,41 +93,6 @@
         return best;
     }
 
-    function chromaFromFrequencyData(freqData, sampleRate) {
-        const chroma = new Float32Array(12);
-        const n = freqData.length;
-        const nyq = sampleRate / 2;
-        for (let i = 0; i < n; i++) {
-            const hz = (i / n) * nyq;
-            if (hz < 65 || hz > 5000) continue;
-            const db = freqData[i];
-            if (!isFinite(db) || db < -92) continue;
-            const lin = Math.pow(10, db / 20);
-            const midi = 12 * Math.log2(hz / 440) + 69;
-            const bin = ((Math.round(midi) % 12) + 12) % 12;
-            chroma[bin] += lin * 0.86;
-            chroma[(bin + 1) % 12] += lin * 0.07;
-            chroma[(bin + 11) % 12] += lin * 0.07;
-        }
-        return chroma;
-    }
-
-    function countStrongChromaBins(chroma, relFloor) {
-        let max = 0;
-        for (let i = 0; i < 12; i++) if (chroma[i] > max) max = chroma[i];
-        if (max < 1e-10) return 0;
-        const thr = max * relFloor;
-        let n = 0;
-        for (let i = 0; i < 12; i++) {
-            if (chroma[i] >= thr) n++;
-        }
-        return n;
-    }
-
-    function isChordLike(chroma) {
-        return countStrongChromaBins(chroma, 0.32) >= 2;
-    }
-
     function attach(options) {
         const {
             allowedLetters,
@@ -135,12 +100,10 @@
             enableBtn,
             disableBtn,
             resetStringBtn,
-            testStartBtn,
-            testEndBtn,
+            stopBtn,
             getSequence,
             setSequence,
             updateDisplay,
-            onEndChordSubmit,
             onError,
         } = options;
 
@@ -154,19 +117,116 @@
         let procBuffer = null;
         let winBuffer = null;
         let rafId = 0;
-        let freqBuffer = null;
-        let lastTs = 0;
 
-        /** 'off' | 'idle_chord' | 'capture' */
+        /** 'off' | 'listen_phrase' | 'capture' */
         let mode = 'off';
-        let chordHoldStart = 0;
+        let phraseStep = 0;
         let lastNoteTs = 0;
-        let lastAppendedLetter = '';
-        let postChordUntil = 0;
+        let lastDetectedLetter = '';
+        let postPhraseUntil = 0;
         let noteArmed = true;
 
         function setStatus(t) {
             if (statusEl) statusEl.textContent = t || '\u00a0';
+        }
+
+        function phraseStatusHint() {
+            const need = START_PHRASE[phraseStep];
+            const done = START_PHRASE.slice(0, phraseStep).join('–');
+            if (phraseStep === 0) return 'Play G – B – A to start capture…';
+            return `Phrase: ${done ? done + ' – ' : ''}next: ${need}`;
+        }
+
+        function resetPhrase() {
+            phraseStep = 0;
+        }
+
+        function beginCapture(ts) {
+            mode = 'capture';
+            setSequence([]);
+            updateDisplay();
+            lastDetectedLetter = '';
+            postPhraseUntil = ts + POST_PHRASE_ARM_MS;
+            noteArmed = true;
+            if (stopBtn) stopBtn.style.display = '';
+            setStatus('Capture on — play notes, then STOP. String: (empty)');
+        }
+
+        function tryDetectNote(ts, allowedSet) {
+            if (noiseBelowMin()) return null;
+            if (!noteArmed) return null;
+            const hz = yinPitch(winBuffer, audioCtx.sampleRate);
+            if (hz <= 0) return null;
+            const letter = nearestLetter(hzToMidi(hz), allowedSet);
+            if (!letter) return null;
+            if (letter === lastDetectedLetter && ts - lastNoteTs < SAME_NOTE_GAP_MS) return null;
+            lastDetectedLetter = letter;
+            lastNoteTs = ts;
+            noteArmed = false;
+            return letter;
+        }
+
+        let lastNoise = 0;
+        function noiseBelowMin() {
+            return lastNoise < MIN_RMS;
+        }
+
+        function consumeNote(letter, ts) {
+            if (mode === 'listen_phrase') {
+                const expected = START_PHRASE[phraseStep];
+                if (letter === expected) {
+                    phraseStep += 1;
+                    if (phraseStep >= START_PHRASE.length) {
+                        resetPhrase();
+                        beginCapture(ts);
+                        setStatus('Phrase complete — next note is first in string.');
+                    } else {
+                        setStatus(`Heard ${letter}. ${phraseStatusHint()}`);
+                    }
+                } else {
+                    resetPhrase();
+                    setStatus(`Heard ${letter} (expected ${expected}). ${phraseStatusHint()}`);
+                }
+                return;
+            }
+
+            if (mode === 'capture') {
+                if (!allowed.includes(letter)) {
+                    setStatus(`Heard ${letter} (not in your range). String: ${getSequence().join('') || '(empty)'}`);
+                    return;
+                }
+                const seq = getSequence().slice();
+                seq.push(letter);
+                setSequence(seq);
+                updateDisplay();
+                setStatus(`Heard ${letter} — string: ${seq.join('')}`);
+            }
+        }
+
+        function tick(ts) {
+            rafId = requestAnimationFrame(tick);
+            if (!analyser || !audioCtx) return;
+
+            const fftSize = analyser.fftSize;
+            if (!procBuffer || procBuffer.length !== fftSize) {
+                procBuffer = new Float32Array(fftSize);
+                winBuffer = new Float32Array(fftSize);
+            }
+            analyser.getFloatTimeDomainData(procBuffer);
+            lastNoise = rms(procBuffer);
+            if (lastNoise < MIN_RMS * 0.35) {
+                noteArmed = true;
+            }
+            applyHann(procBuffer, winBuffer);
+
+            if (mode !== 'listen_phrase' && mode !== 'capture') return;
+            if (mode === 'capture' && ts < postPhraseUntil) return;
+
+            const letter =
+                mode === 'listen_phrase'
+                    ? tryDetectNote(ts, START_PHRASE)
+                    : tryDetectNote(ts, allowed);
+            if (letter) consumeNote(letter, ts);
         }
 
         function stopAudio() {
@@ -184,91 +244,30 @@
             }
             analyser = null;
             mode = 'off';
+            resetPhrase();
             if (enableBtn) enableBtn.style.display = '';
             if (disableBtn) disableBtn.style.display = 'none';
+            if (stopBtn) stopBtn.style.display = 'none';
             setStatus('Microphone off.');
         }
 
-        function tick(ts) {
-            rafId = requestAnimationFrame(tick);
-            if (!analyser || !audioCtx) return;
-            lastTs = ts;
-
-            const fftSize = analyser.fftSize;
-            if (!procBuffer || procBuffer.length !== fftSize) {
-                procBuffer = new Float32Array(fftSize);
-                winBuffer = new Float32Array(fftSize);
-            }
-            if (!freqBuffer || freqBuffer.length !== analyser.frequencyBinCount) {
-                freqBuffer = new Float32Array(analyser.frequencyBinCount);
-            }
-            analyser.getFloatTimeDomainData(procBuffer);
-            analyser.getFloatFrequencyData(freqBuffer);
-            const noise = rms(procBuffer);
-            if (noise < MIN_RMS * 0.35) {
-                noteArmed = true;
-            }
-            applyHann(procBuffer, winBuffer);
-            const chromaFreq = chromaFromFrequencyData(freqBuffer, audioCtx.sampleRate);
-            const chord = noise >= MIN_RMS && isChordLike(chromaFreq);
-
-            if (mode === 'idle_chord') {
-                if (chord) {
-                    if (!chordHoldStart) chordHoldStart = ts;
-                    else if (ts - chordHoldStart >= CHORD_HOLD_MS) {
-                        mode = 'capture';
-                        chordHoldStart = 0;
-                        postChordUntil = ts + POST_CHORD_SILENCE_MS;
-                        setStatus('Listening for notes… (play another chord when done)');
-                    }
-                } else {
-                    chordHoldStart = 0;
-                }
-                return;
-            }
-
-            if (mode === 'capture') {
-                if (chord) {
-                    if (!chordHoldStart) chordHoldStart = ts;
-                    else if (ts - chordHoldStart >= CHORD_HOLD_MS && ts > postChordUntil) {
-                        chordHoldStart = 0;
-                        stopAudio();
-                        onEndChordSubmit();
-                        return;
-                    }
-                } else {
-                    chordHoldStart = 0;
-                }
-
-                if (ts < postChordUntil) return;
-
-                if (noise < MIN_RMS) return;
-
-                if (!isChordLike(chromaFreq) && noteArmed) {
-                    const hz = yinPitch(winBuffer, audioCtx.sampleRate);
-                    if (hz > 0) {
-                        const midi = hzToMidi(hz);
-                        const letter = nearestAllowedLetter(midi, allowed);
-                        if (letter) {
-                            const seq = getSequence().slice();
-                            const same =
-                                letter === lastAppendedLetter && ts - lastNoteTs < SAME_NOTE_GAP_MS;
-                            if (!same) {
-                                seq.push(letter);
-                                setSequence(seq);
-                                updateDisplay();
-                                lastAppendedLetter = letter;
-                                lastNoteTs = ts;
-                                noteArmed = false;
-                                setStatus(`Heard ${letter} — string: ${seq.join('')}`);
-                            }
-                        }
-                    }
-                }
-            }
+        function stopCapture() {
+            if (mode !== 'capture' && mode !== 'listen_phrase') return;
+            const seq = getSequence().join('');
+            mode = 'listen_phrase';
+            resetPhrase();
+            lastDetectedLetter = '';
+            noteArmed = true;
+            postPhraseUntil = 0;
+            if (stopBtn) stopBtn.style.display = 'none';
+            setStatus(
+                seq
+                    ? `Stopped. String: ${seq} — tap SUBMIT to filter, or G–B–A to capture again.`
+                    : 'Stopped — play G–B–A to capture, or tap letter buttons.'
+            );
         }
 
-        async function startMic(fromManualCapture) {
+        async function startMic() {
             stopAudio();
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 if (onError) onError('Microphone not supported in this browser.');
@@ -278,7 +277,7 @@
                 mediaStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: false,
-                        noiseSuppression: true,
+                        noiseSuppression: false,
                         autoGainControl: false,
                     },
                 });
@@ -290,7 +289,7 @@
             const src = audioCtx.createMediaStreamSource(mediaStream);
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 8192;
-            analyser.smoothingTimeConstant = 0.35;
+            analyser.smoothingTimeConstant = 0.2;
             src.connect(analyser);
 
             if (audioCtx.state === 'suspended') {
@@ -299,30 +298,24 @@
                 } catch (_) {}
             }
 
-            lastTs = 0;
-            chordHoldStart = 0;
+            mode = 'listen_phrase';
+            resetPhrase();
             lastNoteTs = 0;
-            lastAppendedLetter = '';
-            postChordUntil = 0;
+            lastDetectedLetter = '';
+            postPhraseUntil = 0;
             noteArmed = true;
-
-            if (fromManualCapture) {
-                mode = 'capture';
-                postChordUntil = performance.now() + 50;
-                setStatus('Test mode: capture on — add notes, then Test: end & submit.');
-            } else {
-                mode = 'idle_chord';
-                setStatus('Play any 2+ note chord to begin…');
-            }
 
             if (enableBtn) enableBtn.style.display = 'none';
             if (disableBtn) disableBtn.style.display = '';
+            if (stopBtn) stopBtn.style.display = 'none';
+
+            setStatus(phraseStatusHint());
 
             rafId = requestAnimationFrame(tick);
         }
 
         function onEnableClick() {
-            startMic(false);
+            startMic();
         }
         function onDisableClick() {
             stopAudio();
@@ -330,43 +323,32 @@
         function onResetStringClick() {
             setSequence([]);
             updateDisplay();
-            lastAppendedLetter = '';
+            lastDetectedLetter = '';
             noteArmed = true;
-            if (mode === 'capture' || mode === 'idle_chord') {
-                setStatus('String cleared — keep playing notes, then end chord.');
+            if (mode === 'capture') {
+                setStatus('String cleared — keep playing notes, then STOP.');
+            } else if (mode === 'listen_phrase') {
+                setStatus(phraseStatusHint());
             }
         }
-        function onTestStartClick() {
-            if (mode === 'off') startMic(true);
-            else if (mode === 'idle_chord' || mode === 'capture') {
-                mode = 'capture';
-                postChordUntil = performance.now() + 50;
-                noteArmed = true;
-                setStatus('Test mode: capture on (start chord skipped).');
-            }
-        }
-        function onTestEndClick() {
-            if (mode === 'capture' || mode === 'idle_chord') {
-                stopAudio();
-                onEndChordSubmit();
-            }
+        function onStopClick() {
+            stopCapture();
         }
 
         if (enableBtn) enableBtn.addEventListener('click', onEnableClick);
         if (disableBtn) disableBtn.addEventListener('click', onDisableClick);
         if (resetStringBtn) resetStringBtn.addEventListener('click', onResetStringClick);
-        if (testStartBtn) testStartBtn.addEventListener('click', onTestStartClick);
-        if (testEndBtn) testEndBtn.addEventListener('click', onTestEndClick);
+        if (stopBtn) stopBtn.addEventListener('click', onStopClick);
 
         return {
             stopAudio,
+            stopCapture,
             detach() {
                 stopAudio();
                 if (enableBtn) enableBtn.removeEventListener('click', onEnableClick);
                 if (disableBtn) disableBtn.removeEventListener('click', onDisableClick);
                 if (resetStringBtn) resetStringBtn.removeEventListener('click', onResetStringClick);
-                if (testStartBtn) testStartBtn.removeEventListener('click', onTestStartClick);
-                if (testEndBtn) testEndBtn.removeEventListener('click', onTestEndClick);
+                if (stopBtn) stopBtn.removeEventListener('click', onStopClick);
             },
         };
     }
