@@ -7284,7 +7284,8 @@ function createPianoForteFeature() {
             <span id="pianoForteString">-</span>
         </div>
         <div class="piano-forte-mic-block">
-            <p class="piano-forte-mic-help">Optional: microphone. Play <strong>G – B – A</strong> to start, then your notes (in Settings range), then <strong>STOP</strong>. Tap <strong>SUBMIT</strong> to filter. Or tap letters manually.</p>
+            <p class="piano-forte-mic-help">Optional: microphone. <strong>Hold</strong> each note (tuner readout below). Play <strong>G – B – A</strong> to start, then your notes, <strong>STOP</strong>, then <strong>SUBMIT</strong>. Or tap letters manually.</p>
+            <div id="pianoForteMicLive" class="piano-forte-mic-live" aria-live="polite">—</div>
             <div class="piano-forte-mic-row">
                 <button type="button" id="pianoForteMicEnableBtn" class="secondary-btn">Enable microphone</button>
                 <button type="button" id="pianoForteMicDisableBtn" class="secondary-btn" style="display:none;">Disable microphone</button>
@@ -14816,6 +14817,7 @@ function setupFeatureListeners(feature, callback, options) {
                 micHandle = PianoForteMic.attach({
                     allowedLetters: getPianoForteLetters(),
                     statusEl: document.getElementById('pianoForteMicStatus'),
+                    livePitchEl: document.getElementById('pianoForteMicLive'),
                     enableBtn: document.getElementById('pianoForteMicEnableBtn'),
                     disableBtn: document.getElementById('pianoForteMicDisableBtn'),
                     stopBtn: document.getElementById('pianoForteMicStopBtn'),

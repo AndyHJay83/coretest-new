@@ -1,7 +1,7 @@
 /**
- * Piano Forte microphone: G → B → A arms capture; subsequent notes build the string.
- * STOP ends capture (mic stays on); SUBMIT filters in the main feature.
- * Exposes window.PianoForteMic.attach(options) -> { detach, stopCapture }.
+ * Piano Forte microphone: G → B → A arms capture; sustained notes supported.
+ * Live tuner readout while holding; stable pitch commits one letter per note.
+ * STOP ends capture; SUBMIT filters in the main feature.
  */
 (function (global) {
     'use strict';
@@ -11,8 +11,10 @@
 
     const SAME_NOTE_GAP_MS = 220;
     const POST_PHRASE_ARM_MS = 150;
+    const STABLE_COMMIT_MS = 120;
     const YIN_THRESHOLD = 0.14;
     const MIN_RMS = 0.008;
+    const IN_TUNE_CENTS = 10;
 
     function rms(buf) {
         let s = 0;
@@ -27,7 +29,6 @@
         }
     }
 
-    /** YIN fundamental frequency (Hz) or -1 */
     function yinPitch(buffer, sampleRate) {
         const half = Math.floor(buffer.length / 2);
         if (half < 4) return -1;
@@ -93,10 +94,30 @@
         return best;
     }
 
+    /** Cents vs nearest occurrence of pitch class for letter (any octave). */
+    function centsToLetter(hz, letter) {
+        const targetPc = LETTER_TO_PC[letter];
+        if (targetPc === undefined) return 0;
+        const midi = hzToMidi(hz);
+        let nearest = Math.round(midi);
+        let pc = ((nearest % 12) + 12) % 12;
+        nearest += targetPc - pc;
+        if (midi - (nearest - 12) < Math.abs(midi - nearest)) nearest -= 12;
+        if (Math.abs(midi - (nearest + 12)) < Math.abs(midi - nearest)) nearest += 12;
+        return (midi - nearest) * 100;
+    }
+
+    function formatCents(cents) {
+        const c = Math.round(cents);
+        if (Math.abs(c) <= IN_TUNE_CENTS) return 'in tune';
+        return c > 0 ? `+${c}¢` : `${c}¢`;
+    }
+
     function attach(options) {
         const {
             allowedLetters,
             statusEl,
+            livePitchEl,
             enableBtn,
             disableBtn,
             resetStringBtn,
@@ -117,58 +138,77 @@
         let procBuffer = null;
         let winBuffer = null;
         let rafId = 0;
+        let lastNoise = 0;
 
-        /** 'off' | 'listen_phrase' | 'capture' */
         let mode = 'off';
         let phraseStep = 0;
         let lastNoteTs = 0;
-        let lastDetectedLetter = '';
+        let lastCommittedLetter = '';
         let postPhraseUntil = 0;
         let noteArmed = true;
+        let idleStatus = 'Microphone off.';
+
+        let stableLetter = '';
+        let stableSince = 0;
 
         function setStatus(t) {
-            if (statusEl) statusEl.textContent = t || '\u00a0';
+            idleStatus = t || '\u00a0';
+            if (statusEl) statusEl.textContent = idleStatus;
+        }
+
+        function setLiveDisplay(text) {
+            if (livePitchEl) livePitchEl.textContent = text || '—';
         }
 
         function phraseStatusHint() {
             const need = START_PHRASE[phraseStep];
             const done = START_PHRASE.slice(0, phraseStep).join('–');
-            if (phraseStep === 0) return 'Play G – B – A to start capture…';
-            return `Phrase: ${done ? done + ' – ' : ''}next: ${need}`;
+            if (phraseStep === 0) return 'Play G – B – A (hold each note) to start capture…';
+            return `Phrase: ${done ? done + ' – ' : ''}hold ${need}`;
         }
 
         function resetPhrase() {
             phraseStep = 0;
         }
 
+        function resetStability() {
+            stableLetter = '';
+            stableSince = 0;
+        }
+
         function beginCapture(ts) {
             mode = 'capture';
             setSequence([]);
             updateDisplay();
-            lastDetectedLetter = '';
+            lastCommittedLetter = '';
             postPhraseUntil = ts + POST_PHRASE_ARM_MS;
             noteArmed = true;
+            resetStability();
             if (stopBtn) stopBtn.style.display = '';
-            setStatus('Capture on — play notes, then STOP. String: (empty)');
+            setStatus('Capture on — hold each note, then STOP. String: (empty)');
         }
 
-        function tryDetectNote(ts, allowedSet) {
-            if (noiseBelowMin()) return null;
-            if (!noteArmed) return null;
+        function readPitch(allowedSet) {
+            if (lastNoise < MIN_RMS) return null;
             const hz = yinPitch(winBuffer, audioCtx.sampleRate);
             if (hz <= 0) return null;
-            const letter = nearestLetter(hzToMidi(hz), allowedSet);
-            if (!letter) return null;
-            if (letter === lastDetectedLetter && ts - lastNoteTs < SAME_NOTE_GAP_MS) return null;
-            lastDetectedLetter = letter;
-            lastNoteTs = ts;
-            noteArmed = false;
-            return letter;
+            const midi = hzToMidi(hz);
+            const letter = nearestLetter(midi, allowedSet);
+            if (!letter) return { hz, letter: null, cents: 0 };
+            return { hz, letter, cents: centsToLetter(hz, letter) };
         }
 
-        let lastNoise = 0;
-        function noiseBelowMin() {
-            return lastNoise < MIN_RMS;
+        function updateLiveReadout(pitch) {
+            if (!pitch || !pitch.letter) {
+                if (pitch && pitch.hz > 0) {
+                    setLiveDisplay(`${Math.round(pitch.hz)} Hz`);
+                } else {
+                    setLiveDisplay('—');
+                }
+                return;
+            }
+            const tune = formatCents(pitch.cents);
+            setLiveDisplay(`${pitch.letter}  ·  ${Math.round(pitch.hz)} Hz  ·  ${tune}`);
         }
 
         function consumeNote(letter, ts) {
@@ -179,28 +219,59 @@
                     if (phraseStep >= START_PHRASE.length) {
                         resetPhrase();
                         beginCapture(ts);
-                        setStatus('Phrase complete — next note is first in string.');
+                        setStatus('Phrase complete — hold next note for first letter.');
                     } else {
-                        setStatus(`Heard ${letter}. ${phraseStatusHint()}`);
+                        setStatus(`Got ${letter}. ${phraseStatusHint()}`);
                     }
                 } else {
                     resetPhrase();
-                    setStatus(`Heard ${letter} (expected ${expected}). ${phraseStatusHint()}`);
+                    setStatus(`Got ${letter} (expected ${expected}). ${phraseStatusHint()}`);
                 }
                 return;
             }
 
             if (mode === 'capture') {
                 if (!allowed.includes(letter)) {
-                    setStatus(`Heard ${letter} (not in your range). String: ${getSequence().join('') || '(empty)'}`);
+                    setStatus(
+                        `Got ${letter} (not in range). String: ${getSequence().join('') || '(empty)'}`
+                    );
                     return;
                 }
                 const seq = getSequence().slice();
                 seq.push(letter);
                 setSequence(seq);
                 updateDisplay();
-                setStatus(`Heard ${letter} — string: ${seq.join('')}`);
+                setStatus(`Added ${letter} — string: ${seq.join('')}`);
             }
+        }
+
+        function tryCommitStable(ts, allowedSet, pitch) {
+            if (!noteArmed) return;
+            if (!pitch || !pitch.letter) {
+                resetStability();
+                return;
+            }
+
+            if (pitch.letter !== stableLetter) {
+                stableLetter = pitch.letter;
+                stableSince = ts;
+                return;
+            }
+
+            if (ts - stableSince < STABLE_COMMIT_MS) return;
+
+            if (
+                pitch.letter === lastCommittedLetter &&
+                ts - lastNoteTs < SAME_NOTE_GAP_MS
+            ) {
+                return;
+            }
+
+            lastCommittedLetter = pitch.letter;
+            lastNoteTs = ts;
+            noteArmed = false;
+            resetStability();
+            consumeNote(pitch.letter, ts);
         }
 
         function tick(ts) {
@@ -216,17 +287,29 @@
             lastNoise = rms(procBuffer);
             if (lastNoise < MIN_RMS * 0.35) {
                 noteArmed = true;
+                resetStability();
+                if (mode === 'listen_phrase' || mode === 'capture') {
+                    setLiveDisplay('—');
+                    if (statusEl) statusEl.textContent = idleStatus;
+                }
             }
             applyHann(procBuffer, winBuffer);
 
             if (mode !== 'listen_phrase' && mode !== 'capture') return;
-            if (mode === 'capture' && ts < postPhraseUntil) return;
+            if (mode === 'capture' && ts < postPhraseUntil) {
+                setLiveDisplay('—');
+                return;
+            }
 
-            const letter =
-                mode === 'listen_phrase'
-                    ? tryDetectNote(ts, START_PHRASE)
-                    : tryDetectNote(ts, allowed);
-            if (letter) consumeNote(letter, ts);
+            const allowedSet = mode === 'listen_phrase' ? START_PHRASE : allowed;
+
+            if (lastNoise >= MIN_RMS) {
+                const pitch = readPitch(allowedSet);
+                updateLiveReadout(pitch);
+                if (noteArmed) tryCommitStable(ts, allowedSet, pitch);
+            } else if (statusEl) {
+                statusEl.textContent = idleStatus;
+            }
         }
 
         function stopAudio() {
@@ -245,9 +328,11 @@
             analyser = null;
             mode = 'off';
             resetPhrase();
+            resetStability();
             if (enableBtn) enableBtn.style.display = '';
             if (disableBtn) disableBtn.style.display = 'none';
             if (stopBtn) stopBtn.style.display = 'none';
+            setLiveDisplay('—');
             setStatus('Microphone off.');
         }
 
@@ -256,14 +341,16 @@
             const seq = getSequence().join('');
             mode = 'listen_phrase';
             resetPhrase();
-            lastDetectedLetter = '';
+            lastCommittedLetter = '';
             noteArmed = true;
             postPhraseUntil = 0;
+            resetStability();
             if (stopBtn) stopBtn.style.display = 'none';
+            setLiveDisplay('—');
             setStatus(
                 seq
-                    ? `Stopped. String: ${seq} — tap SUBMIT to filter, or G–B–A to capture again.`
-                    : 'Stopped — play G–B–A to capture, or tap letter buttons.'
+                    ? `Stopped. String: ${seq} — SUBMIT to filter, or G–B–A to capture again.`
+                    : 'Stopped — hold G–B–A to capture, or tap letter buttons.'
             );
         }
 
@@ -289,7 +376,7 @@
             const src = audioCtx.createMediaStreamSource(mediaStream);
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 8192;
-            analyser.smoothingTimeConstant = 0.2;
+            analyser.smoothingTimeConstant = 0.15;
             src.connect(analyser);
 
             if (audioCtx.state === 'suspended') {
@@ -301,14 +388,16 @@
             mode = 'listen_phrase';
             resetPhrase();
             lastNoteTs = 0;
-            lastDetectedLetter = '';
+            lastCommittedLetter = '';
             postPhraseUntil = 0;
             noteArmed = true;
+            resetStability();
 
             if (enableBtn) enableBtn.style.display = 'none';
             if (disableBtn) disableBtn.style.display = '';
             if (stopBtn) stopBtn.style.display = 'none';
 
+            setLiveDisplay('—');
             setStatus(phraseStatusHint());
 
             rafId = requestAnimationFrame(tick);
@@ -323,10 +412,11 @@
         function onResetStringClick() {
             setSequence([]);
             updateDisplay();
-            lastDetectedLetter = '';
+            lastCommittedLetter = '';
             noteArmed = true;
+            resetStability();
             if (mode === 'capture') {
-                setStatus('String cleared — keep playing notes, then STOP.');
+                setStatus('String cleared — hold notes, then STOP.');
             } else if (mode === 'listen_phrase') {
                 setStatus(phraseStatusHint());
             }

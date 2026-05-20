@@ -24,7 +24,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-    <script src="piano-forte-mic.js?v=2"></script>
+    <script src="piano-forte-mic.js?v=3"></script>
 </head>
 <body>
     <div class="container">
@@ -792,7 +792,8 @@
                         <span id="pianoForteString">-</span>
                     </div>
                     <div class="piano-forte-mic-block">
-                        <p class="piano-forte-mic-help">Optional: microphone. Play <strong>G – B – A</strong> to start, then your notes (in Settings range), then <strong>STOP</strong>. Tap <strong>SUBMIT</strong> to filter. Or tap letters manually.</p>
+                        <p class="piano-forte-mic-help">Optional: microphone. <strong>Hold</strong> each note (tuner readout below). Play <strong>G – B – A</strong> to start, then your notes, <strong>STOP</strong>, then <strong>SUBMIT</strong>. Or tap letters manually.</p>
+                        <div id="pianoForteMicLive" class="piano-forte-mic-live" aria-live="polite">—</div>
                         <div class="piano-forte-mic-row">
                             <button type="button" id="pianoForteMicEnableBtn" class="secondary-btn">Enable microphone</button>
                             <button type="button" id="pianoForteMicDisableBtn" class="secondary-btn" style="display:none;">Disable microphone</button>
@@ -1874,7 +1875,7 @@
         <div id="pianoForteInfo" class="feature-info-modal">
             <div class="feature-info-content">
                 <h3>PIANO FORTE</h3>
-                <p><strong>Piano Forte</strong><br>Select letters (in your Settings range) that MUST appear in the word, in order, with no extra letters from that range in between. Unselected letters in the range must NOT appear. SUBMIT filters; NONE excludes all range letters if none appear in the word.<br><br><strong>Microphone (optional):</strong> Enable the mic, play <strong>G – B – A</strong> in order to arm capture, then single notes (within your range). The next note after A is the first letter of the sequence. Tap <strong>STOP</strong> when finished, review the string, then <strong>SUBMIT</strong> to filter. <strong>Reset string</strong> clears captured letters. Requires HTTPS or localhost and microphone permission.</p>
+                <p><strong>Piano Forte</strong><br>Select letters (in your Settings range) that MUST appear in the word, in order, with no extra letters from that range in between. Unselected letters in the range must NOT appear. SUBMIT filters; NONE excludes all range letters if none appear in the word.<br><br><strong>Microphone (optional):</strong> Enable the mic and <strong>hold</strong> each note — a live tuner line shows letter, Hz, and cents. Play <strong>G – B – A</strong> in order to arm capture, then your notes (within your range). Release between notes. Tap <strong>STOP</strong>, review the string, then <strong>SUBMIT</strong>. Requires HTTPS or localhost and microphone permission.</p>
                 <button class="close-info-button">&times;</button>
             </div>
         </div>

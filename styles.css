@@ -5740,6 +5740,17 @@ button.close-info-button.workflow-report-close {
     margin-top: 6px;
 }
 
+.piano-forte-mic-live {
+    font-size: 22px;
+    font-weight: 700;
+    text-align: center;
+    margin: 8px 0 4px;
+    min-height: 1.4em;
+    color: #1B5E20;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+}
+
 .piano-forte-mic-status {
     font-size: 13px;
     text-align: center;
