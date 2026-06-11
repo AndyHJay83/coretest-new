@@ -3173,6 +3173,24 @@ input:checked + .slider:before {
     border-color: #999;
 }
 
+#wordlistCustomSelect .options-list.show {
+    max-height: min(50vh, 320px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #888 #f1f1f1;
+}
+
+#wordlistCustomSelect .options-list.show::-webkit-scrollbar {
+    width: 8px;
+}
+
+#wordlistCustomSelect .options-list.show::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
 /* Homepage action buttons: full width, stacked */
 .home-action-buttons {
     display: flex;

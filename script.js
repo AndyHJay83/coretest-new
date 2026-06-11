@@ -3102,8 +3102,10 @@ function initializeDropdowns() {
                 position: absolute;
                 width: 100%;
                 height: auto;
-                max-height: none;
-                overflow: visible;
+                max-height: min(50vh, 320px);
+                overflow-x: hidden;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
                 z-index: 101;
                 background: white;
                 box-shadow: 0 2px 5px rgba(0,0,0,0.2);
@@ -23026,6 +23028,12 @@ body.workflow-dropdown-open #workflowCustomSelect .options-list {
 }
 #wordlistCustomSelect .options-list {
     z-index: 101 !important;
+}
+#wordlistCustomSelect .options-list.show {
+    max-height: min(50vh, 320px) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
 }
 `;
 document.head.appendChild(workflowDropdownCSS);
