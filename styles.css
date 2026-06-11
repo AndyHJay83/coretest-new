@@ -2913,6 +2913,238 @@ input:checked + .slider:before {
     max-width: 100%;
 }
 
+.book-upload-panel {
+    width: 75%;
+    max-width: 480px;
+    margin: 0 auto 24px auto;
+    padding: 16px;
+    border: 1px solid #c8d4c8;
+    border-radius: 10px;
+    background: #fafcfa;
+    box-sizing: border-box;
+}
+
+.book-upload-title {
+    margin: 0 0 6px;
+    font-size: 1.05rem;
+    text-align: center;
+    color: #1B5E20;
+    text-transform: uppercase;
+}
+
+.book-upload-help {
+    margin: 0 0 14px;
+    font-size: 12px;
+    line-height: 1.45;
+    text-align: center;
+    color: #555;
+}
+
+.book-upload-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    color: #333;
+}
+
+.book-upload-required {
+    color: #c62828;
+}
+
+.book-upload-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 15px;
+}
+
+.book-upload-input--short {
+    max-width: 6rem;
+}
+
+.book-upload-drop-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 72px;
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 2px dashed #9ab89a;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+    text-align: center;
+}
+
+.book-upload-drop-zone--over {
+    border-color: #1B5E20;
+    background: #f0f8f0;
+}
+
+.book-upload-drop-prompt {
+    font-size: 14px;
+    color: #444;
+}
+
+.book-upload-file-name {
+    font-size: 13px;
+    color: #1B5E20;
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.book-upload-process-btn {
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 8px;
+    background-color: #1B5E20 !important;
+    color: #fff !important;
+    cursor: pointer;
+}
+
+.book-upload-process-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.book-upload-progress-wrap {
+    margin-bottom: 10px;
+}
+
+.book-upload-progress {
+    width: 100%;
+    height: 10px;
+}
+
+.book-upload-progress-label {
+    margin: 6px 0 0;
+    font-size: 12px;
+    text-align: center;
+    color: #555;
+}
+
+.book-upload-status-note {
+    margin: 0 0 14px;
+    font-size: 12px;
+    line-height: 1.4;
+    text-align: center;
+    color: #333;
+    min-height: 1.2em;
+}
+
+.book-upload-saved-heading {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #444;
+    text-align: center;
+}
+
+.book-upload-saved-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.book-upload-saved-empty {
+    margin: 0;
+    font-size: 12px;
+    text-align: center;
+    color: #777;
+}
+
+.book-upload-saved-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+}
+
+.book-upload-saved-row--editing {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.book-upload-saved-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+}
+
+.book-upload-saved-edit .book-upload-label {
+    margin-top: 4px;
+    margin-bottom: 0;
+}
+
+.book-upload-saved-edit .book-upload-label:first-child {
+    margin-top: 0;
+}
+
+.book-upload-saved-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex-shrink: 0;
+    justify-content: flex-end;
+}
+
+.book-upload-saved-row--editing .book-upload-saved-actions {
+    margin-top: 8px;
+    justify-content: stretch;
+}
+
+.book-upload-saved-row--editing .book-upload-saved-actions .book-upload-saved-action-btn {
+    flex: 1 1 0;
+}
+
+.book-upload-saved-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.book-upload-saved-meta strong {
+    font-size: 14px;
+    color: #1B5E20;
+    word-break: break-word;
+}
+
+.book-upload-saved-sub {
+    font-size: 11px;
+    color: #666;
+}
+
+.book-upload-saved-action-btn {
+    flex-shrink: 0;
+    min-width: 4rem;
+    padding: 6px 10px !important;
+    font-size: 13px !important;
+}
+
+.book-upload-saved-action-btn--danger {
+    color: #b71c1c !important;
+    border-color: #ef9a9a !important;
+}
+
 .dropdown-group {
     display: flex;
     flex-direction: column;

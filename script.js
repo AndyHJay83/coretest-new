@@ -1,4 +1,7 @@
 let wordList = [];
+/** BOOK UPLOAD: { word, page } metadata — not shown in UI or filtering */
+let bookUploadPageData = [];
+let bookUploadPanelHandle = null;
 let totalWords = 0;
 let isNewMode = true;
 let isColour3Mode = true;
@@ -1350,6 +1353,7 @@ const WORKFLOW_FEATURE_LABELS = {
     alphaNumeric: 'AlphaNumeric',
     lettersAbove: 'Letters Above',
     dictionaryAlpha: 'DICTIONARY (B/M/E)',
+    bookBme: 'BOOK B/M/E',
     alpha: 'ALPHA (SHORT)',
     alphaFull: 'ALPHA',
     alphaWord: 'ALPHA-WORD',
@@ -2441,6 +2445,8 @@ function getWordlistPathForEfficiency(value) {
         case 'colouritems': return { wordlistPath: 'words/ColourItems.txt', gzippedPath: 'words/ColourItems.txt.gz' };
         case 'enuk': return { wordlistPath: 'words/ENUK-Long words Noun.txt', gzippedPath: 'words/ENUK-Long words Noun.txt.gz' };
         case 'months_starsigns': return { wordlistPath: 'words/MONTHS_STARSIGNS.txt', gzippedPath: null };
+        case 'book_upload':
+            return { wordlistPath: 'words/4000.txt', gzippedPath: null };
         default: return { wordlistPath: 'words/4000.txt', gzippedPath: 'words/4000.txt.gz' };
     }
 }
@@ -2899,12 +2905,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Add wordlist change listener - reset loaded flag when wordlist changes
     const wordlistSelect = document.getElementById('wordlistSelect');
     wordlistSelect.addEventListener('change', () => {
-        // Reset the loaded flag so new wordlist will be loaded when workflow executes
-        wordListLoaded = false;
-        wordList = [];
-        currentFilteredWords = [];
-        updateExportButtonState(currentFilteredWords);
+        const isBookUpload = wordlistSelect.value === 'book_upload';
+        if (isBookUpload) {
+            if (lastLoadedWordlist !== 'book_upload') {
+                wordListLoaded = false;
+                wordList = [];
+                currentFilteredWords = [];
+                bookUploadPageData = [];
+                updateExportButtonState(currentFilteredWords);
+            }
+        } else {
+            wordListLoaded = false;
+            wordList = [];
+            currentFilteredWords = [];
+            bookUploadPageData = [];
+            updateExportButtonState(currentFilteredWords);
+        }
+        updateBookUploadPanelVisibility();
     });
+
+    initializeBookUploadPanel();
 
     const availableFeatures = document.getElementById('availableFeatures');
     if (availableFeatures) {
@@ -3101,6 +3121,7 @@ function initializeDropdowns() {
         wordlistSelect.value = value;
         wordlistSelectedText.textContent = text;
         closeWordlistDropdown();
+        wordlistSelect.dispatchEvent(new Event('change'));
     };
     wordlistOptionsList.addEventListener('click', handleWordlistOptionSelect);
     wordlistOptionsList.addEventListener('touchstart', handleWordlistOptionSelect, { passive: false });
@@ -3208,6 +3229,13 @@ function setupButtonListeners() {
             if (!selectedWorkflow) {
                 alert('Please select a workflow first');
                 return;
+            }
+            const wordlistSelect = document.getElementById('wordlistSelect');
+            if (wordlistSelect && wordlistSelect.value === 'book_upload') {
+                if (!wordListLoaded || lastLoadedWordlist !== 'book_upload' || wordList.length === 0) {
+                    alert('Please process or load a book from BOOK UPLOAD first.');
+                    return;
+                }
             }
             try {
                 const workflow = workflows.find(w => w.name === selectedWorkflow);
@@ -3829,6 +3857,239 @@ workflowSelect.addEventListener('touchend', function(e) {
     }
 }, { passive: false });
 
+function applyBookUploadWordlist(processedEntries) {
+    const entries = Array.isArray(processedEntries) ? processedEntries : [];
+    bookUploadPageData = entries.map((e) => ({
+        word: String(e.word || '').toUpperCase(),
+        page: Number(e.page),
+    })).filter((e) => e.word && Number.isFinite(e.page));
+    const wordSeen = new Set();
+    const words = [];
+    for (let i = 0; i < bookUploadPageData.length; i++) {
+        const w = bookUploadPageData[i].word;
+        if (!wordSeen.has(w)) {
+            wordSeen.add(w);
+            words.push(w);
+        }
+    }
+    wordList = words.slice();
+    currentFilteredWords = words.slice();
+    currentWordlistForVowels = words.slice();
+    wordListLoaded = true;
+    lastLoadedWordlist = 'book_upload';
+    t9StringsMap.clear();
+    t9StringsCalculated = false;
+    updateExportButtonState(currentFilteredWords);
+    console.log('BOOK UPLOAD wordlist applied:', words.length, 'words');
+    return words;
+}
+
+/** Min/max page span from uploaded book metadata (not shown in UI). */
+function getBookUploadPageSpan() {
+    if (!Array.isArray(bookUploadPageData) || bookUploadPageData.length === 0) {
+        return { min: 1, max: 1, length: 1 };
+    }
+    let min = Infinity;
+    let max = -Infinity;
+    for (const entry of bookUploadPageData) {
+        const page = Number(entry && entry.page);
+        if (!Number.isFinite(page)) continue;
+        if (page < min) min = page;
+        if (page > max) max = page;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+        return { min: 1, max: 1, length: 1 };
+    }
+    return { min, max, length: max - min + 1 };
+}
+
+/** 1-based position within page span for a book page number. */
+function bookUploadPagePosition(page) {
+    const { min, length } = getBookUploadPageSpan();
+    const p = Number(page);
+    if (!Number.isFinite(p)) return -1;
+    return p - min + 1;
+}
+
+/**
+ * Whether a page position falls in a B/M/E band (overlapping 50% zones).
+ * Beginning = first 50%; Middle = centered middle 50%; End = last 50%.
+ */
+function bookPageInBmeZone(position, length, zone) {
+    if (position < 1 || length < 1) return false;
+    const pos = position;
+    const L = length;
+    if (zone === 'begin') {
+        const throughHalf = Math.floor(L * 0.5);
+        return pos >= 1 && pos <= throughHalf;
+    }
+    if (zone === 'mid') return clickSystemPositionInZone(pos, L, 'middle');
+    if (zone === 'end') return clickSystemPositionInZone(pos, L, 'end');
+    return false;
+}
+
+/** Inclusive page range for a B/M/E band (for performer hint only). */
+function getBookBmePageBand(zone) {
+    const { min, max, length: L } = getBookUploadPageSpan();
+    if (!zone || L < 1) return { pageStart: min, pageEnd: max };
+    let posStart;
+    let posEnd;
+    if (zone === 'begin') {
+        posStart = 1;
+        posEnd = Math.floor(L * 0.5);
+    } else if (zone === 'mid') {
+        const halfLen = Math.ceil(L / 2);
+        posStart = Math.floor((L - halfLen) / 2) + 1;
+        posEnd = posStart + halfLen - 1;
+    } else if (zone === 'end') {
+        posStart = Math.floor(L / 2) + 1;
+        posEnd = L;
+    } else {
+        return { pageStart: min, pageEnd: max };
+    }
+    return { pageStart: min + posStart - 1, pageEnd: min + posEnd - 1 };
+}
+
+function getBookUploadPagesByWord() {
+    const map = new Map();
+    for (const entry of bookUploadPageData) {
+        const word = String(entry && entry.word || '').toUpperCase();
+        const page = Number(entry && entry.page);
+        if (!word || !Number.isFinite(page)) continue;
+        if (!map.has(word)) map.set(word, []);
+        const pages = map.get(word);
+        if (!pages.includes(page)) pages.push(page);
+    }
+    return map;
+}
+
+function bookWordAppearsInBmeZone(word, zone) {
+    const { min, length } = getBookUploadPageSpan();
+    if (!length) return false;
+    const pages = getBookUploadPagesByWord().get(String(word).toUpperCase());
+    if (!pages || !pages.length) return false;
+    for (let i = 0; i < pages.length; i++) {
+        const pos = pages[i] - min + 1;
+        if (bookPageInBmeZone(pos, length, zone)) return true;
+    }
+    return false;
+}
+
+function filterWordsByBookBme(words, zone) {
+    if (!zone || !Array.isArray(words)) return words;
+    return words.filter((word) => bookWordAppearsInBmeZone(word, zone));
+}
+
+function syncBookUploadPageDataToWords(words) {
+    if (!Array.isArray(words)) return;
+    const keep = new Set(words.map((w) => String(w).toUpperCase()));
+    bookUploadPageData = bookUploadPageData.filter((e) => keep.has(String(e.word).toUpperCase()));
+}
+
+/**
+ * Mandatory first filter for BOOK UPLOAD wordlists during PERFORM.
+ * Returns { zone: 'begin'|'mid'|'end'|null, skipped: boolean, durationMs: number }.
+ */
+async function runBookBmePrefilterStep(featureArea, resultsContainer) {
+    const startedAt = Date.now();
+    const { min, max, length } = getBookUploadPageSpan();
+    const beginBand = getBookBmePageBand('begin');
+    const midBand = getBookBmePageBand('mid');
+    const endBand = getBookBmePageBand('end');
+    const pageHint = length > 1
+        ? `Book pages ${min}–${max} (${length} pages). Overlapping 50% bands.`
+        : `Book page ${min}.`;
+
+    if (!featureArea) {
+        return { zone: null, skipped: true, durationMs: Date.now() - startedAt };
+    }
+
+    featureArea.innerHTML = '';
+    const pre = document.createElement('div');
+    pre.id = 'bookBmePrefilterFeature';
+    pre.className = 'feature-section';
+    pre.style.display = 'block';
+    pre.innerHTML = `
+        <h2 class="feature-title">BOOK B/M/E</h2>
+        <p class="settings-field-help" style="text-align:center;margin:0 0 12px;font-size:13px;color:#666;">Where does the word appear in the book?</p>
+        <div class="section-buttons">
+            <button type="button" class="section-btn" data-section="begin">Beginning<br><span style="font-size:12px;font-weight:normal;">pp. ${beginBand.pageStart}–${beginBand.pageEnd}</span></button>
+            <button type="button" class="section-btn" data-section="mid">Middle<br><span style="font-size:12px;font-weight:normal;">pp. ${midBand.pageStart}–${midBand.pageEnd}</span></button>
+            <button type="button" class="section-btn" data-section="end">End<br><span style="font-size:12px;font-weight:normal;">pp. ${endBand.pageStart}–${endBand.pageEnd}</span></button>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;margin-top:20px;gap:10px;">
+            <button type="button" id="bookBmeSubmitButton">SUBMIT</button>
+            <button type="button" id="bookBmeSkipButton" class="skip-button">SKIP</button>
+        </div>
+    `;
+    featureArea.appendChild(pre);
+
+    if (resultsContainer) {
+        resultsContainer.innerHTML = `<p>${pageHint}</p>`;
+    }
+
+    return await new Promise((resolve) => {
+        let selectedZone = null;
+        const sectionBtns = pre.querySelectorAll('.section-btn');
+        const submitBtn = pre.querySelector('#bookBmeSubmitButton');
+        const skipBtn = pre.querySelector('#bookBmeSkipButton');
+
+        sectionBtns.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                sectionBtns.forEach((b) => b.classList.remove('selected', 'active'));
+                btn.classList.add('selected', 'active');
+                selectedZone = btn.getAttribute('data-section');
+            });
+        });
+
+        const finish = (zone, skipped) => {
+            resolve({
+                zone: zone || null,
+                skipped: !!skipped,
+                durationMs: Date.now() - startedAt,
+            });
+        };
+
+        if (submitBtn) {
+            submitBtn.onclick = () => {
+                if (!selectedZone) {
+                    alert('Please select Beginning, Middle, or End.');
+                    return;
+                }
+                finish(selectedZone, false);
+            };
+        }
+
+        if (skipBtn) {
+            skipBtn.onclick = () => finish(null, true);
+        }
+    });
+}
+
+function updateBookUploadPanelVisibility() {
+    const wordlistSelect = document.getElementById('wordlistSelect');
+    const panel = document.getElementById('bookUploadPanel');
+    const isBookUpload = wordlistSelect && wordlistSelect.value === 'book_upload';
+    if (panel) panel.style.display = isBookUpload ? '' : 'none';
+    if (bookUploadPanelHandle) {
+        if (isBookUpload) bookUploadPanelHandle.show();
+        else bookUploadPanelHandle.hide();
+    }
+}
+
+function initializeBookUploadPanel() {
+    const panel = document.getElementById('bookUploadPanel');
+    if (!panel || typeof BookUpload === 'undefined' || !BookUpload.init) return;
+    bookUploadPanelHandle = BookUpload.init({
+        panelEl: panel,
+        onWordlistReady: (entries) => {
+            applyBookUploadWordlist(entries);
+        },
+        onError: (msg) => alert(msg),
+    });
+    updateBookUploadPanelVisibility();
+}
+
 // Function to load word list
 async function loadWordList() {
     try {
@@ -3859,6 +4120,19 @@ async function loadWordList() {
         const wordlistSelect = document.getElementById('wordlistSelect');
         const selectedWordlist = wordlistSelect.value;
         console.log('Selected wordlist value:', selectedWordlist);
+
+        if (selectedWordlist === 'book_upload') {
+            if (wordList.length > 0 && lastLoadedWordlist === 'book_upload') {
+                currentFilteredWords = [...wordList];
+                currentWordlistForVowels = [...wordList];
+                if (loadingIndicator.parentNode) {
+                    loadingIndicator.parentNode.removeChild(loadingIndicator);
+                }
+                return wordList;
+            }
+            throw new Error('No book loaded. Process or load a book from BOOK UPLOAD first.');
+        }
+
         let wordlistPath;
         let gzippedPath;
         
@@ -4725,14 +4999,25 @@ async function executeWorkflow(steps) {
         const usingWordEngineWordlist = selectedWordlist === 'wordengine';
         const usingNameEngineWordlist = selectedWordlist === 'nameengine';
         const usingLocationEngineWordlist = selectedWordlist === 'locationengine';
+        const usingBookUploadWordlist = selectedWordlist === 'book_upload';
         const usingEngineWordlist = usingWordEngineWordlist || usingNameEngineWordlist || usingLocationEngineWordlist;
         
+        if (usingBookUploadWordlist && (!wordListLoaded || lastLoadedWordlist !== 'book_upload' || wordList.length === 0)) {
+            alert('Please process or load a book from BOOK UPLOAD before performing.');
+            const homepage = document.getElementById('homepage');
+            const workflowExecution = document.getElementById('workflowExecution');
+            if (workflowExecution) workflowExecution.style.display = 'none';
+            if (homepage) homepage.style.display = 'block';
+            document.body.classList.remove('perform-view');
+            return;
+        }
+
         // Check if we need to load a new wordlist
         const needsReload = !wordListLoaded || 
                            wordList.length === 0 || 
                            lastLoadedWordlist !== selectedWordlist;
         
-        if (needsReload && !usingEngineWordlist) {
+        if (needsReload && !usingEngineWordlist && !usingBookUploadWordlist) {
             await loadWordList();
             wordListLoaded = true;
             lastLoadedWordlist = selectedWordlist;
@@ -5014,6 +5299,32 @@ async function executeWorkflow(steps) {
         } else {
             psychologicalProfilingRunData = null;
         }
+
+        // BOOK UPLOAD: mandatory B/M/E pre-step (first filter) using page metadata.
+        let bookBmePreStepData = null;
+        if (usingBookUploadWordlist) {
+            const wordsBeforeBme = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : 0;
+            const bmeStartedAt = Date.now();
+            const bmeResult = await runBookBmePrefilterStep(featureArea, resultsContainer);
+            if (bmeResult && bmeResult.zone) {
+                currentFilteredWords = filterWordsByBookBme(currentFilteredWords, bmeResult.zone);
+                syncBookUploadPageDataToWords(currentFilteredWords);
+            }
+            const wordsAfterBme = Array.isArray(currentFilteredWords) ? currentFilteredWords.length : 0;
+            const band = bmeResult && bmeResult.zone ? getBookBmePageBand(bmeResult.zone) : null;
+            const zoneName = bmeResult && bmeResult.zone === 'begin'
+                ? 'Beginning'
+                : (bmeResult && bmeResult.zone === 'mid' ? 'Middle' : (bmeResult && bmeResult.zone === 'end' ? 'End' : null));
+            bookBmePreStepData = {
+                wordsBeforeBme,
+                wordsAfterBme,
+                zone: bmeResult && bmeResult.zone ? bmeResult.zone : null,
+                skipped: !!(bmeResult && bmeResult.skipped),
+                band,
+                durationMs: (bmeResult && bmeResult.durationMs) || (Date.now() - bmeStartedAt),
+                zoneName,
+            };
+        }
         
         // Display initial wordlist
         displayResults(currentFilteredWords);
@@ -5038,6 +5349,47 @@ async function executeWorkflow(steps) {
                 : null,
             steps: []
         };
+
+        if (bookBmePreStepData) {
+            const {
+                wordsBeforeBme,
+                wordsAfterBme,
+                zone,
+                skipped,
+                band,
+                durationMs,
+                zoneName,
+            } = bookBmePreStepData;
+            workflowRunRecord.steps.push({
+                feature: 'bookBme',
+                wordsIn: wordsBeforeBme,
+                wordsOut: wordsAfterBme,
+                wordsRemoved: Math.max(0, wordsBeforeBme - wordsAfterBme),
+                durationMs: durationMs || 0,
+                payload: {
+                    feature: 'bookBme',
+                    userInputRecorded: !skipped && !!zone,
+                    userInputSummary: skipped || !zone
+                        ? 'BOOK B/M/E skipped'
+                        : `BOOK B/M/E: ${zoneName}${band ? ` (pages ${band.pageStart}–${band.pageEnd})` : ''}`,
+                    userInput: {
+                        zone: zone || null,
+                        skipped: !!skipped,
+                        pageBand: band,
+                        pageSpan: getBookUploadPageSpan(),
+                    },
+                },
+                wordCountTrace: [],
+                targetWordPresentStart: workflowRunRecord.targetWord
+                    ? targetWordInFilteredList(wordList, workflowRunRecord.targetWord)
+                    : null,
+                targetWordPresentEnd: workflowRunRecord.targetWord
+                    ? targetWordInFilteredList(currentFilteredWords, workflowRunRecord.targetWord)
+                    : null,
+                targetWordTrace: null,
+                wordListSnapshotEnd: maybeSnapshotWordListForReport(currentFilteredWords),
+            });
+        }
         
         // Track the rank of MOST FREQUENT features
         let mostFrequentRank = 1;
