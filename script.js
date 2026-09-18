@@ -9669,6 +9669,25 @@ function getPossibleDigitsAtPosition(words, liePosition, userFourDigits, lastAct
         .map(([digit]) => digit);
 }
 
+// Keep words whose last 4 T9 digits have exactly one mismatch, and that mismatch is at liePosition (1-4).
+function filterWordsByT9OneLieAtPosition(words, userFourDigits, liePosition, lastActualLen) {
+    lastActualLen = lastActualLen || 0;
+    const pos0 = liePosition - 1;
+    calculateT9Strings(words);
+    const minLen = 4 + lastActualLen;
+    return words.filter(word => {
+        const t9String = t9StringsMap.get(word) || wordToT9(word);
+        if (t9String.length < minLen) return false;
+        const lastFour = lastActualLen > 0 ? t9String.slice(-4 - lastActualLen, -lastActualLen) : t9String.slice(-4);
+        const lastFourDigits = lastFour.split('');
+        let mismatches = 0;
+        for (let i = 0; i < 4; i++) {
+            if (lastFourDigits[i] !== userFourDigits[i]) mismatches++;
+        }
+        return mismatches === 1 && lastFourDigits[pos0] !== userFourDigits[pos0];
+    });
+}
+
 // Filter words where the lie is at liePosition (1-4) and the true digit at that position is truthDigit.
 function filterWordsByT9OneLieWithTruth(words, userFourDigits, liePosition, truthDigit, lastActualLen) {
     lastActualLen = lastActualLen || 0;
@@ -15709,6 +15728,7 @@ function setupFeatureListeners(feature, callback, options) {
             let phase2BlankIndex = -1;
             let phase2CurrentLiePosition = 1;
             let phase2StoredDigits = [];
+            let phase2SourceWords = [];
 
             const hidePreview = () => {
                 if (!previewLine) return;
@@ -15847,9 +15867,26 @@ function setupFeatureListeners(feature, callback, options) {
                 if (phase2) phase2.style.display = 'block';
             };
 
+            const applyLiePositionToWordlist = (pos) => {
+                phase2CurrentLiePosition = pos;
+                const source = phase2SourceWords.length ? phase2SourceWords : currentFilteredWords;
+                currentFilteredWords = filterWordsByT9OneLieAtPosition(source, phase2StoredDigits, pos, lastActualLen);
+                displayResults(currentFilteredWords);
+                const possible = getPossibleDigitsAtPosition(source, pos, phase2StoredDigits, lastActualLen);
+                renderTruthDigitButtons(possible, (digit) => {
+                    const filtered = filterWordsByT9OneLieWithTruth(source, phase2StoredDigits, pos, digit, lastActualLen);
+                    if (filtered.length === 0) {
+                        alert('No words match that choice. Please try another digit.');
+                        return;
+                    }
+                    completeOneLie(filtered);
+                });
+            };
+
             const showPhase2NoB = (positions, storedDigits) => {
                 phase2HasBlank = false;
                 phase2StoredDigits = storedDigits;
+                phase2SourceWords = currentFilteredWords.slice();
                 phase2CurrentLiePosition = positions[0];
                 const titleText = positions.length > 1
                     ? 'MOST LIKELY LIE: ' + positions.join(' or ')
@@ -15864,30 +15901,13 @@ function setupFeatureListeners(feature, callback, options) {
                     btn.textContent = pos;
                     btn.dataset.position = pos;
                     btn.onclick = () => {
-                        phase2CurrentLiePosition = pos;
                         phase2Title.textContent = 'CHOSEN LIE: ' + pos;
-                        const possible = getPossibleDigitsAtPosition(currentFilteredWords, pos, phase2StoredDigits, lastActualLen);
-                        renderTruthDigitButtons(possible, (digit) => {
-                            const filtered = filterWordsByT9OneLieWithTruth(currentFilteredWords, phase2StoredDigits, pos, digit, lastActualLen);
-                            if (filtered.length === 0) {
-                                alert('No words match that choice. Please try another digit.');
-                                return;
-                            }
-                            completeOneLie(filtered);
-                        });
+                        applyLiePositionToWordlist(pos);
                     };
                     btn.addEventListener('touchstart', (e) => { e.preventDefault(); btn.onclick(); }, { passive: false });
                     overrideRow.appendChild(btn);
                 });
-                const possible = getPossibleDigitsAtPosition(currentFilteredWords, phase2CurrentLiePosition, phase2StoredDigits, lastActualLen);
-                renderTruthDigitButtons(possible, (digit) => {
-                    const filtered = filterWordsByT9OneLieWithTruth(currentFilteredWords, phase2StoredDigits, phase2CurrentLiePosition, digit, lastActualLen);
-                    if (filtered.length === 0) {
-                        alert('No words match that choice. Please try another digit.');
-                        return;
-                    }
-                    completeOneLie(filtered);
-                });
+                applyLiePositionToWordlist(phase2CurrentLiePosition);
                 if (phase1) phase1.style.display = 'none';
                 if (phase2) phase2.style.display = 'block';
             };
@@ -15978,6 +15998,11 @@ function setupFeatureListeners(feature, callback, options) {
                     selectedDigits = [];
                     if (t9OneLieDisplay) t9OneLieDisplay.textContent = '-';
                     t9OneLieButtons.forEach(btn => btn.classList.remove('active'));
+                    if (phase2SourceWords.length) {
+                        currentFilteredWords = phase2SourceWords.slice();
+                        displayResults(currentFilteredWords);
+                        phase2SourceWords = [];
+                    }
                     if (phase1) phase1.style.display = '';
                     if (phase2) phase2.style.display = 'none';
                     hidePreview();
